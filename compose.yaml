@@ -1,0 +1,51 @@
+services:
+  # Main Streamlit application
+  ensalamento:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: ensalamento
+    hostname: ensalamento
+    restart: unless-stopped
+    ports:
+      - "8503:8501"
+    env_file:
+      - .env
+    networks:
+      - proxy
+
+    volumes:
+      # Database persistence
+      - ./data:/app/data
+      # Static files (logo, etc.)
+      - ./static:/app/static
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
+
+    # Run container as host user for correct volume permissions
+    # Replace 1000 with your actual host user UID (run 'id -u' on host)
+    user: "${HOST_UID:-1000}:${HOST_UID:-1000}"
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,284 @@
+# Especificação de Requisitos de Software (SRS)
+# Sistema de Ensalamento FUP/UnB
+
+**Versão:** 1.3 (Revisão para incluir modelo de blocos de horário Sigaa)
+**Data:** 18 de outubro de 2025
+
+---
+
+## 1. Introdução
+
+### 1.1. Propósito
+
+Este documento especifica os requisitos de software (SRS) para o Sistema de Ensalamento da FUP/UnB. O propósito deste sistema é duplo:
+1.  Automatizar e otimizar a alocação de salas de aula e laboratórios para as disciplinas semestrais (ensalamento).
+2.  Gerenciar **reservas esporádicas (avulsas)** de salas, laboratórios e, principalmente, auditórios, feitas por usuários da comunidade.
+
+### 1.2. Escopo do Produto
+
+O sistema é uma aplicação web *interna* que irá:
+* Gerenciar o inventário de todos os espaços físicos (salas, laboratórios, auditórios) e seus atributos.
+* Importar, via API, a demanda de disciplinas semestrais do "Sistema de Oferta".
+* Permitir a configuração de regras de alocação semestral.
+* Executar um algoritmo para gerar uma proposta de ensalamento otimizada.
+* Permitir ajustes manuais na proposta de ensalamento.
+* **Permitir que usuários logados (Professores, Técnicos) façam reservas manuais/esporádicas de espaços, com checagem de conflito.**
+* Fornecer visualizações e relatórios unificados (ensalamento + reservas) para consulta.
+
+**Fora do Escopo:**
+* Este sistema *não* gerencia a oferta de disciplinas (criação de turmas). Ele *consome* esses dados.
+
+### 1.3. Definições, Acrônimos e Abreviações
+
+* **FUP:** Faculdade UnB Planaltina.
+* **Ensalamento:** Processo de alocação de disciplinas/turmas em salas/espaços físicos.
+* **SRS:** Especificação de Requisitos de Software.
+* **Sigaa:** Sistema Integrado de Gestão de Atividades Acadêmicas (Sistema de origem dos dados de horário).
+* **Sistema de Oferta:** Sistema externo que gerencia as disciplinas, turmas e horários (fonte dos dados).
+* **UI:** Interface de Usuário (User Interface).
+* **CRUD:** Create, Read, Update, Delete (Criar, Ler, Atualizar, Deletar).
+* **API:** Application Programming Interface.
+* **Admin:** Administrador do Sistema (Servidor Técnico-Administrativo).
+* **Usuário Consulta:** Professor ou membro da comunidade acadêmica.
+* **Bloco Atômico:** A menor unidade de tempo indivisível usada pelo Sigaa para alocação (ex: `M1`, `M2`, `N1`).
+
+### 1.4. Referências
+
+* Documento de Requisitos de Produto (`REQUIREMENTS.md`)
+* Documento de Arquitetura (`ARCHITECTURE.md`)
+* Código-fonte do `SigaaScheduleParser` (referência para lógica de parsing de horário).
+
+### 1.5. Visão Geral do Documento
+
+Este documento está estruturado da seguinte forma:
+* **Seção 1 (Introdução):** Descreve o propósito, escopo e visão geral.
+* **Seção 2 (Descrição Geral):** Contextualiza o produto, seus usuários e restrições.
+* **Seção 3 (Requisitos Específicos):** Detalha todos os requisitos funcionais, não funcionais, de interface e de dados.
+
+---
+
+## 2. Descrição Geral
+
+### 2.1. Perspectiva do Produto
+
+O sistema será uma aplicação *standalone*, porém dependente do **Sistema de Oferta**. Ele atuará como um "módulo de otimização" que consome dados brutos (demanda) e produz um resultado (alocação), ao mesmo tempo que serve como um sistema de agendamento para reservas avulsas. Ele será desenvolvido em Python com Streamlit, para um ciclo de desenvolvimento rápido, e hospedado internamente (self-hosted) usando um banco de dados **SQLite3** e alinhado com o **modelo de blocos de horário atômicos do Sigaa**.
+
+### 2.2. Funções do Produto (Resumo)
+
+1.  Gestão de Inventário (Campi, Prédios, Salas).
+2.  Gestão de Tipos de Sala (CRUD).
+3.  **Gestão de Blocos de Horário (Sigaa).**
+4.  Gestão de Características de Salas (CRUD).
+5.  Sincronização de Demanda (Semestral, via API).
+6.  Gestão de Regras (para ensalamento semestral).
+7.  Motor de Alocação (Semestral).
+8.  Edição Manual (do ensalamento semestral).
+9.  **Gestão de Reservas Esporádicas (Manual, Avulsa).**
+10. Visualização Unificada e Relatórios.
+11. Administração de Usuários.
+
+### 2.3. Características dos Usuários
+
+| Perfil | Descrição | Nível de Acesso |
+| :--- | :--- | :--- |
+| **Administrador** (Técnico-Administrativo) | Usuário principal. Gerencia inventário, regras, executa alocação semestral e gerencia *todas* as reservas esporádicas. | Acesso total. |
+| **Usuário Padrão** (Professor, Servidor) | Usuário logado. Consulta o ensalamento e pode **criar/gerenciar suas próprias reservas esporádicas**. | Acesso de Leitura + Criação/Gestão de Reservas Próprias. |
+| **Visitante** (Aluno, Comunidade) | Acesso público (sem login). | Acesso apenas à consulta pública (TVs, busca). |
+
+### 2.4. Restrições Gerais
+
+* **RST-01:** O sistema deve ser desenvolvido em **Python**.
+* **RST-02:** O framework web deve ser **Streamlit** (preferencial) ou Plotly Dash.
+* **RST-03:** O banco de dados deve ser **SQLite3**.
+* **RST-04:** A autenticação deve usar a biblioteca `streamlit-authenticator`.
+* **RST-05:** A implantação deve ser **self-hosting** em servidores da FUP/UnB.
+* **RST-06:** O sistema deve ser responsivo (compatível com computadores, tablets e celulares).
+* **RST-07:** O sistema deve operar internamente com o **modelo de blocos de horário atômicos** (ex: `M1`, `M2`, `T1`) do Sigaa para garantir a integridade dos conflitos.
+
+### 2.5. Suposições e Dependências
+
+* **DEP-01:** A API do Sistema de Oferta está disponível, documentada e fornece os dados necessários, incluindo os dados de horário no formato de **código Sigaa** (ex: `'24M12'`).
+* **SUP-01:** Os usuários Administradores possuem conhecimento básico de informática para operar uma interface web.
+
+---
+
+## 3. Requisitos Específicos
+
+### 3.1. Requisitos de Interface Externa
+
+#### 3.1.1. Interfaces de Usuário (UI)
+
+* **UI-01:** A interface deve ser baseada na web, limpa e intuitiva (padrão Streamlit).
+* **UI-02:** A navegação principal deve ser realizada através de um menu lateral (sidebar).
+* **UI-03:** O sistema deve ser responsivo e adaptar-se a diferentes tamanhos de tela (desktop, tablet, celular).
+* **UI-04:** Deve haver feedback visual claro para ações (ex: "Dados salvos com sucesso", "Erro na alocação").
+
+#### 3.1.2. Interfaces de Hardware
+
+* Nenhum requisito específico além do servidor de hospedagem e dos dispositivos de cliente (computadores, celulares).
+
+#### 3.1.3. Interfaces de Software (API)
+
+* **API-01:** O sistema deve consumir (via `GET`) a API do Sistema de Oferta.
+* **API-02:** A autenticação com a API de Oferta deve ser feita (provavelmente via Bearer Token).
+* **API-03:** O sistema deve mapear corretamente os seguintes campos recebidos da API para seu banco de dados interno:
+    * `código_disciplina`
+    * `nome_disciplina`
+    * `professores_disciplina` (deve suportar múltiplos)
+    * `turma_disciplina`
+    * `vagas_disciplina`
+    * **`horario_disciplina` (campo bruto, ex: `'2M12 4M12'`)**: Este campo é o código Sigaa e será armazenado como `horario_sigaa_bruto`. O sistema é responsável por *parsear* este código, e não por consumir horários de relógio (ex: "08:00").
+    * `nível_disciplina` (graduação, pós-graduação, etc.)
+
+#### 3.1.4. Interfaces de Comunicação
+
+* A aplicação deve ser servida via **HTTPS** (configurado no proxy reverso/NGINX).
+
+### 3.2. Requisitos Funcionais (RF)
+
+#### RF-001: Gerenciamento de Autenticação e Perfil
+* **RF-001.1:** O sistema deve ter uma tela de login.
+* **RF-001.2:** O sistema deve usar o `streamlit-authenticator` para gerenciar usuários.
+* **RF-001.3:** O sistema deve diferenciar, no mínimo, dois níveis de acesso: **Admin** e **Usuário Padrão** (ex: Professor).
+* **RF-001.4 (Admin):** Acesso total a todos os CRUDs, regras, execução e gerenciamento de *todas* as reservas.
+* **RF-001.5 (Usuário Padrão):** Acesso de consulta ao ensalamento e permissão para (RF-011) criar/gerenciar *suas próprias* reservas esporádicas.
+
+#### RF-002: Gestão de Inventário de Espaços (CRUD)
+* **RF-002.1 (Admin):** Deve permitir o CRUD de **Campi**.
+* **RF-002.2 (Admin):** Deve permitir o CRUD de **Prédios** (associados a um Campus).
+* **RF-002.3 (Admin):** Deve permitir o CRUD de **Salas** (associadas a um Prédio).
+* **RF-002.4 (Admin):** Ao criar/editar uma Sala, o Admin deve poder definir:
+    * Nome/Número da Sala
+    * Prédio (associado)
+    * Capacidade (número de assentos)
+    * Tipo de Assento
+    * Andar
+    * **Tipo de Sala (Selecionar de uma lista** populada pela tabela `tipos_sala` - Ver `RF-002.A`).
+
+#### RF-002.A: Gestão de Tipos de Sala (CRUD)
+* **RF-002.A.1 (Admin):** O Admin deve ter acesso a uma interface de gerenciamento (CRUD) dedicada para "Tipos de Sala".
+* **RF-002.A.2 (Admin):** O Admin deve poder **Criar** um novo tipo (ex: "Laboratório de Redes"), **Editar** o nome/descrição de um tipo existente, e **Deletar** um tipo.
+* **RF-002.A.3:** O sistema deve impedir a exclusão de um `Tipo de Sala` se houver alguma `Sala` (`RF-002.3`) atualmente associada a ele, para manter a integridade referencial.
+* **RF-002.A.4:** O sistema deve ser inicializado (primeira carga) com os tipos básicos sugeridos: "Sala de Aula", "Laboratório de Física", "Laboratório de Biologia", "Laboratório de Química", "Laboratório de Computação", "Auditório", "Anfiteatro".
+
+#### RF-002.B: Gestão de Horários e Dias (Sigaa) - (NOVO REQUISITO)
+* **RF-002.B.1:** O sistema deve ter uma tabela (`horarios_bloco`) para armazenar os blocos de horário atômicos do Sigaa (ex: `M1`, `M2`, `N1`, etc.).
+* **RF-002.B.2:** Esta tabela deve ser pré-populada (via *seed* de banco de dados) com os 16 blocos padrão (M1-M5, T1-T6, N1-N4) e seus horários de início/fim correspondentes (ex: `M1` -> `08:00`-`08:55`). Esta tabela não necessita de CRUD na UI.
+* **RF-002.B.3:** O sistema deve ter uma tabela (`dias_semana`) para mapear os IDs Sigaa (2-7) para os nomes ("SEG", "TER", ...). Esta tabela também deve ser pré-populada.
+
+#### RF-003: Gestão de Características de Salas
+* **RF-003.1 (Admin):** O sistema deve permitir o CRUD de **Características Estáticas** (features que uma sala *tem* ou *não tem*).
+* **RF-003.2 (Admin):** As características estáticas devem incluir, no mínimo (mas não se limitando a):
+    * Quadro de Pincel
+    * Quadro de Giz
+    * Ar-condicionado
+    * Ventilador
+    * Projetor
+    * Caixas de Som
+    * Acesso para Cadeirantes
+* **RF-003.3 (Admin):** Na tela de gestão de Salas, o Admin deve poder associar/desassociar essas características a cada sala (relação N:N).
+* **RF-003.4 (Admin):** O sistema deve permitir a **inclusão de características dinâmicas** (tags) não previstas inicialmente.
+
+#### RF-004: Importação de Demanda (Sincronização)
+* **RF-004.1 (Admin):** O Admin deve ter uma interface (ex: página "Semestre") para gerenciar os dados do semestre.
+* **RF-004.2 (Admin):** O Admin deve poder selecionar o semestre (ex: 2025.2) e clicar em um botão "Sincronizar com Sistema de Oferta".
+* **RF-004.3:** Ao sincronizar, o sistema deve consumir a API (`API-03`) e popular a tabela de `demandas`, incluindo o campo `horario_sigaa_bruto` (ex: `'2M12'`).
+* **RF-004.4:** O sistema deve identificar disciplinas que *não* necessitam de sala (ex: "Estágio Supervisionado") e marcá-las como "Não Alocar".
+
+#### RF-005: Gestão de Regras de Alocação
+* **RF-005.1 (Admin):** O sistema deve permitir a criação e gestão de **Regras Estáticas** (regras "duras"):
+    * **RF-005.1.1 (Regra: Professor-Sala):** Alocar *sempre* um Professor específico em uma Sala específica.
+    * **RF-005.1.2 (Regra: Disciplina-Tipo de Sala):** Alocar *sempre* uma Disciplina específica em uma Sala de um `Tipo de Sala` específico (ex: "Laboratório de Química" *deve* ir para um tipo "Laboratório de Química").
+    * **RF-005.1.3 (Regra: Acessibilidade):** Professores marcados com "baixa mobilidade" *devem* ser alocados em salas no Térreo.
+* **RF-005.2 (Admin):** O sistema deve permitir a configuração de **Regras Dinâmicas/Preferências** (regras "suaves" ou de prioridade):
+    * **RF-005.2.1 (Prioridade de Nível):** Priorizar a alocação de disciplinas de Graduação antes de Pós-Graduação.
+    * **RF-005.2.2 (Agrupamento de Professor):** Tentar alocar diferentes disciplinas do *mesmo* professor na *mesma* sala (se a sala atender aos requisitos de todas).
+    * **RF-005.2.3 (Requisito de Equipamento):** Disciplinas que exigem (preferencialmente) "Projetor" devem ser alocadas em salas com essa característica (via `RF-003`).
+    * **RF-005.2.4 (Requisito de Capacidade):** A capacidade da sala deve ser $\ge$ (maior ou igual) ao número de vagas da disciplina.
+
+#### RF-006: Execução do Motor de Alocação (Semestral)
+* **RF-006.1 (Admin):** O Admin deve poder "Executar o Ensalamento" para um semestre selecionado.
+* **RF-006.2 (Parsing):** Antes de alocar, o motor deve *parsear* o `horario_sigaa_bruto` de cada `demanda` (ex: '24M12') em seus blocos atômicos constituintes (ex: [dia=2, bloco=M1], [dia=2, bloco=M2], [dia=4, bloco=M1], [dia=4, bloco=M2]).
+* **RF-006.3 (Regras Estáticas):** O motor deve primeiro alocar todas as **Regras Estáticas** (`RF-005.1`) no nível de bloco atômico. Se houver conflito, o sistema deve parar e reportar o conflito ao Admin.
+* **RF-006.4 (Regras Dinâmicas):** Após alocar as regras estáticas, o motor deve processar as demais demandas, respeitando as **Prioridades** (`RF-005.2`).
+* **RF-006.5:** O motor deve salvar o resultado (a alocação final) no banco de dados, na tabela `alocacoes_semestrais`. Cada *bloco atômico* alocado (ex: Sala 101, Terça, M1) será uma **linha separada** nesta tabela.
+
+#### RF-007: Visualização do Ensalamento
+* **RF-007.1 (Consolidada):** Deve haver uma visualização em formato de Grade de Horário/Calendário que **consolide (mostre juntos)** os dados de:
+    * `alocacoes_semestrais` (resultado do `RF-006`).
+    * `reservas_esporadicas` (resultado do `RF-011`).
+* **RF-007.2 (Combinação de Blocos):** Na UI, o sistema deve *re-combinar* blocos atômicos consecutivos (ex: `M1`, `M2` alocados para a mesma disciplina/reserva) em uma única entrada visual (ex: "08:00/09:50"), replicando a lógica do `mapSchedules` do Sigaa para clareza.
+* **RF-007.3 (Vistas):** Deve ser possível visualizar a grade por **Sala**, **Professor** ou **Curso/Disciplina**.
+
+#### RF-008: Ajuste Manual do Ensalamento (Semestral)
+* **RF-008.1 (Admin):** O Admin deve poder "trocar" uma *alocação semestral* (`RF-006`) de sala.
+* **RF-008.2:** Ao fazer o ajuste, o sistema deve validar (em tempo real) se a nova sala/horário/bloco conflita com:
+    * Outra alocação semestral.
+    * Uma **reserva esporádica** (`RF-011`).
+
+#### RF-009: Geração de Relatórios e Exportação
+* **RF-009.1 (Todos os Usuários):** O sistema deve permitir a **exportação para PDF** do ensalamento.
+* **RF-009.2:** O relatório PDF (por sala) deve **mostrar todos os horários reservados** (aulas e eventos), com os blocos combinados (`RF-007.2`) (Ex: "cada sala/laboratório ocupa exatamente uma página").
+* **RF-009.3:** A exibição simplificada (Modo TV) deve também **mostrar a grade unificada** (aulas e eventos).
+
+#### RF-010: Busca e Filtro
+* **RF-010.1 (Todos os Usuários):** O sistema deve fornecer uma funcionalidade de busca textual.
+* **RF-010.2:** A busca deve permitir encontrar informações por:
+    * Nome da Disciplina
+    * Nome do Professor
+    * Número/Nome da Sala
+    * **Título/Motivo da Reserva Esporádica**
+    * **Tipo de Sala**
+
+#### RF-011: Gestão de Reservas Esporádicas (Avulsas)
+* **RF-011.1 (Usuário Padrão, Admin):** Usuários logados devem ter acesso a uma interface (página "Reservar Sala") para criar reservas avulsas.
+* **RF-011.2 (UI de Blocos):** A interface deve permitir ao usuário selecionar/informar:
+    * Filtro por `Tipo de Sala` (usando a tabela `tipos_sala`) - Ex: "Mostrar apenas Auditórios".
+    * Sala/Espaço desejado (lista filtrada).
+    * **Uma data específica** (ex: "2025-10-30").
+    * **Um ou mais `Blocos de Horário`** (ex: `M1`, `M2`, `M3`) apresentados de forma amigável (ex: "M1 (08:00-08:55)") em uma lista, checkboxes ou similar. A UI *não* deve usar um seletor de tempo livre (`time picker`).
+    * Título/Motivo da Reserva (ex: "Palestra Convidado X").
+* **RF-011.3 (Verificação de Conflito):** O sistema deve verificar **em tempo real** a disponibilidade, checando conflitos nas tabelas `alocacoes_semestrais` E `reservas_esporadicas` para a `sala_id`, `data_reserva` (convertendo o dia da semana da alocação semestral para a data específica) e cada `codigo_bloco` selecionado.
+* **RF-011.4:** Se houver conflito em *qualquer* um dos blocos selecionados, o sistema deve impedir a reserva e informar o usuário.
+* **RF-011.5 (Usuário Padrão):** O usuário pode ver, editar e deletar apenas as reservas que ele mesmo criou.
+* **RF-011.6 (Admin):** O Admin pode ver, editar e deletar *todas* as reservas esporádicas.
+* **RF-011.7 (Opcional - Admin):** O sistema pode ter um fluxo de "aprovação", onde a reserva do Usuário Padrão fica "Pendente" até um Admin "Aprovar".
+* **RF-011.8 (Armazenamento):** Ao salvar, o sistema deve criar uma linha separada na tabela `reservas_esporadicas` para *cada* `codigo_bloco` selecionado pelo usuário.
+
+### 3.3. Requisitos Não Funcionais (RNF)
+
+* **RNF-001 (Desempenho):**
+    * RNF-001.1: A importação da API (`RF-004`) deve ser concluída em menos de 5 minutos.
+    * RNF-001.2: A execução do motor de alocação (`RF-006`) deve ser concluída em tempo razoável (ex: < 10 minutos).
+    * RNF-001.3: As consultas de grade (`RF-007`) e checagem de conflito (`RF-011.3`) devem ser (< 3 segundos).
+    * **RNF-001.4 (Concorrência):** O uso de **SQLite3** implica em bloqueio em nível de arquivo durante operações de escrita (INSERT, UPDATE). A aplicação deve ser projetada for transações de escrita (novas reservas) curtas e rápidas. Assume-se que a concorrência de escrita (múltiplos usuários clicando em "Reservar" no exato mesmo segundo) é baixa.
+* **RNF-002 (Usabilidade):**
+    * RNF-002.1: O sistema deve ser operável por usuários Admin sem necessidade de treinamento técnico em TI, apenas funcional.
+    * RNF-002.2: O fluxo principal (Importar -> Definir Regras -> Executar -> Ajustar) deve ser claro e guiado.
+    * RNF-002.3: O fluxo de reserva esporádica (`RF-011`) deve ser intuitivo. O usuário deve entender facilmente a seleção de blocos de horário (M1, M2, etc.).
+* **RNF-003 (Confiabilidade):**
+    * RNF-003.1: O sistema deve garantir 100% de integridade dos dados (sem alocações duplicadas, sem conflitos não reportados) através do modelo de bloco atômico.
+    * RNF-003.2: O sistema deve ter alta disponibilidade durante o período de ensalamento.
+* **RNF-004 (Segurança):**
+    * RNF-004.1: Todas as senhas de usuário devem ser armazenadas usando hash (provido pelo `streamlit-authenticator`).
+    * RNF-004.2: O token de acesso à API do Sistema de Oferta deve ser armazenado de forma segura (variáveis de ambiente ou secrets).
+    * RNF-004.3: O acesso às funcionalidades de Admin deve ser estritamente protegido pelo login (`RF-001`).
+* **RNF-005 (Manutenibilidade):**
+    * RNF-005.1: O código Python deve seguir as boas práticas (PEP 8) e ser modularizado (ex: `pages/`, `services/`, `database.py`).
+    * RNF-005.2: A lógica do "Motor de Alocação" (`RF-006`) e a lógica de "Checagem de Conflito" (`RF-011.3`) devem ser serviços separados.
+    * **RNF-005.3 (Parser Sigaa):** O parser de horário Sigaa (para `RF-006.2`) deve ser um módulo Python separado e bem testado.
+* **RNF-006 (Compatibilidade):**
+    * RNF-006.1: O sistema deve ser compatível com os navegadores modernos (Chrome, Firefox, Safari, Edge).
+    * RNF-006.2: A interface deve ser funcional em desktops, tablets e celulares (design responsivo).
+
+### 3.4. Requisitos de Banco de Dados
+
+* **BD-01:** O sistema deve usar **SQLite3**.
+* **BD-02:** O esquema do banco de dados deve suportar todas as entidades e relacionamentos, incluindo:
+    * `tipos_sala` (CRUD)
+    * **`dias_semana` (Sigaa, pré-populado)**
+    * **`horarios_bloco` (Sigaa, pré-populado)**
+    * `alocacoes_semestrais` (armazenamento por bloco atômico)
+    * `reservas_esporadicas` (armazenamento por bloco atômico)
+* **BD-03:** O backup do banco de dados será realizado pela infraestrutura de hospedagem através da cópia regular do arquivo `.sqlite3` da aplicação.
+* **BD-04:** O esquema deve usar chaves estrangeiras (foreign keys) para garantir a integridade referencial (requer `PRAGMA foreign_keys = ON;` no SQLite3).

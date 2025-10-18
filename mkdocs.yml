@@ -1,0 +1,178 @@
+site_name: Sistema de Ensalamento FUP/UnB
+site_description: Manual do Usuário - Sistema de Ensalamento FUP/UnB
+site_author: Sistema de Ensalamento FUP-UnB
+site_url: https://ensalamento.sistema.pro.br/docs
+
+# Repository
+repo_name: bgeneto/ensalamento-fup
+repo_url: https://github.com/bgeneto/ensalamento-fup
+
+# Copyright
+copyright: Copyright &copy; 2025 bgeneto
+
+# Configuration
+docs_dir: docs-manual
+site_dir: docs-site # Generate documentation to be served separately
+use_directory_urls: true # Keep directory URLs for better structure
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: Mudar para modo escuro
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: Mudar para modo claro
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/certificate
+
+# Plugins
+plugins:
+  - search:
+      lang: pt
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - with-pdf:
+      author: by bgeneto
+      copyright: 2025 Sistema de Ensalamento FUP-UnB
+      cover: true
+      cover_title: Manual do Usuário
+      cover_subtitle: Sistema de Ensalamento FUP/UnB
+      cover_logo: null
+      back_cover: false
+      toc_title: Índice
+      toc_level: 3
+      ordered_chapter_level: 2
+      excludes_children: []
+      exclude_pages: []
+      convert_iframe: []
+      two_columns_level: 3
+      render_js: false
+      headless_chrome_path: chromium-browser
+      output_path: pdf/manual-usuario-pint-of-science.pdf
+      enabled_if_env: ENABLE_PDF_EXPORT
+      verbose: false
+      debug_html: false
+      show_anchors: false
+      custom_template_path: templates
+
+# Extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Page tree / Navigation
+nav:
+  - Início:
+      - Bem-vindo: index.md
+      - Guia Rápido: guia-rapido.md
+      - Sobre o Sistema: sobre-sistema.md
+  - Para Participantes:
+      - Visão Geral: participantes/index.md
+      - Como se Inscrever: participantes/como-se-inscrever.md
+      - Baixar Certificado: participantes/baixar-certificado.md
+      - Validar Certificado: participantes/validar-certificado.md
+      - Perguntas Frequentes: participantes/faq.md
+  - Para Coordenadores:
+      - Visão Geral: coordenadores/index.md
+      - Acesso ao Sistema: coordenadores/acesso-sistema.md
+      - Validar Participantes: coordenadores/validar-participantes.md
+      - Gerenciar Participantes: coordenadores/gerenciar-participantes.md
+      - Enviar Certificados: coordenadores/enviar-certificados.md
+      - Relatórios e Estatísticas: coordenadores/relatorios.md
+  - Para Administradores:
+      - Visão Geral: administradores/index.md
+      - Gestão de Coordenadores: administradores/gestao-coordenadores.md
+      - Gestão de Cidades: administradores/gestao-cidades.md
+      - Gestão de Eventos: administradores/gestao-eventos.md
+      - Gestão de Funções: administradores/gestao-funcoes.md
+      - Logs de Auditoria: administradores/auditoria.md
+  - Configuração do Sistema:
+      - Visão Geral: configuracao/index.md
+      - Imagens do Certificado: configuracao/imagens-certificado.md
+      - Carga Horária: configuracao/carga-horaria.md
+      - Cores e Personalização: configuracao/cores-fontes.md
+      - Configurações Avançadas: configuracao/avancadas.md
+  - Solução de Problemas:
+      - Problemas Comuns: solucao-problemas.md
+      - Contato e Suporte: suporte.md
+
+# Additional CSS (apenas para o site HTML)
+# extra_css:
+# - pdf-style.css
+
+# Social links
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bgeneto/pint-of-science-brasil
+      name: GitHub Repository
+  version:
+    provider: mike
+  generator: false
