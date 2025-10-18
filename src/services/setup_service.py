@@ -236,27 +236,26 @@ class SetupService:
 
                 # Create FUP Campus
                 campus_fup = Campus(
-                    nome="FUP - Faculdade UnB Planaltina",
-                    descricao="Campus da Faculdade UnB Planaltina",
+                    nome="Faculdade UnB Planaltina",
+                    descricao="Campus da UnB em Planaltina",
+                    sigla="FUP",
                 )
                 session.add(campus_fup)
                 session.flush()  # Get the ID
 
                 # Create buildings for FUP
                 predios_fup = [
-                    ("Bloco A", "Bloco principal de salas de aula"),
-                    ("Bloco B", "Bloco de laboratórios"),
-                    ("Bloco C", "Bloco administrativo"),
-                    ("Bloco D", "Bloco de salas de aula e auditórios"),
-                    ("Biblioteca", "Prédio da biblioteca"),
-                    ("Ginásio", "Ginásio poliesportivo"),
-                    ("Restaurante Universitário", "Restaurante universitário"),
+                    "Bloco A",
+                    "Bloco B",
+                    "Bloco C",
+                    "Bloco D",
+                    "Biblioteca",
+                    "Ginásio",
+                    "Restaurante Universitário",
                 ]
 
-                for nome, descricao in predios_fup:
-                    predio = Predio(
-                        nome=nome, descricao=descricao, campus_id=campus_fup.id
-                    )
+                for nome in predios_fup:
+                    predio = Predio(nome=nome, campus_id=campus_fup.id)
                     session.add(predio)
 
                 # Create Darcy Ribeiro Campus (main UnB campus)
@@ -269,17 +268,15 @@ class SetupService:
 
                 # Create some main buildings for Darcy Ribeiro
                 predios_darcy = [
-                    ("Pavilhão Anísio Teixeira", "Pavilhão de aulas"),
-                    ("Pavilhão João Calmon", "Pavilhão de aulas"),
-                    ("Instituto Central de Ciências", "Bloco de laboratórios"),
-                    ("Faculdade de Educação", "Faculdade de Educação"),
-                    ("Faculdade de Direito", "Faculdade de Direito"),
+                    "Pavilhão Anísio Teixeira",
+                    "Pavilhão João Calmon",
+                    "Instituto Central de Ciências",
+                    "Faculdade de Educação",
+                    "Faculdade de Direito",
                 ]
 
-                for nome, descricao in predios_darcy:
-                    predio = Predio(
-                        nome=nome, descricao=descricao, campus_id=campus_darcy.id
-                    )
+                for nome in predios_darcy:
+                    predio = Predio(nome=nome, campus_id=campus_darcy.id)
                     session.add(predio)
 
                 total_campus = 2

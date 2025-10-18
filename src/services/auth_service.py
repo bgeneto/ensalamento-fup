@@ -8,6 +8,8 @@ import yaml
 import streamlit as st
 from typing import Optional, Dict, Any
 from datetime import datetime
+import os
+from pathlib import Path
 from database import DatabaseSession, Usuario
 from models import UsuarioCreate, UsuarioUpdate
 from config import AUTH_COOKIE_NAME, AUTH_COOKIE_EXPIRY_DAYS
@@ -41,7 +43,6 @@ class AuthService:
                 config["cookie"]["name"],
                 config["cookie"]["key"],
                 config["cookie"]["expiry_days"],
-                config["preauthorized"],
             )
             cls._config = config
 
@@ -137,10 +138,26 @@ class AuthService:
                 # Reset authenticator to reload config
                 cls._authenticator = None
 
+                # Update the auth config file
+                cls._update_auth_config_file()
+
                 return new_user
 
         except Exception as e:
             print(f"Error creating user: {e}")
+            return None
+
+    @classmethod
+    def get_user_role(cls, username: str) -> Optional[str]:
+        """Get user role by username (within session context)"""
+        try:
+            with DatabaseSession() as session:
+                user = (
+                    session.query(Usuario).filter(Usuario.username == username).first()
+                )
+                return user.role if user else None
+        except Exception as e:
+            print(f"Error getting user role: {e}")
             return None
 
     @classmethod
@@ -185,6 +202,9 @@ class AuthService:
                 # Reset authenticator to reload config
                 cls._authenticator = None
 
+                # Update the auth config file
+                cls._update_auth_config_file()
+
                 return user
 
         except Exception as e:
@@ -214,6 +234,9 @@ class AuthService:
 
                 # Reset authenticator to reload config
                 cls._authenticator = None
+
+                # Update the auth config file
+                cls._update_auth_config_file()
 
                 return True
 
@@ -328,10 +351,37 @@ class AuthService:
             return {"total": 0, "admin": 0, "professor": 0}
 
     @classmethod
+    def _update_auth_config_file(cls):
+        """Update the auth config YAML file after database changes"""
+        try:
+            config = cls._get_auth_config()
+            config_path = Path("data/auth_config.yaml")
+            config_path.parent.mkdir(exist_ok=True)
+
+            with open(config_path, "w", encoding="utf-8") as file:
+                yaml.dump(config, file, default_flow_style=False, allow_unicode=True)
+
+        except Exception as e:
+            print(f"Error updating auth config file: {e}")
+
+    @classmethod
+    def _ensure_initial_admin(cls):
+        """Ensure initial admin user exists"""
+        with DatabaseSession() as session:
+            # Check if any users exist
+            user_count = session.query(Usuario).count()
+
+            if user_count == 0:
+                # Create initial admin user
+                cls.create_initial_admin()
+                # Update the config file after creating admin
+                cls._update_auth_config_file()
+
+    @classmethod
     def is_admin(cls, username: str) -> bool:
         """Check if user has admin role"""
-        user = cls.get_user_by_username(username)
-        return user is not None and user.role == "admin"
+        role = cls.get_user_role(username)
+        return role == "admin"
 
     @classmethod
     def authenticate_user(cls, username: str, password: str) -> bool:
@@ -415,3 +465,12 @@ def is_current_user_admin() -> bool:
     """Check if current user is admin"""
     username = get_current_user()
     return username is not None and AuthService.is_admin(username)
+
+
+def get_current_user_role() -> str:
+    """Get current user's role"""
+    username = get_current_user()
+    if not username:
+        return "guest"
+    role = AuthService.get_user_role(username)
+    return role if role else "guest"

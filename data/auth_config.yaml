@@ -1,0 +1,8 @@
+cookie:
+  expiry_days: 30
+  key: "ensalamento_session_key_2025"
+  name: "ensalamento_session"
+credentials:
+  usernames: {}
+preauthorized:
+  emails: []

@@ -12,7 +12,7 @@ load_dotenv()
 # Base paths
 BASE_DIR = Path(__file__).parent.absolute()
 DATA_DIR = BASE_DIR / "data"
-DATABASE_PATH = BASE_DIR / "database.db"
+DATABASE_PATH = DATA_DIR / "ensalamento.db"
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
@@ -31,7 +31,7 @@ API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))
 
 # Application Configuration
 APP_NAME = "Sistema de Ensalamento FUP/UnB"
-APP_VERSION = "1.0.0"
+APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # Admin Configuration
@@ -63,7 +63,15 @@ SIGAA_TIME_BLOCKS = {
     "N": ["N1", "N2", "N3", "N4", "N5", "N6"],
 }
 
-SIGAA_DAYS_MAPPING = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+SIGAA_DAYS_MAPPING = {
+    1: "DOM",
+    2: "SEG",
+    3: "TER",
+    4: "QUA",
+    5: "QUI",
+    6: "SEX",
+    7: "SAB",
+}
 
 # Room Capacity Tiers
 CAPACITY_TIERS = {"pequena": 30, "media": 60, "grande": 120, "auditório": 200}

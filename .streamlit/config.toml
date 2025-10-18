@@ -30,7 +30,12 @@ toolbarMode = "minimal"
 
 [[theme.fontFaces]]
 family = "SpaceGrotesk"
-url = "app/static/SpaceGrotesk-VariableFont_wght.ttf"
+url = "app/static/HankenGrotesk-VariableFont_wght.ttf"
+
+[[theme.fontFaces]]
+family = "SpaceGrotesk"
+url = "app/static/HankenGrotesk-Italic-VariableFont_wght.ttf"
+style = "italic"
 
 [[theme.fontFaces]]
 family = "SpaceMono"

@@ -36,12 +36,13 @@ class Campus(Base):
     id = Column(Integer, primary_key=True)
     nome = Column(String(100), nullable=False, unique=True)
     descricao = Column(Text)
+    sigla = Column(String(10))
 
     # Relationships
     predios = relationship("Predio", back_populates="campus")
 
     def __repr__(self):
-        return f"<Campus(id={self.id}, nome='{self.nome}')>"
+        return f"<Campus(id={self.id}, nome='{self.nome}', sigla='{self.sigla}')>"
 
 
 class Predio(Base):
@@ -85,11 +86,6 @@ class Caracteristica(Base):
     id = Column(Integer, primary_key=True)
     nome = Column(String(100), nullable=False, unique=True)
 
-    # Relationships
-    salas = relationship(
-        "Sala", secondary="sala_caracteristicas", back_populates="caracteristicas"
-    )
-
     def __repr__(self):
         return f"<Caracteristica(id={self.id}, nome='{self.nome}')>"
 
@@ -110,9 +106,7 @@ class Sala(Base):
     # Relationships
     predio = relationship("Predio", back_populates="salas")
     tipo_sala = relationship("TipoSala", back_populates="salas")
-    caracteristicas = relationship(
-        "Caracteristica", secondary="sala_caracteristicas", back_populates="salas"
-    )
+    caracteristicas = relationship("Caracteristica", secondary="sala_caracteristicas")
     alocacoes_semestrais = relationship("AlocacaoSemestral", back_populates="sala")
     reservas_esporadicas = relationship("ReservaEsporadica", back_populates="sala")
 
@@ -133,10 +127,6 @@ class SalaCaracteristica(Base):
     caracteristica_id = Column(
         Integer, ForeignKey("caracteristicas.id"), primary_key=True
     )
-
-    # Relationships
-    sala = relationship("Sala", back_populates="caracteristicas")
-    caracteristica = relationship("Caracteristica", back_populates="salas")
 
     def __repr__(self):
         return f"<SalaCaracteristica(sala_id={self.sala_id}, caracteristica_id={self.caracteristica_id})>"
@@ -338,14 +328,20 @@ class DatabaseManager:
         # For SQLite, we need to enable foreign key support
         connect_args = {"check_same_thread": False}
 
+        # Create engine with appropriate settings for SQLite
         if DATABASE_URL.startswith("sqlite"):
-            connect_args["poolclass"] = StaticPool
-
-        self._engine = create_engine(
-            DATABASE_URL,
-            connect_args=connect_args,
-            echo=os.getenv("DEBUG", "False").lower() == "true",
-        )
+            self._engine = create_engine(
+                DATABASE_URL,
+                connect_args=connect_args,
+                poolclass=StaticPool,
+                echo=os.getenv("DEBUG", "False").lower() == "true",
+            )
+        else:
+            self._engine = create_engine(
+                DATABASE_URL,
+                connect_args=connect_args,
+                echo=os.getenv("DEBUG", "False").lower() == "true",
+            )
 
         self._SessionLocal = sessionmaker(
             autocommit=False, autoflush=False, bind=self._engine

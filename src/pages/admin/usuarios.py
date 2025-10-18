@@ -7,6 +7,7 @@ import streamlit as st
 from typing import Optional
 from src.services.auth_service import AuthService
 from models import UsuarioCreate, UsuarioUpdate
+from database import Usuario
 
 
 def render_usuarios_page():
@@ -126,11 +127,9 @@ def render_create_user():
                 "Nome Completo", placeholder="ex: João Silva Santos"
             )
 
-            role = st.selectbox(
-                "Função",
-                options=["professor", "admin"],
-                help="Administradores têm acesso total ao sistema",
-            )
+            # Only allow admin role creation - no professor roles needed
+            role = "admin"  # Fixed to admin since this is an admin-only system
+            st.info("ℹ️ Todos os usuários criados têm acesso de administrador.")
 
         st.markdown("---")
 
@@ -244,26 +243,38 @@ def render_manage_user():
                     st.error("❌ As senhas não coincidem.")
                     return
 
-                # For admin users, we can update directly, for others we need current password
-                if selected_user.role == "admin":
-                    # Admin password reset (no old password required)
+                # Admin can reset any user's password
+                # Hash the password directly using bcrypt (bypassing AuthService.update_password which requires old password)
+                try:
+                    import bcrypt
+
+                    from database import DatabaseSession
+
                     with DatabaseSession() as session:
-                        import bcrypt
+                        user_to_update = (
+                            session.query(Usuario)
+                            .filter_by(username=selected_user.username)
+                            .first()
+                        )
+                        if user_to_update:
+                            # Hash new password
+                            password_hash = bcrypt.hashpw(
+                                new_password.encode("utf-8"), bcrypt.gensalt()
+                            ).decode("utf-8")
+                            user_to_update.password_hash = password_hash
+                            session.commit()
 
-                        # Hash new password
-                        password_hash = bcrypt.hashpw(
-                            new_password.encode("utf-8"), bcrypt.gensalt()
-                        ).decode("utf-8")
-                        selected_user.password_hash = password_hash
-                        session.commit()
+                            # Reset authenticator cache
+                            AuthService._authenticator = None
+                            AuthService._update_auth_config_file()
 
-                        st.success("✅ Senha redefinida com sucesso!")
-                        del st.session_state["reset_password_user"]
-                        st.rerun()
-                else:
-                    st.info(
-                        "Para usuários não administradores, a senha atual é necessária para alteração."
-                    )
+                            st.success("✅ Senha redefinida com sucesso!")
+                            del st.session_state["reset_password_user"]
+                            st.rerun()
+                        else:
+                            st.error("❌ Usuário não encontrado.")
+                except Exception as e:
+                    st.error(f"❌ Erro ao redefinir senha: {str(e)}")
 
 
 def render_edit_user_form(username):

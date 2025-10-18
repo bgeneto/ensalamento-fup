@@ -466,6 +466,8 @@ class DatabaseService:
                 "salas": session.query(Sala).count(),
                 "tipos_sala": session.query(TipoSala).count(),
                 "caracteristicas": session.query(Caracteristica).count(),
+                "dias_semana": session.query(DiaSemana).count(),
+                "horarios_bloco": session.query(HorarioBloco).count(),
                 "semestres": session.query(Semestre).count(),
                 "demandas": session.query(Demanda).count(),
                 "regras": session.query(Regra).count(),
