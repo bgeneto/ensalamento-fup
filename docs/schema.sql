@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS salas (
 
 CREATE TABLE IF NOT EXISTS caracteristicas (
     id INTEGER PRIMARY KEY,
-    nome TEXT NOT NULL UNIQUE
+    nome TEXT NOT NULL UNIQUE -- (Ex: "Projetor", "Quadro de Giz", "Acesso para Cadeirantes")
 );
 
 CREATE TABLE IF NOT EXISTS sala_caracteristicas (
@@ -55,13 +55,11 @@ CREATE TABLE IF NOT EXISTS sala_caracteristicas (
 -- 2. DEFINIÇÃO DE HORÁRIOS (Sigaa)
 -- ---
 
--- Tabela para os dias da semana (Sigaa)
 CREATE TABLE IF NOT EXISTS dias_semana (
     id_sigaa INTEGER PRIMARY KEY, -- (2=SEG, 3=TER, ...)
     nome TEXT NOT NULL UNIQUE -- (Ex: "SEG", "TER")
 );
 
--- Tabela para os blocos de horário ATÔMICOS (Sigaa)
 CREATE TABLE IF NOT EXISTS horarios_bloco (
     codigo_bloco TEXT PRIMARY KEY, -- (Ex: "M1", "M2", "T1", "N1")
     turno TEXT NOT NULL, -- (Ex: "M", "T", "N")
@@ -85,13 +83,10 @@ CREATE TABLE IF NOT EXISTS demandas (
     semestre_id INTEGER NOT NULL,
     codigo_disciplina TEXT NOT NULL,
     nome_disciplina TEXT,
-    professores_disciplina TEXT,
+    professores_disciplina TEXT, -- Texto bruto da API (Ex: "Dr. João Silva, Dra. Maria")
     turma_disciplina TEXT,
     vagas_disciplina INTEGER,
-
-    -- O código Sigaa bruto (Ex: "24M12 6T34")
-    horario_sigaa_bruto TEXT NOT NULL,
-
+    horario_sigaa_bruto TEXT NOT NULL, -- O código Sigaa bruto (Ex: "24M12 6T34")
     nivel_disciplina TEXT,
 
     FOREIGN KEY (semestre_id) REFERENCES semestres (id)
@@ -100,13 +95,12 @@ CREATE TABLE IF NOT EXISTS demandas (
 CREATE TABLE IF NOT EXISTS regras (
     id INTEGER PRIMARY KEY,
     descricao TEXT NOT NULL,
-    tipo_regra TEXT NOT NULL,
-    config_json TEXT NOT NULL,
-    prioridade INTEGER DEFAULT 1
+    tipo_regra TEXT NOT NULL, -- (Ex: "DISCIPLINA_TIPO_SALA", "DISCIPLINA_REQUER_CARACTERISTICA")
+    config_json TEXT NOT NULL, -- JSON para armazenar os detalhes da regra
+    prioridade INTEGER DEFAULT 1 -- 0 = dura (estática), >0 = suave (preferência)
 );
 
 -- Resultado do Motor de Alocação (RF-006)
--- Esta tabela armazena os blocos atômicos alocados
 CREATE TABLE IF NOT EXISTS alocacoes_semestrais (
     id INTEGER PRIMARY KEY,
     demanda_id INTEGER NOT NULL,
@@ -115,8 +109,9 @@ CREATE TABLE IF NOT EXISTS alocacoes_semestrais (
     codigo_bloco TEXT NOT NULL, -- (FK para horarios_bloco.codigo_bloco)
 
     -- Chave de verificação de conflito para alocações semestrais
+    -- (Um semestre não pode ter o mesmo bloco, no mesmo dia, na mesma sala)
     UNIQUE (semestre_id, sala_id, dia_semana_id, codigo_bloco)
-        REFERENCES semestres(id), -- Incluído para permitir que a chave única seja por semestre
+        REFERENCES semestres(id),
 
     FOREIGN KEY (demanda_id) REFERENCES demandas (id) ON DELETE CASCADE,
     FOREIGN KEY (sala_id) REFERENCES salas (id),
@@ -128,8 +123,6 @@ CREATE TABLE IF NOT EXISTS alocacoes_semestrais (
 -- 4. RESERVAS ESPORÁDICAS (Manual)
 -- ---
 
--- Tabela para reservas avulsas (RF-011)
--- Armazena por data específica + bloco atômico
 CREATE TABLE IF NOT EXISTS reservas_esporadicas (
     id INTEGER PRIMARY KEY,
     sala_id INTEGER NOT NULL,
@@ -149,7 +142,7 @@ CREATE TABLE IF NOT EXISTS reservas_esporadicas (
 
 
 -- ---
--- 5. AUTENTICAÇÃO
+-- 5. AUTENTICAÇÃO E PREFERÊNCIAS DE PROFESSOR
 -- ---
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -157,4 +150,33 @@ CREATE TABLE IF NOT EXISTS usuarios (
     password_hash TEXT NOT NULL,
     nome_completo TEXT,
     role TEXT DEFAULT 'professor' -- (Ex: "admin", "professor")
+);
+
+-- Tabela de Professores (RF-003.A)
+CREATE TABLE IF NOT EXISTS professores (
+    id INTEGER PRIMARY KEY,
+    nome_completo TEXT NOT NULL UNIQUE, -- (Nome exato vindo da API, ex: "Dr. João Silva")
+    tem_baixa_mobilidade BOOLEAN DEFAULT 0 NOT NULL, -- (Restrição "dura")
+
+    -- Link opcional para a conta de usuário (para self-service de preferências)
+    username_login TEXT UNIQUE,
+    FOREIGN KEY (username_login) REFERENCES usuarios (username)
+);
+
+-- Tabela de Preferência "Suave": Professor prefere Sala (N:N)
+CREATE TABLE IF NOT EXISTS professor_prefere_sala (
+    professor_id INTEGER NOT NULL,
+    sala_id INTEGER NOT NULL,
+    PRIMARY KEY (professor_id, sala_id),
+    FOREIGN KEY (professor_id) REFERENCES professores (id) ON DELETE CASCADE,
+    FOREIGN KEY (sala_id) REFERENCES salas (id) ON DELETE CASCADE
+);
+
+-- Tabela de Preferência "Suave": Professor prefere Característica (N:N)
+CREATE TABLE IF NOT EXISTS professor_prefere_caracteristica (
+    professor_id INTEGER NOT NULL,
+    caracteristica_id INTEGER NOT NULL,
+    PRIMARY KEY (professor_id, caracteristica_id),
+    FOREIGN KEY (professor_id) REFERENCES professores (id) ON DELETE CASCADE,
+    FOREIGN KEY (caracteristica_id) REFERENCES caracteristicas (id) ON DELETE CASCADE
 );

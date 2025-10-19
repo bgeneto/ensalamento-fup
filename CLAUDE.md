@@ -1,5 +1,11 @@
 # Project: Sistema de Ensalamento FUP/UnB
 
+## Quick Start 
+
+This is a greenfield web application made with python Streamlit. You will have to use SOTA software design patterns like DRY, KISS, SOLID etc.. and propose a directory/file structure for the project. Read the documents below for complete context.
+
+
+
 ## 🛠️ Required Development Tools
 
 **IMPORTANT**: When working in the shell, you MUST use these tools for the specified tasks:
@@ -56,6 +62,7 @@
 - **[TECH_STACK.md](docs/TECH_STACK.md)** - Technology choices and rationale
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design patterns
 - **[SRS.md](docs/SRS.md)** Software Requirements Specification (THIS IS THE MOST IMPORTANT FILE!)
+- **[squema.sql](docs/schema.sql)** Database modeling
 
 
 ## 📝 Notes for Claude Code
@@ -73,3 +80,7 @@
 - Check  docs/streamlit-authenticator.md for authentication implementations instructions
 - Check docs/ensalamento.md for an example of a final reservation of a room with location, hours, disciplines etc…
 
+### Tests, Fix and Summaries
+
+- All test files you need to create must be placed in the  ‘tests’  folder at the project’s root. 
+- All text or markdown files you create to summarize a fix or document a new implementation should go into the  ‘docs’  folder, **never** in the root directory.
