@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS salas (
     predio_id INTEGER NOT NULL,
     tipo_sala_id INTEGER NOT NULL,
     capacidade INTEGER DEFAULT 0,
-    andar TEXT,
+    andar INTEGER,
     tipo_assento TEXT,
 
     UNIQUE (nome, predio_id),
