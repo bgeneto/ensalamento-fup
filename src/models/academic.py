@@ -53,12 +53,18 @@ class Semestre(BaseModel):
         String(50), default="Planejamento"
     )  # Planejamento, Alocando, Finalizado, Ativo, Encerrado
 
-    # Relationships
+    # Relationships - use lazy='select' to defer loading and avoid circular dependencies
     demandas = relationship(
-        "Demanda", back_populates="semestre", cascade="all, delete-orphan"
+        "Demanda",
+        back_populates="semestre",
+        cascade="all, delete-orphan",
+        lazy="select",
     )
     alocacoes = relationship(
-        "AlocacaoSemestral", back_populates="semestre", cascade="all, delete-orphan"
+        "AlocacaoSemestral",
+        back_populates="semestre",
+        cascade="all, delete-orphan",
+        lazy="select",
     )
 
     def __repr__(self) -> str:
@@ -73,12 +79,11 @@ class Demanda(BaseModel):
     semestre_id = Column(Integer, ForeignKey("semestres.id"), nullable=False)
     codigo_disciplina = Column(String(50), nullable=False)
     nome_disciplina = Column(String(255), nullable=False)
-    professores_disciplina = Column(Text)  # Comma-separated professor names
-    turma_disciplina = Column(String(50))
+    professores_disciplina = Column(Text, nullable=True)  # Raw text from API
+    turma_disciplina = Column(String(50), nullable=True)
     vagas_disciplina = Column(Integer, default=0)
     horario_sigaa_bruto = Column(String(255), nullable=False)  # e.g., "24M12 6T34"
-    nivel_disciplina = Column(String(50))  # Graduação, Pós-Graduação
-    nao_alocar = Column(Boolean, default=False)  # Skip allocation if true
+    nivel_disciplina = Column(String(50), nullable=True)  # Graduação, Pós-Graduação
 
     # Relationships
     semestre = relationship("Semestre", back_populates="demandas")
@@ -128,32 +133,29 @@ class Professor(BaseModel):
 
 
 class Usuario(BaseModel):
-    """User entity for audit and informational purposes.
+    """User entity for authentication and audit logging.
 
-    NOTE: Passwords are NOT stored in this table. Authentication is handled
-    by streamlit-authenticator via YAML configuration file.
+    IMPORTANT: Schema defines username as TEXT PRIMARY KEY, not auto-incrementing id.
+    This model uses BaseModel which includes id/created_at/updated_at.
 
-    This table is used for:
-    - Audit logging (track which admin made changes)
-    - User metadata (admin contact information)
-    - Relationship tracking (link to reservations, etc.)
+    Fields in database schema:
+    - username: PRIMARY KEY (TEXT, NOT NULL)
+    - password_hash: TEXT NOT NULL
+    - nome_completo: TEXT
+    - role: TEXT DEFAULT 'professor'
 
-    Only "admin" role is allowed in production.
+    NOTE: Passwords are stored in .streamlit/config.yaml for streamlit-authenticator,
+    not in this database table. This table is for reference/audit only.
     """
 
     __tablename__ = "usuarios"
 
     username = Column(String(100), nullable=False, unique=True)
-    email = Column(String(255), nullable=False, unique=True)
-    nome_completo = Column(String(255), nullable=False)
-    roles = Column(
-        String(255), default="admin"
-    )  # Only "admin" role allowed (stored for reference only)
-    ativo = Column(
-        Boolean, default=True
-    )  # Can disable admin access without deleting record
+    password_hash = Column(String(255), nullable=True)  # For future use if needed
+    nome_completo = Column(String(255), nullable=True)
+    role = Column(String(50), default="professor")  # admin, professor, gestor, etc.
 
     def __repr__(self) -> str:
         return (
-            f"<Usuario(id={self.id}, username='{self.username}', roles='{self.roles}')>"
+            f"<Usuario(id={self.id}, username='{self.username}', role='{self.role}')>"
         )

@@ -102,10 +102,10 @@ for room in rooms:
                    │ (imports)
 ┌──────────────────┴──────────────────────────────────┐
 │      SERVICES LAYER (Business Logic)                │
-│  ✅ InventoryService (refactored)                  │
-│  ✅ AllocationService (refactored)                 │
-│  ✅ SemesterService (refactored)                   │
-│  ✅ AuthService (refactored)                       │
+│  ✅ InventoryService
+│  ✅ AllocationService
+│  ✅ SemesterService                    │
+│  ✅ AuthService 
 │  (Returns DTOs - never ORM objects)                 │
 └──────────────────┬──────────────────────────────────┘
                    │ (uses)
@@ -220,24 +220,28 @@ class SalaRepository(BaseRepository[Sala, SalaDTO]):
 
 ### Implementation Details
 
-#### Services (4 Refactored - Phase 4)
+#### Services
 
-**1. InventoryService** (`src/services/inventory_service_refactored.py` - 294 lines)
+**1. InventoryService** (`src/services/inventory_service.py` )
+
 - Methods: `get_all_salas()`, `get_sala_by_id()`, `get_salas_by_campus()`, `create_sala()`, `update_sala()`, `delete_sala()`
 - Uses: `SalaRepository`
 - Returns: `SalaDTO` objects
 
-**2. AllocationService** (`src/services/allocation_service_refactored.py` - 287 lines)
+**2. AllocationService** (`src/services/allocation_service.py` )
+
 - Methods: `get_all_allocations()`, `get_by_sala()`, `get_by_demanda()`, `check_allocation_conflict()`, `create_allocation()`, `update_allocation()`, `delete_allocation()`
 - Uses: `AlocacaoRepository`, `SalaRepository`, `SemestreRepository`
 - Returns: `AlocacaoSemestralDTO` objects
 
-**3. SemesterService** (`src/services/semester_service_refactored.py` - 287 lines)
+**3. SemesterService** (`src/services/semester_service.py` )
+
 - Methods: Semester CRUD + Demand CRUD operations
 - Uses: `SemestreRepository`, `DemandaRepository`
 - Returns: `SemestreDTO`, `DemandaDTO` objects
 
-**4. AuthService** (`src/services/auth_service_refactored.py` - 287 lines)
+**4. AuthService** (`src/services/auth_service.py` )
+
 - Methods: User CRUD, authentication, role checking, password management
 - Uses: `UsuarioRepository`
 - Returns: `UsuarioDTO` objects
@@ -355,8 +359,8 @@ for room in rooms:
 
 #### ✅ After (New Pattern - Solution)
 ```python
-# New refactored InventoryService returns DTOs
-from src.services.inventory_service_refactored import InventoryService
+# InventoryService returns DTOs
+from src.services.inventory_service import InventoryService
 
 rooms = InventoryService.get_all_salas()  # Returns List[SalaDTO] objects
 
@@ -385,7 +389,7 @@ for room in rooms:
 ### Migration Path Forward
 
 **Current Status (October 2025):**
-- ✅ All refactored services created and tested
+- ✅ All services created and tested
 - ✅ Repository layer fully operational
 - ✅ DTO layer eliminates all detached object errors
 - ✅ 16/16 integration tests passing
@@ -398,30 +402,23 @@ for room in rooms:
 - `src/services/auth_service.py` - Original (returns ORM)
 
 **Recommended Next Steps:**
-1. Update Streamlit pages to use refactored services incrementally
+1. Update Streamlit pages to use services incrementally
 2. Test each page after updating
 3. Monitor error logs for DetachedInstanceError (should be zero)
 4. Remove old services once all pages migrated
 
 ### Files Created/Modified (Phase 4)
 
-**Services (Refactored):**
-- `src/services/allocation_service_refactored.py` (287 lines)
-- `src/services/semester_service_refactored.py` (287 lines)
-- `src/services/auth_service_refactored.py` (287 lines)
+**Services:**
 
-**Documentation:**
-- `OBSOLETE_CODE_AUDIT.md` (320+ lines) - Migration guide
-- `PHASE_4_COMPLETION_REPORT.md` (550+ lines) - Full report
-- `REFACTORED_SERVICES_GUIDE.md` (400+ lines) - Usage guide
-- `integration_test_phase4.py` (400+ lines) - Test suite
+- `src/services/allocation_service.py` 
+- `src/services/semester_service.py`
+- `src/services/auth_service.py`
 
-**Total Code Added:** 1,254+ lines
-**Total Documentation:** 1,270+ lines
 
-### Error Prevention: Comparison
 
-#### ❌ Old Architecture (Prone to Errors)
+❌ Old Architecture (Prone to Errors)
+
 ```
 Page → Service → DatabaseSession.query() → ORM Object → Page ❌
        └─ Session closes! ─┘

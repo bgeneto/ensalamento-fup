@@ -165,12 +165,12 @@ class CaracteristicaRead(CaracteristicaBase):
 class SalaBase(BaseModel):
     """Base schema for Sala."""
 
-    codigo: str = Field(..., min_length=1, max_length=50)
     nome: str = Field(..., min_length=1, max_length=255)
     predio_id: int = Field(..., gt=0)
     tipo_sala_id: int = Field(..., gt=0)
     capacidade: int = Field(default=30, ge=1)
-    andar: int = Field(default=0)
+    andar: Optional[str] = Field(default=None, max_length=50)
+    tipo_assento: Optional[str] = Field(default=None, max_length=100)
 
 
 class SalaCreate(SalaBase):
@@ -182,12 +182,12 @@ class SalaCreate(SalaBase):
 class SalaUpdate(BaseModel):
     """Schema for updating a Sala."""
 
-    codigo: Optional[str] = Field(None, min_length=1, max_length=50)
     nome: Optional[str] = Field(None, min_length=1, max_length=255)
     predio_id: Optional[int] = Field(None, gt=0)
     tipo_sala_id: Optional[int] = Field(None, gt=0)
     capacidade: Optional[int] = Field(None, ge=1)
-    andar: Optional[int] = None
+    andar: Optional[str] = Field(None, max_length=50)
+    tipo_assento: Optional[str] = Field(None, max_length=100)
 
 
 class SalaRead(SalaBase):

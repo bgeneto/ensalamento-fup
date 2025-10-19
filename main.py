@@ -12,6 +12,8 @@ Features:
 """
 
 import streamlit as st
+import streamlit_authenticator as stauth
+from yaml.loader import SafeLoader
 import yaml
 from pathlib import Path
 from datetime import datetime
@@ -72,34 +74,48 @@ st.markdown(
 # ============================================================================
 
 
-def load_credentials():
-    """Load credentials from streamlit secrets."""
+def load_config():
+    """Load configuration from YAML file."""
+    config_path = Path(".streamlit/config.yaml")
+
+    if not config_path.exists():
+        st.error(f"❌ Configuration file not found: {config_path}")
+        st.stop()
+
     try:
-        return st.secrets["credentials"]
-    except (KeyError, FileNotFoundError):
-        st.error("❌ Credentials not configured. Please set up .streamlit/secrets.yaml")
+        with open(config_path) as f:
+            config = yaml.load(f, Loader=SafeLoader)
+        return config
+    except Exception as e:
+        st.error(f"❌ Error loading config file: {str(e)}")
         st.stop()
 
 
-def authenticate():
-    """Initialize and manage authentication."""
-    if "authentication_status" not in st.session_state:
-        st.session_state.authentication_status = None
-        st.session_state.name = None
-        st.session_state.username = None
+def setup_authenticator():
+    """Setup streamlit-authenticator with credentials from YAML config."""
+    try:
+        config = load_config()
 
-    # Load credentials
-    credentials = load_credentials()
+        # Pre-hash plain text passwords
+        stauth.Hasher.hash_passwords(config["credentials"])
 
-    # Check if user is authenticated
-    if st.session_state.authentication_status is None:
-        return None
+        # Initialize authenticator
+        authenticator = stauth.Authenticate(
+            credentials=config["credentials"],
+            cookie_name=config["cookie"]["name"],
+            cookie_key=config["cookie"]["key"],
+            cookie_expiry_days=config["cookie"]["expiry_days"],
+        )
 
-    return st.session_state.authentication_status
+        return authenticator, config
+
+    except Exception as e:
+        st.error(f"❌ Authentication setup error: {str(e)}")
+        st.stop()
 
 
-def render_login():
-    """Render login interface."""
+def render_login(authenticator):
+    """Render login interface using streamlit-authenticator."""
     st.title("🎓 Ensalamento FUP")
     st.markdown("---")
 
@@ -116,83 +132,45 @@ def render_login():
 
         st.markdown("### 🔐 Login do Administrador")
 
-        # Load credentials
-        credentials = load_credentials()
-
-        username = st.text_input("Usuário:", key="username_input")
-        password = st.text_input("Senha:", type="password", key="password_input")
-
-        if st.button("🔓 Entrar", use_container_width=True, key="login_button"):
-            # Simple authentication (in production, use proper bcrypt verification)
-            if username in credentials["usernames"]:
-                user_data = credentials["usernames"][username]
-                # For demo purposes, we'll accept the password
-                # In production, verify bcrypt hash
-                st.session_state.authentication_status = True
-                st.session_state.username = username
-                st.session_state.name = user_data.get("name", username)
-                st.success(f"✅ Bem-vindo, {st.session_state.name}!")
-                st.rerun()
-            else:
-                st.error("❌ Usuário ou senha inválidos")
-
-        st.markdown("---")
-        st.markdown(
-            """
-        #### 📝 Credenciais de Teste
-
-        **Usuário:** `admin`
-        **Senha:** `admin123`
-
-        ⚠️ **Aviso:** Estas são apenas credenciais de teste. Use credenciais seguras em produção!
-        """
-        )
+        # Render login widget
+        try:
+            authenticator.login(location="main")
+        except Exception as e:
+            st.error(f"❌ Authentication error: {str(e)}")
 
 
-def render_admin_menu():
-    """Render admin sidebar menu."""
+# ============================================================================
+# MAIN APPLICATION LOGIC
+# ============================================================================
+
+
+def render_admin_menu(authenticator):
+    """Render admin sidebar (simplified for multipage).
+
+    Note: Streamlit automatically generates page navigation from pages/ directory.
+    This function is mainly for logout and user info display.
+    """
     with st.sidebar:
-        st.markdown(f"### 👤 Usuário: {st.session_state.name}")
+        st.markdown(f"### 👤 {st.session_state.name}")
+        st.markdown(f"*@{st.session_state.username}*")
         st.markdown("---")
 
-        # Main sections
-        st.markdown("### 📊 ADMINISTRAÇÃO")
-        menu_selection = st.radio(
-            "Selecione uma opção:",
-            [
-                "🏠 Início",
-                "🏢 Inventário",
-                "👨‍🏫 Professores",
-                "📚 Demandas",
-                "🚪 Alocações",
-                "📅 Reservas",
-                "⚙️ Configurações",
-            ],
-            label_visibility="collapsed",
-        )
+        # Logout button
+        authenticator.logout(location="sidebar")
 
         st.markdown("---")
-
-        if st.button("🔓 Sair", use_container_width=True):
-            st.session_state.authentication_status = None
-            st.session_state.username = None
-            st.session_state.name = None
-            st.rerun()
 
         # Footer
-        st.markdown("---")
         st.markdown(
             """
         <div style="text-align: center; color: #666; font-size: 0.8rem;">
             <p><strong>Ensalamento FUP</strong></p>
             <p>Sistema de Alocação de Salas</p>
-            <p style="color: #999; font-size: 0.7rem;">v1.0 • Phase 2</p>
+            <p style="color: #999; font-size: 0.7rem;">v1.0 • Phase 3 M2</p>
         </div>
         """,
             unsafe_allow_html=True,
         )
-
-        return menu_selection
 
 
 def render_home():
@@ -400,36 +378,56 @@ def render_configuracoes():
 
 
 def main():
-    """Main application entry point."""
+    """Main application entry point - handles authentication.
 
-    # Initialize session state
-    if "authentication_status" not in st.session_state:
-        st.session_state.authentication_status = None
-        st.session_state.username = None
-        st.session_state.name = None
+    Note: Streamlit automatically routes to pages/ after authentication.
+    This main.py only handles login/logout flow.
+    """
 
-    # Check authentication
-    if st.session_state.authentication_status is None:
-        render_login()
+    # Setup authenticator
+    authenticator, config = setup_authenticator()
+
+    # Check authentication status
+    if st.session_state.get("authentication_status"):
+        # User is authenticated - show sidebar with logout button
+        render_admin_menu(authenticator)
+
+        # For multipage apps, Streamlit automatically shows pages from pages/ directory
+        # This main.py becomes the home page (accessed via "Home" in sidebar)
+
+        st.markdown(
+            """
+        <div class="header-section">
+            <h1>🎓 Ensalamento FUP - Painel Administrativo</h1>
+            <p>Sistema de Gerenciamento de Alocação de Salas</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+        st.info(
+            "👈 Use o menu lateral esquerdo para navegar entre as seções de administração. "
+            "As páginas carregarão automaticamente."
+        )
+
+    elif st.session_state.get("authentication_status") is False:
+        st.error("❌ Usuário ou senha inválidos")
+
     else:
-        # Render admin interface
-        menu = render_admin_menu()
+        # Not authenticated - show login
+        render_login(authenticator)
 
-        # Route to appropriate page
-        if menu == "🏠 Início":
-            render_home()
-        elif menu == "🏢 Inventário":
-            render_inventario()
-        elif menu == "👨‍🏫 Professores":
-            render_professores()
-        elif menu == "📚 Demandas":
-            render_demandas()
-        elif menu == "🚪 Alocações":
-            render_alocacoes()
-        elif menu == "📅 Reservas":
-            render_reservas()
-        elif menu == "⚙️ Configurações":
-            render_configuracoes()
+        st.markdown("---")
+        st.markdown(
+            """
+        #### 📝 Credenciais de Teste
+
+        **Usuário:** `admin` ou `gestor`
+        **Senha:** `admin123` (para admin) ou `gestor2024` (para gestor)
+
+        ⚠️ **Aviso:** Estas são apenas credenciais de teste. Use credenciais seguras em produção!
+        """
+        )
 
 
 if __name__ == "__main__":

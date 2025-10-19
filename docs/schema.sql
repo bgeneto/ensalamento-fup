@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS horarios_bloco (
 
 CREATE TABLE IF NOT EXISTS semestres (
     id INTEGER PRIMARY KEY,
-    nome TEXT NOT NULL UNIQUE, -- (Ex: "2025.1", "2025.2")
+    nome TEXT NOT NULL UNIQUE, -- (Ex: "2025-1", "2025-2")
     status TEXT DEFAULT 'Planejamento'
 );
 

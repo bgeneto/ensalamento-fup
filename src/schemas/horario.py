@@ -37,7 +37,6 @@ class DiaSemanaUpdate(BaseModel):
 class DiaSemanaRead(DiaSemanaBase):
     """Schema for reading DiaSemana (includes timestamps)."""
 
-    id: int
     created_at: datetime
     updated_at: datetime
 
@@ -79,7 +78,6 @@ class HorarioBlocoUpdate(BaseModel):
 class HorarioBlocoRead(HorarioBlocoBase):
     """Schema for reading HorarioBloco (includes timestamps)."""
 
-    id: int
     created_at: datetime
     updated_at: datetime
 

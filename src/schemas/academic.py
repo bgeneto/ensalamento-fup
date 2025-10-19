@@ -102,8 +102,8 @@ class ProfessorBase(BaseModel):
     """Base schema for Professor."""
 
     nome_completo: str = Field(..., min_length=1, max_length=255)
-    email: str = Field(default="", max_length=255)
-    id_sigaa: Optional[int] = Field(default=None)
+    username_login: Optional[str] = Field(default=None, max_length=100)
+    tem_baixa_mobilidade: bool = Field(default=False)
 
 
 class ProfessorCreate(ProfessorBase):
@@ -116,8 +116,8 @@ class ProfessorUpdate(BaseModel):
     """Schema for updating a Professor."""
 
     nome_completo: Optional[str] = Field(None, min_length=1, max_length=255)
-    email: Optional[str] = Field(None, max_length=255)
-    id_sigaa: Optional[int] = None
+    username_login: Optional[str] = Field(None, max_length=100)
+    tem_baixa_mobilidade: Optional[bool] = None
 
 
 class ProfessorRead(ProfessorBase):
@@ -137,13 +137,11 @@ class ProfessorRead(ProfessorBase):
 
 
 class UsuarioBase(BaseModel):
-    """Base schema for Usuario (admin user)."""
+    """Base schema for Usuario."""
 
     username: str = Field(..., min_length=3, max_length=100)
-    email: str = Field(..., min_length=5, max_length=255)
-    nome_completo: str = Field(..., min_length=1, max_length=255)
-    roles: str = Field(default="admin", max_length=255)
-    ativo: bool = Field(default=True)
+    nome_completo: Optional[str] = Field(None, max_length=255)
+    role: str = Field(default="professor", max_length=50)
 
 
 class UsuarioCreate(UsuarioBase):
@@ -160,10 +158,8 @@ class UsuarioUpdate(BaseModel):
     """Schema for updating a Usuario."""
 
     username: Optional[str] = Field(None, min_length=3, max_length=100)
-    email: Optional[str] = Field(None, min_length=5, max_length=255)
-    nome_completo: Optional[str] = Field(None, min_length=1, max_length=255)
-    roles: Optional[str] = Field(None, max_length=255)
-    ativo: Optional[bool] = None
+    nome_completo: Optional[str] = Field(None, max_length=255)
+    role: Optional[str] = Field(None, max_length=50)
 
 
 class UsuarioRead(UsuarioBase):

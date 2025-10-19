@@ -47,21 +47,32 @@ class AlocacaoSemestral(BaseModel):
 
 
 class ReservaEsporadica(BaseModel):
-    """Ad-hoc reservation entity - occasional room bookings by users."""
+    """Ad-hoc reservation entity - occasional room bookings by users.
+
+    Schema fields:
+    - sala_id: Foreign key to salas
+    - username_solicitante: Foreign key to usuarios.username
+    - titulo_evento: Event title
+    - data_reserva: DATE (YYYY-MM-DD)
+    - codigo_bloco: Foreign key to horarios_bloco
+    - status: Aprovada, Rejeitada, etc.
+    """
 
     __tablename__ = "reservas_esporadicas"
 
     sala_id = Column(Integer, ForeignKey("salas.id"), nullable=False)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    dia_semana_id = Column(Integer, ForeignKey("dias_semana.id_sigaa"), nullable=False)
+    username_solicitante = Column(
+        String(100), ForeignKey("usuarios.username"), nullable=False
+    )
+    titulo_evento = Column(String(255), nullable=False)
+    data_reserva = Column(String(10), nullable=False)  # DATE as YYYY-MM-DD string
     codigo_bloco = Column(
         String(10), ForeignKey("horarios_bloco.codigo_bloco"), nullable=False
     )
-    descricao = Column(String(255))
-    cancelada = Column(Boolean, default=False)
+    status = Column(String(50), default="Aprovada")  # Aprovada, Rejeitada, etc.
 
     # Relationships
     sala = relationship("Sala", back_populates="reservas")
 
     def __repr__(self) -> str:
-        return f"<ReservaEsporadica(id={self.id}, sala={self.sala_id}, usuario={self.usuario_id})>"
+        return f"<ReservaEsporadica(id={self.id}, sala={self.sala_id}, data={self.data_reserva})>"
