@@ -1,0 +1,123 @@
+"""
+Quick Reference: DetachedInstance Error Fixes
+==============================================
+
+WHAT WAS WRONG:
+- Pages 3_Admin_Rooms.py and 4_Admin_Allocations.py were accessing
+  SQLAlchemy objects after their database sessions closed
+- This caused "Erro na conexão com o banco de dados" errors
+- Page 2_Admin_Users.py worked because it used simpler queries
+
+THE ROOT CAUSE:
+Service methods (in src/services/) return database objects that become
+"detached" after the session closes. If code tries to access relationships
+on these objects, SQLAlchemy throws a DetachedInstance error.
+
+Example of the problem:
+```python
+# Service method
+def get_rooms():
+    with DatabaseSession() as session:
+        return session.query(Sala).all()  # Returns detached objects
+    # Session closes here!
+
+# In the page
+rooms = get_rooms()
+for room in rooms:
+    print(room.predio.nome)  # BOOM! Error because predio is detached
+```
+
+WHAT WE FIXED:
+
+1. Created centralized error handler:
+   ✅ src/utils/error_handler.py
+   - Detects DetachedInstance errors reliably
+   - Provides consistent error messages
+   - Logs full debugging information
+
+2. Updated all admin pages with:
+   ✅ pages/2_Admin_Users.py
+   ✅ pages/3_Admin_Rooms.py
+   ✅ pages/4_Admin_Allocations.py
+   - Import centralized error handler
+   - Use proper logging (logger.exception)
+   - Consistent error detection and display
+   - Better user messages and recovery guidance
+
+3. Added comprehensive debugging guide:
+   ✅ docs/DEBUGGING_DETACHED_INSTANCE.md
+   - Explains what DetachedInstance errors are
+   - Shows why they happen
+   - Provides three solutions for fixing services
+   - Includes debugging steps
+
+NEXT STEPS (Recommended):
+
+1. Update service methods to avoid returning detached objects
+
+   Best approach for each service:
+
+   allocation_service.py:
+   - Return dictionaries with all needed data
+   - Use eager loading (joinedload) for relationships
+   - Example:
+     ```python
+     return [{
+         'id': r.id,
+         'descricao': r.descricao,
+         'semestre': r.semestre.nome
+     } for r in rules]
+     ```
+
+   inventory_service.py:
+   - Serialize complex objects to dictionaries
+   - Access all relationships before session closes
+   - Example in get_all_salas():
+     ```python
+     return [{
+         'id': s.id,
+         'nome': s.nome,
+         'predio_nome': s.predio.nome,
+         'tipo_sala_nome': s.tipo_sala.nome,
+     } for s in salas]
+     ```
+
+2. Test the pages:
+   - Visit each admin page
+   - Try creating, editing, and filtering
+   - Check /logs/ for any remaining errors
+   - Verify the recovery buttons work
+
+3. Monitor logs in /logs/ for any DetachedInstance patterns
+
+HOW ERROR DETECTION WORKS:
+
+The system now checks for these patterns in error messages:
+- "DetachedInstance"
+- "detached"
+- "not bound to a Session"
+- "object is being detached"
+- "Unexpected state"
+
+If found → Shows user-friendly message + recovery options
+If not → Shows generic error with technical details
+
+USER EXPERIENCE IMPROVEMENT:
+
+Before: Generic error message
+❌ "Erro na conexão com o banco de dados"
+
+After: Helpful guidance
+✅ Error message
+✅ Step-by-step recovery instructions
+✅ Refresh button
+✅ Technical details for developers (expandable)
+✅ Full logs for debugging
+
+FILES CHANGED:
+- pages/2_Admin_Users.py (improved)
+- pages/3_Admin_Rooms.py (fixed + improved)
+- pages/4_Admin_Allocations.py (fixed + improved)
+- src/utils/error_handler.py (NEW)
+- docs/DEBUGGING_DETACHED_INSTANCE.md (NEW)
+"""
