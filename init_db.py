@@ -26,11 +26,8 @@ def check_admin_users():
     """Check if admin users exist in database."""
     print("\n📋 Checking admin users...")
     with get_db_session() as session:
-        admins = session.query(Usuario).filter(Usuario.roles == "admin").all()
+        admins = session.query(Usuario).filter(Usuario.role == "admin").all()
         print(f"  Found {len(admins)} admin users:")
-        for admin in admins:
-            status = "✅" if admin.ativo else "❌"
-            print(f"    {status} {admin.username} ({admin.email})")
 
 
 def main():

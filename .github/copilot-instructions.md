@@ -1,13 +1,13 @@
 # Copilot Instructions - Sistema de Ensalamento FUP/UnB
 
-**Project:** Room allocation management system for UnB Planaltina
+**Project:** Room allocation management system for Faculdade UnB Planaltina
 **Tech Stack:** Python + Streamlit + SQLAlchemy + SQLite3
 **Architecture:** Modular Monolith (single Python process, repository pattern)
 
 ## Quick Architecture Overview
 
 ### Big Picture
-- **Frontend + Backend:** Single Streamlit app (no separate API layer)
+- **Frontend + Backend:** Multipage Streamlit app (no separate API layer)
 - **Database:** SQLite3 file-based (`data/ensalamento.db`), accessed via SQLAlchemy ORM
 - **Authentication:** `streamlit-authenticator` with YAML config (`.streamlit/config.yaml`)
 - **Key Constraint:** System uses SIGAA time blocks (atomic scheduling units: M1, M2, T1, etc.) to prevent conflicts
@@ -15,34 +15,34 @@
 ### Three-Layer Structure
 
 ```
-pages/                     # Streamlit multi-page app (auto-routed from folder)
+pages/                    # Streamlit multi-page app (auto-routed from folder)
   1_🏠_Home.py            # Admin dashboard
   2_🏢_Inventário.py      # Room CRUD
-  3_👨‍🏫_Professores.py   # Professor CRUD
+  3_👨‍🏫_Professores.py     # Professor CRUD
 
 src/
   repositories/           # Data access layer (Repository Pattern)
-    base.py              # Generic CRUD, converts ORM ↔ DTO
+    base.py               # Generic CRUD, converts ORM ↔ DTO
     sala.py, professor.py, etc.
 
   models/                 # SQLAlchemy ORM entities
-    base.py              # BaseModel (id, created_at, updated_at)
-    academic.py          # Demanda, Disciplina
-    allocation.py        # AlocacaoSemestral, ReservaEsporadica
-    inventory.py         # Sala, Predio, Campus, TipoSala
+    base.py               # BaseModel (id, created_at, updated_at)
+    academic.py           # Demanda, Disciplina
+    allocation.py         # AlocacaoSemestral, ReservaEsporadica
+    inventory.py          # Sala, Predio, Campus, TipoSala
 
   schemas/                # Pydantic DTO/validation models
     (mirrors models/ structure - separate ORM from API layer)
 
   services/               # Business logic & external integrations
-    auth_service.py      # User management, password hashing (bcrypt)
-    database_service.py  # High-level CRUD operations
-    setup_service.py     # DB init & data seeding
-    mock_api_service.py  # Simulates external "Sistema de Oferta" API
+    auth_service.py       # User management, password hashing (bcrypt)
+    database_service.py   # High-level CRUD operations
+    setup_service.py      # DB init & data seeding
+    mock_api_service.py   # Simulates external "Sistema de Oferta" API
 
   config/
-    database.py          # SQLAlchemy engine, session factory
-    settings.py          # .env-based configuration
+    database.py           # SQLAlchemy engine, session factory
+    settings.py           # .env-based configuration
 ```
 
 ## Critical Developer Workflows
@@ -110,11 +110,73 @@ def dto_to_orm_create(self, dto: SalaDTO) -> Sala:
     )
 ```
 
-### Authentication Flow
-- `streamlit-authenticator` handles login UI
-- Credentials stored in `.streamlit/config.yaml` (pre-hashed with `stauth.Hasher.hash_passwords()`)
-- Session state: `st.session_state.authentication_status`, `st.session_state.name`, `st.session_state.username`
-- Use decorators: `@require_auth()`, `@require_admin()` from `auth_service.py`
+### Authentication Flow (CRITICAL - Multi-Page Apps)
+
+**✅ CORRECT Pattern (from Streamlit-Authenticator best practices):**
+
+**Main page (main.py) - Initialize authenticator ONCE:**
+```python
+# 1. Setup authenticator
+authenticator, config = setup_authenticator()
+
+# 2. CRITICAL: Store in session state for all pages to access
+st.session_state["authenticator"] = authenticator
+st.session_state["config"] = config
+
+# 3. Render login widget ONLY on main page with location="main"
+authenticator.login(location="main", key="login-home")
+
+# 4. Show logout in sidebar when authenticated
+if st.session_state.get("authentication_status"):
+    authenticator.logout(location="sidebar", key="logout-home")
+```
+
+**Other pages (pages/*.py) - Retrieve and maintain session:**
+```python
+# 1. Check authentication status first
+if st.session_state.get("authentication_status"):
+    # 2. Retrieve authenticator from session state
+    authenticator = st.session_state.get("authenticator")
+
+    # 3. CRITICAL: Call .login(location="unrendered") with UNIQUE key
+    # This maintains session WITHOUT rendering widget (fixes page refresh issue)
+    authenticator.login(location="unrendered", key="authenticator-page-name")
+
+    # 4. Show logout with UNIQUE key
+    authenticator.logout(location="sidebar", key="logout-page-name")
+
+    # Page content loads normally...
+    st.set_page_config(page_title="Page Title")
+
+elif st.session_state.get("authentication_status") is None or st.session_state == {}:
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="🏠 Voltar para Home", icon="🏠")
+    st.stop()
+else:
+    st.error("❌ Acesso negado.")
+    st.stop()
+```
+
+**Why this works:**
+1. ✅ Authenticator stored in session state (persists across pages and refreshes)
+2. ✅ `.login(location="unrendered")` validates session from cookies WITHOUT rendering widget
+3. ✅ Unique keys prevent widget ID collisions between pages
+4. ✅ On page refresh (F5), session state is restored and auth persists
+
+**❌ MISTAKES TO AVOID:**
+
+| ❌ Wrong | ✅ Correct | Why |
+|---------|-----------|-----|
+| Re-initialize authenticator on every page | Store once in session state on main page | Multiple authenticators break session persistence |
+| Use `location="sidebar"` in `.login()` | Use `location="main"` on main page, `location="unrendered"` on other pages | Invalid locations cause "Location must be one of..." error |
+| Don't store authenticator in session state | Always store: `st.session_state["authenticator"] = authenticator` | Pages can't access authenticator if not in session state |
+| Use same keys on all pages (e.g., key="logout") | Use unique keys per page (e.g., key="logout-page-name") | Duplicate keys cause widget ID collisions |
+| Call `.login()` on every page with location="main" | Only call with location="main" on main.py | Multiple login widgets will confuse the app |
+| Try to re-authenticate by re-creating authenticator | Retrieve from session state | Session state from cookies is lost if recreated |
+
+**Reference:** [Implementing Streamlit-Authenticator Across Multi-Page Apps](https://towardsdatascience.com/implementing-streamlit-authenticator-across-multi-page-apps-5ad70ac315b3/)
+
+See also: `MULTIPAGE_AUTH_FIX.md`, `SESSION_STATE_PERSISTENCE_SUMMARY.md`, `AUTHENTICATION_MISTAKES_TO_AVOID.md`
 
 ### Database Initialization (One-Time)
 `SetupService` seeds:
@@ -180,8 +242,15 @@ if "import_result" in st.session_state:
 - ✅ Include clear button so users can dismiss when done reading
 - ✅ Always use unique keys for session state variables to avoid conflicts
 - ✅ Use this pattern for: imports, form submissions, bulk operations, confirmations
+- ✅ Prefer `src.utils.ui_feedback` helpers (`set_session_feedback`, `display_session_feedback`) for DRY toast + TTL handling across pages
 
 **Real Example:** See `pages/3_👨‍🏫_Professores.py` CSV import section for working implementation.
+
+### Toast-Based Feedback Helper (Reusable)
+
+- Call `set_session_feedback("state_key", success_bool, "Message", ttl=6, **kwargs)` before `st.rerun()` inside the action handler.
+- After rerun, invoke `display_session_feedback("state_key", success_icon="✅", error_icon="❌")` near the top of the render branch to emit the toast; the helper returns the payload so you can present supplemental details (e.g., list of CSV errors) elsewhere when needed.
+- Feedback entries auto-expire after the provided TTL and do not require manual clear buttons; to force removal, use `clear_session_feedback("state_key")`.
 
 ### File Organization Rules
 - **Source code:** `src/` folder (tracked by Python path in main.py)

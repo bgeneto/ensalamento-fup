@@ -12,9 +12,36 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Auth gating
-if not st.session_state.get("authentication_status"):
-    st.error("❌ Acesso negado. Faça login primeiro.")
+# ============================================================================
+# AUTHENTICATION CHECK
+# ============================================================================
+# Retrieve authenticator from session state (set by main.py)
+authenticator = st.session_state.get("authenticator")
+
+if authenticator is None:
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    st.stop()
+
+# Call login with unrendered location to maintain session (required for page refresh fix)
+try:
+    authenticator.login(location="unrendered", key="authenticator-inventario")
+except Exception as exc:
+    st.error(f"❌ Erro de autenticação: {exc}")
+    st.stop()
+
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status:
+    # Show logout button in sidebar
+    authenticator.logout(location="sidebar", key="logout-inventario")
+elif auth_status is False:
+    st.error("❌ Acesso negado.")
+    st.stop()
+else:
+    # Not authenticated - redirect to main page
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
     st.stop()
 
 # ============================================================================
@@ -62,7 +89,7 @@ with tab1:
 
     col1, col2 = st.columns([3, 1])
     with col2:
-        if st.button("➕ Novo Campus", key="btn_campus", use_container_width=True):
+        if st.button("➕ Novo Campus", key="btn_campus", width="stretch"):
             st.session_state.show_campus_form = True
 
     # Campus list
@@ -88,7 +115,7 @@ with tab2:
 
     col1, col2 = st.columns([3, 1])
     with col2:
-        if st.button("➕ Novo Prédio", key="btn_predio", use_container_width=True):
+        if st.button("➕ Novo Prédio", key="btn_predio", width="stretch"):
             st.session_state.show_predio_form = True
 
     st.write("**Prédios Cadastrados:**")
@@ -135,7 +162,7 @@ with tab3:
         )
 
     with col4:
-        if st.button("➕ Nova Sala", use_container_width=True):
+        if st.button("➕ Nova Sala", width="stretch"):
             st.session_state.show_sala_form = True
 
     st.markdown("---")
@@ -206,7 +233,7 @@ with tab3:
                 df = pd.DataFrame(sala_data)
 
                 # Display table
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.dataframe(df, width="stretch", hide_index=True)
 
                 # Export button
                 col1, col2, col3 = st.columns(3)
@@ -295,7 +322,7 @@ with tab4:
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button(
-            "➕ Nova Característica", key="btn_caracteristica", use_container_width=True
+            "➕ Nova Característica", key="btn_caracteristica", width="stretch"
         ):
             st.session_state.show_caracteristica_form = True
 

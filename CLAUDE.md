@@ -1,6 +1,6 @@
 # Project: Sistema de Ensalamento FUP/UnB
 
-## Quick Start 
+## Quick Start
 
 This is a greenfield web application made with python Streamlit. You will have to use SOTA software design patterns like DRY, KISS, SOLID etc.. and propose a directory/file structure for the project. Read the documents below for complete context.
 
@@ -77,10 +77,79 @@ This is a greenfield web application made with python Streamlit. You will have t
 - Follow the component structure defined in docs/ARCHITECTURE.md
 - Check docs/TECH_STACK.md
 - Check SRS.md for Software Requirements Specification
-- Check  docs/streamlit-authenticator.md for authentication implementations instructions
+- Check docs/streamlit-authenticator.md for authentication implementations instructions
 - Check docs/ensalamento.md for an example of a final reservation of a room with location, hours, disciplines etc…
+
+### Authentication Implementation (CRITICAL - Multi-Page Apps)
+
+**REQUIRED PATTERN for Streamlit-Authenticator in multi-page apps:**
+
+**Main page (main.py):**
+```python
+# Initialize authenticator ONCE
+authenticator, config = setup_authenticator()
+
+# Store in session state for all pages
+st.session_state["authenticator"] = authenticator
+st.session_state["config"] = config
+
+# Render login widget ONLY on main page
+authenticator.login(location="main", key="login-home")
+
+# Show logout when authenticated
+if st.session_state.get("authentication_status"):
+    authenticator.logout(location="sidebar", key="logout-home")
+```
+
+**Other pages (pages/*.py):**
+```python
+# Check authentication
+if st.session_state.get("authentication_status"):
+    # Retrieve authenticator from session state
+    authenticator = st.session_state.get("authenticator")
+
+    # Call login with unrendered location (CRITICAL for page refresh fix)
+    authenticator.login(location="unrendered", key="authenticator-page-name")
+
+    # Show logout
+    authenticator.logout(location="sidebar", key="logout-page-name")
+
+    # Page content...
+
+elif st.session_state.get("authentication_status") is None or st.session_state == {}:
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="🏠 Voltar para Home", icon="🏠")
+    st.stop()
+else:
+    st.error("❌ Acesso negado.")
+    st.stop()
+```
+
+**❌ MISTAKES TO AVOID:**
+- ❌ Re-creating authenticator on every page (breaks session persistence)
+- ❌ Using `location="sidebar"` or `location="main"` on non-main pages (causes error)
+- ❌ Not storing authenticator in `st.session_state` (pages can't access it)
+- ❌ Using same widget keys on multiple pages (causes ID collisions)
+- ❌ Not calling `.login(location="unrendered")` on other pages (breaks page refresh)
+
+**Reference Documentation:**
+- `MULTIPAGE_AUTH_FIX.md` - Detailed explanation of the fix
+- `SESSION_STATE_PERSISTENCE_SUMMARY.md` - Technical implementation summary
+- `AUTHENTICATION_MISTAKES_TO_AVOID.md` - Common mistakes and solutions
+- `TESTING_GUIDE.md` - How to test the authentication flow
+- [Towards Data Science Article](https://towardsdatascience.com/implementing-streamlit-authenticator-across-multi-page-apps-5ad70ac315b3/) - Original source
+
+### Streamlit Feedback & Toast Pattern
+
+- Persist messages across `st.rerun()` by storing payloads in `st.session_state` **before** rerunning.
+- Display them after rerun using the shared helpers in `src/utils/ui_feedback.py`:
+  - `set_session_feedback("state_key", success, "Mensagem...", ttl=6, **extra)` inside the action handler.
+  - `display_session_feedback("state_key")` early in the render branch to emit the toast (returns the payload so you can show extra details like error lists).
+  - Use `clear_session_feedback("state_key")` when you need to force removal ahead of TTL expiration.
+- Default TTL is 6 seconds; adjust per use case. The helper prevents duplicate toast emissions via the `displayed` flag.
+- See `pages/3_👨‍🏫_Professores.py` for a full example covering CRUD updates and CSV imports.
 
 ### Tests, Fix and Summaries
 
-- All test files you need to create must be placed in the  ‘tests’  folder at the project’s root. 
+- All test files you need to create must be placed in the  ‘tests’  folder at the project’s root.
 - All text or markdown files you create to summarize a fix or document a new implementation should go into the  ‘docs’  folder, **never** in the root directory.

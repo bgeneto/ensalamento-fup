@@ -119,93 +119,93 @@ def seed_db():
                 "codigo_bloco": "M1",
                 "turno": "M",
                 "horario_inicio": "08:00",
-                "horario_fim": "09:50",
+                "horario_fim": "08:55",
             },
             {
                 "codigo_bloco": "M2",
                 "turno": "M",
-                "horario_inicio": "10:00",
-                "horario_fim": "11:50",
+                "horario_inicio": "08:55",
+                "horario_fim": "09:50",
             },
             {
                 "codigo_bloco": "M3",
                 "turno": "M",
-                "horario_inicio": "12:00",
-                "horario_fim": "13:50",
+                "horario_inicio": "10:00",
+                "horario_fim": "10:55",
             },
             {
                 "codigo_bloco": "M4",
                 "turno": "M",
-                "horario_inicio": "14:00",
-                "horario_fim": "15:50",
+                "horario_inicio": "10:55",
+                "horario_fim": "11:50",
             },
             {
                 "codigo_bloco": "M5",
                 "turno": "M",
-                "horario_inicio": "16:00",
-                "horario_fim": "17:50",
+                "horario_inicio": "12:00",
+                "horario_fim": "12:55",
             },
             # Afternoon (T1-T6)
             {
                 "codigo_bloco": "T1",
                 "turno": "T",
-                "horario_inicio": "08:00",
-                "horario_fim": "09:50",
+                "horario_inicio": "12:55",
+                "horario_fim": "13:50",
             },
             {
                 "codigo_bloco": "T2",
                 "turno": "T",
-                "horario_inicio": "10:00",
-                "horario_fim": "11:50",
+                "horario_inicio": "14:00",
+                "horario_fim": "14:55",
             },
             {
                 "codigo_bloco": "T3",
                 "turno": "T",
-                "horario_inicio": "12:00",
-                "horario_fim": "13:50",
+                "horario_inicio": "14:55",
+                "horario_fim": "15:50",
             },
             {
                 "codigo_bloco": "T4",
                 "turno": "T",
-                "horario_inicio": "14:00",
-                "horario_fim": "15:50",
+                "horario_inicio": "16:00",
+                "horario_fim": "16:55",
             },
             {
                 "codigo_bloco": "T5",
                 "turno": "T",
-                "horario_inicio": "16:00",
+                "horario_inicio": "16:55",
                 "horario_fim": "17:50",
             },
             {
                 "codigo_bloco": "T6",
                 "turno": "T",
                 "horario_inicio": "18:00",
-                "horario_fim": "19:50",
-            },
+                "horario_fim": "18:55",
+            },         
             # Night (N1-N4)
             {
                 "codigo_bloco": "N1",
                 "turno": "N",
-                "horario_inicio": "18:00",
+                "horario_inicio": "19:00",
                 "horario_fim": "19:50",
             },
             {
                 "codigo_bloco": "N2",
                 "turno": "N",
-                "horario_inicio": "20:00",
-                "horario_fim": "21:50",
+                "horario_inicio": "19:50",
+                "horario_fim": "20:40",
             },
             {
                 "codigo_bloco": "N3",
                 "turno": "N",
-                "horario_inicio": "22:00",
-                "horario_fim": "23:50",
+                "horario_inicio": "20:50",
+                "horario_fim": "21:40",
             },
             {
                 "codigo_bloco": "N4",
                 "turno": "N",
-                "horario_inicio": "21:00",
-                "horario_fim": "22:50",
+                "horario_inicio": "21:40",
+                "horario_fim": "22:30",
             },
         ]
 
@@ -225,12 +225,11 @@ def seed_db():
 
         # Seed semestres (academic terms)
         semestres_data = [
-            {"nome": "2024.1", "status": "Encerrado"},
-            {"nome": "2024.2", "status": "Encerrado"},
-            {"nome": "2025.1", "status": "Encerrado"},
-            {"nome": "2025.2", "status": "Ativo"},
-            {"nome": "2026.1", "status": "Planejamento"},
-            {"nome": "2026.2", "status": "Planejamento"},
+            {"nome": "2024-1", "status": "Encerrado"},
+            {"nome": "2024-2", "status": "Encerrado"},
+            {"nome": "2025-1", "status": "Encerrado"},
+            {"nome": "2025-2", "status": "Ativo"},
+            {"nome": "2026-1", "status": "Planejamento"},
         ]
 
         for semestre_data in semestres_data:
@@ -272,11 +271,13 @@ def seed_db():
 
         # Seed room types
         tipos_sala_data = [
+            {"nome": "Auditório", "descricao": "Auditório"},
             {"nome": "Sala de Aula", "descricao": "Sala de aula regular"},
-            {"nome": "Laboratório", "descricao": "Laboratory"},
-            {"nome": "Auditório", "descricao": "Auditorium"},
-            {"nome": "Sala de Seminário", "descricao": "Seminar room"},
-            {"nome": "Laboratório de Informática", "descricao": "Computer lab"},
+            {"nome": "Laboratório de Física", "descricao": "Laboratório de Física"},
+            {"nome": "Laboratório de Química", "descricao": "Laboratório de Química"},
+            {"nome": "Laboratório de Biologia", "descricao": "Laboratório de Biologia"},
+            {"nome": "Laboratório de Informática", "descricao": "Laboratório de Informática"},
+            {"nome": "Sala de Seminário", "descricao": "Sala de Seminário"},
         ]
 
         tipo_sala_ref = None
@@ -345,12 +346,12 @@ def seed_db():
         caracteristicas_data = [
             {"nome": "Projetor"},
             {"nome": "Quadro Branco"},
-            {"nome": "Quadro Negro"},
+            {"nome": "Quadro de Giz"},
             {"nome": "Acesso para Cadeirantes"},
             {"nome": "Ar Condicionado"},
+            {"nome": "Ventilador"},
             {"nome": "Computadores"},
             {"nome": "Equipamento de Som"},
-            {"nome": "Câmera"},
         ]
 
         for carac_data in caracteristicas_data:
@@ -368,7 +369,7 @@ def seed_db():
         admin_users_data = [
             {
                 "username": "admin",
-                "nome_completo": "Administrador Sistema",
+                "nome_completo": "Administrador do Sistema",
                 "role": "admin",
             },
             {

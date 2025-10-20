@@ -153,7 +153,7 @@ class Usuario(BaseModel):
     username = Column(String(100), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=True)  # For future use if needed
     nome_completo = Column(String(255), nullable=True)
-    role = Column(String(50), default="professor")  # admin, professor, gestor, etc.
+    role = Column(String(50), default="admin")  # admin, professor, gestor, etc.
 
     def __repr__(self) -> str:
         return (

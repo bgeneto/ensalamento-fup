@@ -12,9 +12,35 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Auth gating - redirect if not authenticated
-if not st.session_state.get("authentication_status"):
-    st.error("❌ Acesso negado. Faça login primeiro.")
+# ============================================================================
+# AUTHENTICATION CHECK
+# ============================================================================
+# Retrieve authenticator from session state (set by main.py)
+authenticator = st.session_state.get("authenticator")
+
+if authenticator is None:
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    st.stop()
+
+# Call login with unrendered location to maintain session (required for page refresh fix)
+try:
+    authenticator.login(location="unrendered", key="authenticator-home")
+except Exception as exc:
+    st.error(f"❌ Erro de autenticação: {exc}")
+    st.stop()
+
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status:
+    # Show logout button in sidebar
+    authenticator.logout(location="sidebar", key="logout-home")
+elif auth_status is False:
+    st.error("❌ Acesso negado.")
+    st.stop()
+else:
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
     st.stop()
 
 # ============================================================================
@@ -176,7 +202,7 @@ with col1:
 
         st.bar_chart(stats_df.set_index("Andar"))
 
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+        st.dataframe(stats_df, width="stretch", hide_index=True)
 
     except Exception as e:
         st.warning(f"Dados não disponíveis: {str(e)}")
@@ -196,7 +222,7 @@ with col2:
         )
 
         st.bar_chart(occupation_data.set_index("Categoria"))
-        st.dataframe(occupation_data, use_container_width=True, hide_index=True)
+        st.dataframe(occupation_data, width="stretch", hide_index=True)
 
     except Exception as e:
         st.warning(f"Dados não disponíveis: {str(e)}")
@@ -249,7 +275,7 @@ activity_df = pd.DataFrame(
     ]
 )
 
-st.dataframe(activity_df, use_container_width=True, hide_index=True)
+st.dataframe(activity_df, width="stretch", hide_index=True)
 
 st.markdown("---")
 
@@ -262,23 +288,23 @@ st.markdown("## 🚀 Ações Rápidas")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    if st.button("➕ Nova Sala", use_container_width=True):
+    if st.button("➕ Nova Sala", width="stretch"):
         st.info("Redirecionando para Inventário...")
         # In actual app, use st.switch_page()
         st.toast("Acesse a página de Inventário para criar uma nova sala")
 
 with col2:
-    if st.button("➕ Novo Professor", use_container_width=True):
+    if st.button("➕ Novo Professor", width="stretch"):
         st.info("Redirecionando para Professores...")
         st.toast("Acesse a página de Professores para adicionar um professor")
 
 with col3:
-    if st.button("📥 Importar Demandas", use_container_width=True):
+    if st.button("📥 Importar Demandas", width="stretch"):
         st.info("Redirecionando para Demandas...")
         st.toast("Acesse a página de Demandas para importar do Sistema de Oferta")
 
 with col4:
-    if st.button("🔄 Executar Alocação", use_container_width=True):
+    if st.button("🔄 Executar Alocação", width="stretch"):
         st.info("Redirecionando para Alocações...")
         st.toast("Acesse a página de Alocações para executar o algoritmo")
 

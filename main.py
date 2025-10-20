@@ -381,16 +381,44 @@ def main():
     """Main application entry point - handles authentication.
 
     Note: Streamlit automatically routes to pages/ after authentication.
-    This main.py only handles login/logout flow.
+    This main.py only handles login/logout flow and initialization of authenticator.
+
+    CRITICAL: The authenticator object must be stored in st.session_state
+    so that it can be retrieved and used in all other pages (pages/ directory).
     """
 
     # Setup authenticator
     authenticator, config = setup_authenticator()
 
+    # Store authenticator and config in session state for use in all pages
+    st.session_state["authenticator"] = authenticator
+    st.session_state["config"] = config
+
+    # Render login widget (only on home page)
+    try:
+        authenticator.login(location="main", key="login-home")
+    except Exception as e:
+        st.error(f"❌ Authentication error: {str(e)}")
+
     # Check authentication status
     if st.session_state.get("authentication_status"):
-        # User is authenticated - show sidebar with logout button
-        render_admin_menu(authenticator)
+        # User is authenticated - show user info and logout in sidebar
+        with st.sidebar:
+            st.markdown(f"### 👤 {st.session_state.name}")
+            st.markdown(f"*@{st.session_state.username}*")
+            st.markdown("---")
+            authenticator.logout(location="sidebar", key="logout-home")
+            st.markdown("---")
+            st.markdown(
+                """
+            <div style="text-align: center; color: #666; font-size: 0.8rem;">
+                <p><strong>Ensalamento FUP</strong></p>
+                <p>Sistema de Alocação de Salas</p>
+                <p style="color: #999; font-size: 0.7rem;">v1.0 • Phase 3 M2</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
 
         # For multipage apps, Streamlit automatically shows pages from pages/ directory
         # This main.py becomes the home page (accessed via "Home" in sidebar)
@@ -412,22 +440,6 @@ def main():
 
     elif st.session_state.get("authentication_status") is False:
         st.error("❌ Usuário ou senha inválidos")
-
-    else:
-        # Not authenticated - show login
-        render_login(authenticator)
-
-        st.markdown("---")
-        st.markdown(
-            """
-        #### 📝 Credenciais de Teste
-
-        **Usuário:** `admin` ou `gestor`
-        **Senha:** `admin123` (para admin) ou `gestor2024` (para gestor)
-
-        ⚠️ **Aviso:** Estas são apenas credenciais de teste. Use credenciais seguras em produção!
-        """
-        )
 
 
 if __name__ == "__main__":
