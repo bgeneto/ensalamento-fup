@@ -21,6 +21,8 @@ authenticator = st.session_state.get("authenticator")
 if authenticator is None:
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 # Call login with unrendered location to maintain session (required for page refresh fix)
@@ -42,6 +44,8 @@ else:
     # Not authenticated - redirect to main page
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 
@@ -50,7 +54,7 @@ else:
 # ============================================================================
 
 st.set_page_config(
-    page_title="Ensalamento - Professores",
+    page_title="Professores - Ensalamento",
     page_icon="👨‍🏫",
     layout="wide",
 )
@@ -74,8 +78,6 @@ from src.utils.ui_feedback import (
 
 st.title("👨‍🏫 Gerenciamento de Professores")
 st.markdown("Importe, cadastre e gerencie dados dos professores e suas preferências.")
-
-st.markdown("---")
 
 # ============================================================================
 # TABS STRUCTURE

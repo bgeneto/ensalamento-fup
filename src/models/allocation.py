@@ -16,12 +16,29 @@ class Regra(BaseModel):
     descricao = Column(String(255), nullable=False)
     tipo_regra = Column(
         String(100), nullable=False
-    )  # Rule type (e.g., DISCIPLINA_TIPO_SALA)
-    config_json = Column(Text)  # JSON configuration
-    prioridade = Column(Integer, default=1)  # 0=hard, >0=soft (soft preference level)
+    )  # Rule type (e.g., "DISCIPLINA_TIPO_SALA", "DISCIPLINA_SALA", "DISCIPLINA_CARACTERISTICA")
+    config_json = Column(Text, nullable=False)  # JSON configuration for rule parameters
+    prioridade = Column(
+        Integer, default=1
+    )  # 0=hard rule (must be satisfied), >0=soft preference (prioritization level)
 
     def __repr__(self) -> str:
-        return f"<Regra(id={self.id}, tipo='{self.tipo_regra}')>"
+        return f"<Regra(id={self.id}, tipo='{self.tipo_regra}', prioridade={self.prioridade})>"
+
+    def get_config(self) -> dict:
+        """Get parsed config_json as dictionary."""
+        import json
+
+        try:
+            return json.loads(self.config_json) if self.config_json else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def set_config(self, config_dict: dict):
+        """Set config_json from dictionary."""
+        import json
+
+        self.config_json = json.dumps(config_dict, ensure_ascii=False)
 
 
 class AlocacaoSemestral(BaseModel):

@@ -21,6 +21,8 @@ authenticator = st.session_state.get("authenticator")
 if authenticator is None:
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 # Call login with unrendered location to maintain session (required for page refresh fix)
@@ -41,6 +43,8 @@ elif auth_status is False:
 else:
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 # ============================================================================
@@ -48,7 +52,7 @@ else:
 # ============================================================================
 
 st.set_page_config(
-    page_title="Ensalamento - Home",
+    page_title="Home - Ensalamento",
     page_icon="🏠",
     layout="wide",
 )
@@ -290,7 +294,6 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("➕ Nova Sala", width="stretch"):
         st.info("Redirecionando para Inventário...")
-        # In actual app, use st.switch_page()
         st.toast("Acesse a página de Inventário para criar uma nova sala")
 
 with col2:

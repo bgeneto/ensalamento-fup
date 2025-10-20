@@ -21,6 +21,8 @@ authenticator = st.session_state.get("authenticator")
 if authenticator is None:
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 # Call login with unrendered location to maintain session (required for page refresh fix)
@@ -42,6 +44,8 @@ else:
     # Not authenticated - redirect to main page
     st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
     st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
     st.stop()
 
 # ============================================================================
@@ -49,7 +53,7 @@ else:
 # ============================================================================
 
 st.set_page_config(
-    page_title="Ensalamento - Inventário",
+    page_title="Inventário - Ensalamento",
     page_icon="🏢",
     layout="wide",
 )
@@ -90,13 +94,12 @@ st.markdown(
 # TABS STRUCTURE
 # ============================================================================
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
+tab1, tab2, tab3, tab4 = st.tabs(
     [
         "📍 Campi",
         "🏭 Prédios",
         "🚪 Salas",
-        "🏷️ Características",
-        "🧩 Assoc. Características",
+        "🔗 Assoc. Características",
     ]
 )
 
@@ -1021,19 +1024,13 @@ with tab3:
     except Exception as e:
         st.error(f"❌ Erro ao carregar salas: {str(e)}")
 
-# =============================================================================
-# TAB 4: ROOM CHARACTERISTICS
-# =============================================================================
+    st.markdown("---")
 
-with tab4:
     st.subheader("Gerenciamento de Características de Salas")
 
     st.info(
-        """
-        Edite os dados diretamente na tabela abaixo.
-        - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
-        - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
-        - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
+        """Adicione, remova ou edite as características que podem ser associadas às salas.
+           Tais associações podem ser realizadas na aba acima (🔗 Assoc. Características).
         """
     )
 
@@ -1251,10 +1248,10 @@ with tab4:
         st.error(f"❌ Erro ao carregar características: {str(e)}")
 
 # =============================================================================
-# TAB 5: ROOM CHARACTERISTICS ASSOCIATIONS
+# TAB 4: ROOM CHARACTERISTICS ASSOCIATIONS
 # =============================================================================
 
-with tab5:
+with tab4:
     st.subheader("Associação de Características com Salas")
 
     st.info(
@@ -1309,44 +1306,36 @@ with tab5:
                             c.id for c in sala_data["caracteristicas"]
                         ]
 
-                        col1, col2 = st.columns([1, 1])
-
-                        with col1:
-                            # Multi-select for characteristics
-                            selected_caracteristica_ids = st.multiselect(
-                                f"Características para {sala_data['sala'].nome}:",
-                                options=list(caracteristica_options.keys()),
-                                format_func=lambda x: caracteristica_options.get(
-                                    x, "N/A"
-                                ),
-                                default=current_caracteristica_ids,
-                                key=f"caracteristica_multiselect_{selected_sala_id}",
+                        # Display current characteristics status (full width)
+                        if sala_data["caracteristicas"]:
+                            current_names = [
+                                c.nome for c in sala_data["caracteristicas"]
+                            ]
+                        else:
+                            st.warning(
+                                "⚠️ Esta sala não possui características associadas."
                             )
 
-                        with col2:
-                            # Display current characteristics status
-                            if sala_data["caracteristicas"]:
-                                current_names = [
-                                    c.nome for c in sala_data["caracteristicas"]
-                                ]
-                                st.markdown(
-                                    f"**Características atuais:** {', '.join(current_names)}"
-                                )
-                            else:
-                                st.info(
-                                    "Esta sala não possui características associadas."
-                                )
+                        # Multi-select for characteristics (full width)
+                        selected_caracteristica_ids = st.multiselect(
+                            f"Características para {sala_data['sala'].nome}:",
+                            options=list(caracteristica_options.keys()),
+                            format_func=lambda x: caracteristica_options.get(x, "N/A"),
+                            default=current_caracteristica_ids,
+                            key=f"caracteristica_multiselect_{selected_sala_id}",
+                            help="Selecione uma ou mais características para associar à sala",
+                        )
 
-                        # Action buttons below columns (full width)
-                        st.markdown("---")
-                        col_btn1, col_btn2, col_spacer = st.columns([1, 1, 2])
+                        # Action buttons in proper layout
+                        col_btn1, col_btn2 = st.columns([1, 1])
 
                         with col_btn1:
                             if st.button(
-                                "💾 Atualizar",
+                                "💾 Salvar",
                                 key=f"update_{selected_sala_id}",
-                                help="Salva as alterações das características",
+                                help="Salva as características da sala",
                                 use_container_width=True,
+                                type="primary",
                             ):
                                 try:
                                     success = sala_repo.set_caracteristicas_for_sala(
@@ -1355,21 +1344,29 @@ with tab5:
                                     )
 
                                     if success:
-                                        st.success(
-                                            f"✅ Características da sala '{sala_data['sala'].nome}' atualizadas com sucesso!"
+                                        set_session_feedback(
+                                            "assoc_result",
+                                            True,
+                                            f"Características da sala '{sala_data['sala'].nome}' atualizadas com sucesso!",
                                         )
-                                        st.rerun()  # Refresh to show changes immediately
+                                        st.rerun()
                                     else:
-                                        st.error(
-                                            "❌ Falha ao atualizar características da sala."
+                                        set_session_feedback(
+                                            "assoc_result",
+                                            False,
+                                            "Falha ao atualizar características da sala.",
                                         )
 
                                 except Exception as e:
-                                    st.error(f"❌ Erro ao atualizar: {str(e)}")
+                                    set_session_feedback(
+                                        "assoc_result",
+                                        False,
+                                        f"Erro ao atualizar: {str(e)}",
+                                    )
 
                         with col_btn2:
                             if st.button(
-                                "🗑️ Limpar Tudo",
+                                "🗑️ Limpar Sala",
                                 key=f"clear_{selected_sala_id}",
                                 help="Remove todas as características da sala",
                                 use_container_width=True,
@@ -1380,18 +1377,28 @@ with tab5:
                                     )
 
                                     if success:
-                                        st.success(
-                                            f"✅ Todas as características removidas da sala '{sala_data['sala'].nome}'!"
+                                        set_session_feedback(
+                                            "assoc_result",
+                                            True,
+                                            f"Todas as características removidas da sala '{sala_data['sala'].nome}'!",
                                         )
                                         st.rerun()
                                     else:
-                                        st.error("❌ Falha ao remover características.")
+                                        set_session_feedback(
+                                            "assoc_result",
+                                            False,
+                                            "Falha ao remover características.",
+                                        )
 
                                 except Exception as e:
-                                    st.error(f"❌ Erro ao limpar: {str(e)}")
+                                    set_session_feedback(
+                                        "assoc_result",
+                                        False,
+                                        f"Erro ao limpar: {str(e)}",
+                                    )
 
-                        with col_spacer:
-                            st.empty()
+                        # Display feedback messages
+                        display_session_feedback("assoc_result")
 
                 # Display comprehensive associations table
                 st.divider()

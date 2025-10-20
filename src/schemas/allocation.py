@@ -17,10 +17,12 @@ from datetime import datetime
 class RegraBase(BaseModel):
     """Base schema for Regra (allocation rule)."""
 
-    nome: str = Field(..., min_length=1, max_length=255)
-    descricao: str = Field(default="", max_length=500)
-    prioridade: int = Field(default=0, ge=0)
-    ativo: bool = Field(default=True)
+    descricao: str = Field(..., min_length=1, max_length=255)
+    tipo_regra: str = Field(
+        ..., min_length=1, max_length=100
+    )  # e.g., "DISCIPLINA_TIPO_SALA"
+    config_json: str = Field(..., min_length=1)  # JSON configuration
+    prioridade: int = Field(default=0, ge=0)  # 0=hard, >0=soft preference
 
 
 class RegraCreate(RegraBase):
@@ -32,10 +34,10 @@ class RegraCreate(RegraBase):
 class RegraUpdate(BaseModel):
     """Schema for updating a Regra."""
 
-    nome: Optional[str] = Field(None, min_length=1, max_length=255)
-    descricao: Optional[str] = Field(None, max_length=500)
+    descricao: Optional[str] = Field(None, min_length=1, max_length=255)
+    tipo_regra: Optional[str] = Field(None, min_length=1, max_length=100)
+    config_json: Optional[str] = Field(None, min_length=1)
     prioridade: Optional[int] = Field(None, ge=0)
-    ativo: Optional[bool] = None
 
 
 class RegraRead(RegraBase):

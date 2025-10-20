@@ -95,9 +95,9 @@ CREATE TABLE IF NOT EXISTS demandas (
 CREATE TABLE IF NOT EXISTS regras (
     id INTEGER PRIMARY KEY,
     descricao TEXT NOT NULL,
-    tipo_regra TEXT NOT NULL, -- (Ex: "DISCIPLINA_TIPO_SALA", "DISCIPLINA_REQUER_CARACTERISTICA")
+    tipo_regra TEXT NOT NULL, -- (Ex: "DISCIPLINA_SALA", "DISCIPLINA_TIPO_SALA", "DISCIPLINA_CARACTERISTICA")
     config_json TEXT NOT NULL, -- JSON para armazenar os detalhes da regra
-    prioridade INTEGER DEFAULT 1 -- 0 = dura (estática), >0 = suave (preferência)
+    prioridade INTEGER DEFAULT 1 -- 0 = rígida (estática), >0 = suave (preferência)
 );
 
 -- Resultado do Motor de Alocação (RF-006)

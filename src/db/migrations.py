@@ -181,7 +181,7 @@ def seed_db():
                 "turno": "T",
                 "horario_inicio": "18:00",
                 "horario_fim": "18:55",
-            },         
+            },
             # Night (N1-N4)
             {
                 "codigo_bloco": "N1",
@@ -276,7 +276,10 @@ def seed_db():
             {"nome": "Laboratório de Física", "descricao": "Laboratório de Física"},
             {"nome": "Laboratório de Química", "descricao": "Laboratório de Química"},
             {"nome": "Laboratório de Biologia", "descricao": "Laboratório de Biologia"},
-            {"nome": "Laboratório de Informática", "descricao": "Laboratório de Informática"},
+            {
+                "nome": "Laboratório de Informática",
+                "descricao": "Laboratório de Informática",
+            },
             {"nome": "Sala de Seminário", "descricao": "Sala de Seminário"},
         ]
 
@@ -369,12 +372,12 @@ def seed_db():
         admin_users_data = [
             {
                 "username": "admin",
-                "nome_completo": "Administrador do Sistema",
+                "nome_completo": "Administrador",
                 "role": "admin",
             },
             {
                 "username": "gestor",
-                "nome_completo": "Gestor de Alocação",
+                "nome_completo": "Gestor",
                 "role": "admin",
             },
         ]
