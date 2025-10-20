@@ -280,3 +280,147 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             List of all SalaRead DTOs
         """
         return self.get_all()
+
+    # ========================================================================
+    # CHARACTERISTICS MANAGEMENT METHODS
+    # ========================================================================
+
+    def get_sala_with_caracteristicas(self, sala_id: int) -> Optional[dict]:
+        """Get room with its characteristics by ID.
+
+        Returns:
+            Dictionary with 'sala' and 'caracteristicas' keys, or None if not found
+        """
+        from src.models.inventory import Caracteristica
+        from src.schemas.inventory import CaracteristicaRead
+
+        orm_obj = self.session.query(Sala).filter(Sala.id == sala_id).first()
+
+        if not orm_obj:
+            return None
+
+        # Get associated characteristics
+        caracteristicas_orm = (
+            self.session.query(Caracteristica)
+            .join(Sala.caracteristicas)
+            .filter(Sala.id == sala_id)
+            .all()
+        )
+
+        # Convert to DTOs
+        caracteristicas_dto = [
+            CaracteristicaRead(
+                id=c.id, nome=c.nome, created_at=c.created_at, updated_at=c.updated_at
+            )
+            for c in caracteristicas_orm
+        ]
+
+        return {
+            "sala": self.orm_to_dto(orm_obj),
+            "caracteristicas": caracteristicas_dto,
+        }
+
+    def add_caracteristica_to_sala(
+        self, sala_id: int, caracteristica_ids: List[int]
+    ) -> bool:
+        """Add characteristics to a room (append to existing).
+
+        Args:
+            sala_id: Room ID
+            caracteristica_ids: List of characteristic IDs to add
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            orm_obj = self.session.query(Sala).filter(Sala.id == sala_id).first()
+            if not orm_obj:
+                return False
+
+            # Get current characteristics
+            current_ids = [c.id for c in orm_obj.caracteristicas]
+
+            # Add new IDs (avoid duplicates)
+            new_ids = [cid for cid in caracteristica_ids if cid not in current_ids]
+
+            if new_ids:
+                # Get characteristic objects
+                from src.models.inventory import Caracteristica
+
+                new_caracteristicas = (
+                    self.session.query(Caracteristica)
+                    .filter(Caracteristica.id.in_(new_ids))
+                    .all()
+                )
+
+                # Add to room
+                orm_obj.caracteristicas.extend(new_caracteristicas)
+
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            return False
+
+    def set_caracteristicas_for_sala(
+        self, sala_id: int, caracteristica_ids: List[int]
+    ) -> bool:
+        """Replace all characteristics for a room with new ones.
+
+        Args:
+            sala_id: Room ID
+            caracteristica_ids: List of characteristic IDs (replaces existing)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            orm_obj = self.session.query(Sala).filter(Sala.id == sala_id).first()
+            if not orm_obj:
+                return False
+
+            # Get characteristic objects
+            from src.models.inventory import Caracteristica
+
+            new_caracteristicas = (
+                self.session.query(Caracteristica)
+                .filter(Caracteristica.id.in_(caracteristica_ids))
+                .all()
+            )
+
+            # Replace all characteristics
+            orm_obj.caracteristicas = new_caracteristicas
+
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            return False
+
+    def remove_caracteristica_from_sala(
+        self, sala_id: int, caracteristica_ids: List[int]
+    ) -> bool:
+        """Remove specific characteristics from a room.
+
+        Args:
+            sala_id: Room ID
+            caracteristica_ids: List of characteristic IDs to remove
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            orm_obj = self.session.query(Sala).filter(Sala.id == sala_id).first()
+            if not orm_obj:
+                return False
+
+            # Remove specific characteristics
+            orm_obj.caracteristicas = [
+                c for c in orm_obj.caracteristicas if c.id not in caracteristica_ids
+            ]
+
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            return False
