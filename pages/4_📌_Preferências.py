@@ -364,15 +364,23 @@ with tab2:
             tipos_sala = tipos_sala_orm
             caracteristicas = caracteristicas_orm
             # Get unique discipline codes from demands (we need to handle this carefully since the repo might not exist)
+            disc_codes = []
             try:
                 demandas = disc_repo.get_all()
-                disc_codes = sorted(list(set([d.codigo_disciplina for d in demandas])))
-            except:
-                disc_codes = [
-                    "FUP0246",
-                    "FUP0316",
-                    "FUP0456",
-                ]  # Default examples if no data
+                if demandas:
+                    disc_codes = sorted(
+                        list(set([d.codigo_disciplina for d in demandas]))
+                    )
+                else:
+                    disc_codes = []
+            except Exception as e:
+                st.warning(f"Não foi possível carregar códigos de disciplina: {str(e)}")
+            finally:
+                # Always ensure we have some default options for testing
+                if not disc_codes:
+                    disc_codes = (
+                        None  # Nenhum código de disciplina disponível na demanda atual
+                    )
 
             # Create lookup dictionaries
             salas_dict = {sala.id: f"{sala.predio.nome}/{sala.nome}" for sala in salas}
@@ -498,12 +506,35 @@ with tab2:
             # Add new rule form
             st.subheader("➕ Criar Nova Regra")
 
+            # Use session state to make the rule type reactive outside the form
+            if "selected_rule_type" not in st.session_state:
+                st.session_state.selected_rule_type = "DISCIPLINA_TIPO_SALA"
+
+            # Rule type selection outside the form for reactivity
+            rule_type = st.selectbox(
+                "Tipo de Regra:",
+                options=[
+                    "DISCIPLINA_TIPO_SALA",  # Hard: discipline must use room type
+                    "DISCIPLINA_SALA",  # Hard: discipline must use specific room
+                    "DISCIPLINA_CARACTERISTICA",  # Soft: discipline prefers room with characteristic
+                ],
+                format_func=lambda x: {
+                    "DISCIPLINA_TIPO_SALA": "🔒 Regra Rígida: Tipo de Sala",
+                    "DISCIPLINA_SALA": "🔒 Regra Rígida: Sala Específica",
+                    "DISCIPLINA_CARACTERISTICA": "⭐ Preferência Suave: Característica",
+                }.get(x, x),
+                key="rule_type_selector",
+                on_change=lambda: st.session_state.update(
+                    {"selected_rule_type": st.session_state.rule_type_selector}
+                ),
+            )
+
             with st.form("new_rule_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    # Rule type selection
-                    rule_type = st.selectbox(
+                    # Rule type selection (inside form for submission)
+                    rule_type_form = st.selectbox(
                         "Tipo de Regra:",
                         options=[
                             "DISCIPLINA_TIPO_SALA",  # Hard: discipline must use room type
@@ -511,10 +542,16 @@ with tab2:
                             "DISCIPLINA_CARACTERISTICA",  # Soft: discipline prefers room with characteristic
                         ],
                         format_func=lambda x: {
-                            "DISCIPLINA_TIPO_SALA": "🔒 Regra Rígida: Tipo de Sala",
-                            "DISCIPLINA_SALA": "🔒 Regra Rígida: Sala Específica",
-                            "DISCIPLINA_CARACTERISTICA": "⭐ Preferência Suave: Característica",
+                            "DISCIPLINA_TIPO_SALA": "🔒 Cobrança Dura - Tipo de Sala",
+                            "DISCIPLINA_SALA": "🔒 Cobrança Dura - Sala Específica",
+                            "DISCIPLINA_CARACTERISTICA": "⭐ Preferência Suave - Característica",
                         }.get(x, x),
+                        index=[
+                            "DISCIPLINA_TIPO_SALA",
+                            "DISCIPLINA_SALA",
+                            "DISCIPLINA_CARACTERISTICA",
+                        ].index(rule_type),
+                        key="rule_type_form",
                     )
 
                     # Description
@@ -529,7 +566,8 @@ with tab2:
                         prioridade = st.number_input(
                             "Prioridade:",
                             min_value=1,
-                            value=10,
+                            value=1,
+                            max_value=10,
                             help="número maior = prioridade mais alta",
                         )
                     else:
@@ -548,7 +586,12 @@ with tab2:
                     with col_a:
                         selected_cod_disciplina = st.selectbox(
                             "Código da Disciplina:",
-                            options=disc_codes,
+                            options=(
+                                disc_codes
+                                if disc_codes is not None
+                                else ["Nenhuma disciplina na demanda"]
+                            ),
+                            disabled=disc_codes is None,
                             help="Disciplina afetada por esta regra",
                         )
                     with col_b:
@@ -565,7 +608,12 @@ with tab2:
                     with col_a:
                         selected_cod_disciplina = st.selectbox(
                             "Código da Disciplina:",
-                            options=disc_codes,
+                            options=(
+                                disc_codes
+                                if disc_codes is not None
+                                else ["Nenhuma disciplina na demanda"]
+                            ),
+                            disabled=disc_codes is None,
                             help="Disciplina afetada por esta regra",
                         )
                     with col_b:
@@ -584,7 +632,12 @@ with tab2:
                     with col_a:
                         selected_cod_disciplina = st.selectbox(
                             "Código da Disciplina:",
-                            options=disc_codes,
+                            options=(
+                                disc_codes
+                                if disc_codes is not None
+                                else ["Nenhuma disciplina na demanda"]
+                            ),
+                            disabled=disc_codes is None,
                             help="Disciplina afetada por esta regra",
                         )
                     with col_b:
