@@ -97,7 +97,7 @@ class Sala(BaseModel):
     predio_id = Column(Integer, ForeignKey("predios.id"), nullable=False)
     tipo_sala_id = Column(Integer, ForeignKey("tipos_sala.id"), nullable=False)
     capacidade = Column(Integer, default=0)
-    andar = Column(String(50), nullable=True)
+    andar = Column(Integer, nullable=True)
     tipo_assento = Column(String(100), nullable=True)
 
     # Relationships

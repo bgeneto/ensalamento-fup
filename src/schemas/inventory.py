@@ -18,8 +18,7 @@ class CampusBase(BaseModel):
     """Base schema for Campus."""
 
     nome: str = Field(..., min_length=1, max_length=255)
-    sigla: str = Field(..., min_length=1, max_length=10)
-    endereco: str = Field(default="", max_length=255)
+    descricao: str = Field(default="", max_length=255)
 
 
 class CampusCreate(CampusBase):
@@ -32,8 +31,7 @@ class CampusUpdate(BaseModel):
     """Schema for updating a Campus."""
 
     nome: Optional[str] = Field(None, min_length=1, max_length=255)
-    sigla: Optional[str] = Field(None, min_length=1, max_length=10)
-    endereco: Optional[str] = Field(None, max_length=255)
+    descricao: Optional[str] = Field(None, max_length=255)
 
 
 class CampusRead(CampusBase):
@@ -57,7 +55,6 @@ class PredioBase(BaseModel):
 
     nome: str = Field(..., min_length=1, max_length=255)
     campus_id: int = Field(..., gt=0)
-    codigo: str = Field(default="", max_length=50)
 
 
 class PredioCreate(PredioBase):
@@ -71,7 +68,6 @@ class PredioUpdate(BaseModel):
 
     nome: Optional[str] = Field(None, min_length=1, max_length=255)
     campus_id: Optional[int] = Field(None, gt=0)
-    codigo: Optional[str] = Field(None, max_length=50)
 
 
 class PredioRead(PredioBase):
@@ -130,7 +126,6 @@ class CaracteristicaBase(BaseModel):
     """Base schema for Caracteristica."""
 
     nome: str = Field(..., min_length=1, max_length=100)
-    descricao: str = Field(default="", max_length=255)
 
 
 class CaracteristicaCreate(CaracteristicaBase):
@@ -143,7 +138,6 @@ class CaracteristicaUpdate(BaseModel):
     """Schema for updating a Caracteristica."""
 
     nome: Optional[str] = Field(None, min_length=1, max_length=100)
-    descricao: Optional[str] = Field(None, max_length=255)
 
 
 class CaracteristicaRead(CaracteristicaBase):
@@ -169,7 +163,7 @@ class SalaBase(BaseModel):
     predio_id: int = Field(..., gt=0)
     tipo_sala_id: int = Field(..., gt=0)
     capacidade: int = Field(default=30, ge=1)
-    andar: Optional[str] = Field(default=None, max_length=50)
+    andar: Optional[int] = Field(default=None)
     tipo_assento: Optional[str] = Field(default=None, max_length=100)
 
 
@@ -186,7 +180,7 @@ class SalaUpdate(BaseModel):
     predio_id: Optional[int] = Field(None, gt=0)
     tipo_sala_id: Optional[int] = Field(None, gt=0)
     capacidade: Optional[int] = Field(None, ge=1)
-    andar: Optional[str] = Field(None, max_length=50)
+    andar: Optional[int] = Field(None)
     tipo_assento: Optional[str] = Field(None, max_length=100)
 
 

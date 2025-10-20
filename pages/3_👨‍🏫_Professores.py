@@ -81,9 +81,7 @@ st.markdown("---")
 # TABS STRUCTURE
 # ============================================================================
 
-tab1, tab2, tab3 = st.tabs(
-    ["📋 Lista de Professores", "📥 Importar", "🏢 Departamentos"]
-)
+tab1, tab2 = st.tabs(["📋 Lista de Professores", "📥 Importar"])
 
 # =============================================================================
 # TAB 1: PROFESSOR LIST - CRUD WITH ST.DATA_EDITOR
@@ -91,6 +89,15 @@ tab1, tab2, tab3 = st.tabs(
 
 with tab1:
     st.subheader("Professores Cadastrados")
+
+    st.info(
+        """
+        Edite os dados diretamente na tabela abaixo.
+        - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
+        - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
+        - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
+        """
+    )
 
     # Professor list with CRUD
     try:
@@ -117,17 +124,14 @@ with tab1:
                 df = pd.DataFrame(prof_data)
 
                 # Use st.data_editor with dynamic num_rows for CRUD operations
+                # Note: ID column is hidden but kept internally to track database records
                 edited_df = st.data_editor(
                     df,
                     width="stretch",
                     hide_index=True,
                     num_rows="dynamic",
                     column_config={
-                        "ID": st.column_config.NumberColumn(
-                            "ID",
-                            disabled=True,
-                            help="ID do professor (leitura apenas)",
-                        ),
+                        "ID": None,  # Hide ID column from user view
                         "Nome": st.column_config.TextColumn(
                             "Nome",
                             required=True,
@@ -264,7 +268,7 @@ with tab1:
                                     with get_db_session() as session:
                                         prof_repo_update = ProfessorRepository(session)
                                         # Get current professor
-                                        current = session.query(Professor).get(prof_id)
+                                        current = session.get(Professor, prof_id)
 
                                         if current:
                                             # Check if new username already exists (excluding current)
@@ -293,14 +297,14 @@ with tab1:
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Professor {nome} atualizado com sucesso!",
+                                                f"Professor(a) {nome} atualizado com sucesso!",
                                                 action="update",
                                             )
                                 except Exception as e:
                                     set_session_feedback(
                                         "crud_result",
                                         False,
-                                        f"Erro ao atualizar professor: {str(e)}",
+                                        f"Erro ao atualizar professor(a): {str(e)}",
                                         action="update",
                                     )
                                 st.rerun()
@@ -524,50 +528,3 @@ with tab2:
 
         # Display form result if available
         display_session_feedback("form_result")
-
-# =============================================================================
-# TAB 3: DEPARTMENT MANAGEMENT
-# =============================================================================
-
-with tab3:
-    st.subheader("Estatísticas")
-
-    try:
-        with get_db_session() as session:
-            prof_repo = ProfessorRepository(session)
-            all_profs = prof_repo.get_all()
-
-            if all_profs:
-                # Count professors with mobility restrictions
-                with_mobility = sum(1 for p in all_profs if p.tem_baixa_mobilidade)
-                without_mobility = len(all_profs) - with_mobility
-
-                # Display stats
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.metric("Total de Professores", len(all_profs))
-
-                with col2:
-                    st.metric("Com Mobilidade Reduzida", with_mobility)
-
-                with col3:
-                    st.metric("Sem Restrições", without_mobility)
-
-                st.markdown("---")
-
-                # Chart
-                st.markdown("**Distribuição de Restrições de Mobilidade:**")
-                stats_data = pd.DataFrame(
-                    {
-                        "Categoria": ["Com Restrição", "Sem Restrição"],
-                        "Quantidade": [with_mobility, without_mobility],
-                    }
-                )
-                st.bar_chart(stats_data.set_index("Categoria"))
-
-            else:
-                st.info("Nenhum professor cadastrado ainda")
-
-    except Exception as e:
-        st.warning(f"Erro ao carregar estatísticas: {str(e)}")
