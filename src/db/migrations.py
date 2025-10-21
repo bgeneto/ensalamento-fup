@@ -398,3 +398,132 @@ def seed_db():
 
         session.commit()
         print("✅ Database seeding completed successfully")
+
+
+def run_sql_migrations(migrations_dir: str | None = None) -> None:
+    """Run SQL migration files from a directory and record applied files.
+
+    This is a lightweight runner for .sql files. It creates a table
+    `schema_migrations(filename TEXT UNIQUE, applied_at TEXT)` and executes
+    any .sql files not yet applied. Files are applied in sorted order.
+    """
+    from pathlib import Path
+
+    print("Running SQL migrations...")
+
+    base_dir = Path(__file__).parent
+    mig_dir = Path(migrations_dir) if migrations_dir else base_dir / "migrations"
+    if not mig_dir.exists() or not mig_dir.is_dir():
+        print(f"  ⚠️  Migrations directory not found: {mig_dir}")
+        return
+
+    # Use raw DBAPI connection for executescript convenience (works for SQLite)
+    raw_conn = _engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
+
+        # ensure migrations tracking table
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL UNIQUE,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+
+        # get applied filenames
+        cur.execute("SELECT filename FROM schema_migrations")
+        applied = {row[0] for row in cur.fetchall()}
+
+        # collect .sql files sorted
+        files = sorted([p for p in mig_dir.iterdir() if p.suffix == ".sql"])
+        to_apply = [p for p in files if p.name not in applied]
+
+        if not to_apply:
+            print("  No new migrations to apply.")
+            return
+
+        for f in to_apply:
+            print(f"  Applying migration: {f.name}")
+            sql = f.read_text(encoding="utf-8")
+
+            # Quick heuristic: if migration contains an ALTER TABLE ADD COLUMN,
+            # check whether the column already exists and skip execution if so.
+            skip_execution = False
+            try:
+                for line in sql.splitlines():
+                    line_stripped = line.strip()
+                    up = line_stripped.upper()
+                    if up.startswith("ALTER TABLE") and "ADD COLUMN" in up:
+                        # naive parse: tokens -> ALTER TABLE <table> ADD COLUMN <col>
+                        parts = line_stripped.split()
+                        # find table name (after ALTER TABLE)
+                        try:
+                            tbl_idx = [p.upper() for p in parts].index("TABLE") + 1
+                            table_name = parts[tbl_idx].strip('"`')
+                        except Exception:
+                            continue
+
+                        # find column name after ADD COLUMN
+                        try:
+                            add_idx = [p.upper() for p in parts].index("COLUMN") + 1
+                            col_name = parts[add_idx].strip(',;"`')
+                        except Exception:
+                            # fallback: take next token after ADD
+                            continue
+
+                        # check pragma for existence
+                        cur.execute(f"PRAGMA table_info({table_name});")
+                        existing_cols = {r[1] for r in cur.fetchall()}
+                        if col_name in existing_cols:
+                            print(
+                                f"    ⚠️ Column '{col_name}' already exists on '{table_name}', marking migration as applied and skipping execution."
+                            )
+                            cur.execute(
+                                "INSERT OR IGNORE INTO schema_migrations(filename) VALUES (?)",
+                                (f.name,),
+                            )
+                            raw_conn.commit()
+                            skip_execution = True
+                            break
+            except Exception:
+                # If any check fails, fall back to executing the script and letting sqlite report
+                skip_execution = False
+
+            if skip_execution:
+                continue
+
+            try:
+                cur.executescript(sql)
+                cur.execute(
+                    "INSERT INTO schema_migrations(filename) VALUES (?)", (f.name,)
+                )
+                raw_conn.commit()
+                print(f"    ✓ Applied {f.name}")
+            except Exception as e:
+                # Handle common sqlite duplicate-column error as applied
+                msg = str(e).lower()
+                if "duplicate column name" in msg or "already exists" in msg:
+                    print(
+                        f"    ⚠️ Migration {f.name} produced duplicate column or already exists error; recording as applied."
+                    )
+                    cur.execute(
+                        "INSERT OR IGNORE INTO schema_migrations(filename) VALUES (?)",
+                        (f.name,),
+                    )
+                    raw_conn.commit()
+                    continue
+                raw_conn.rollback()
+                print(f"    ✗ Failed {f.name}: {e}")
+                raise
+
+        print("✅ SQL migrations completed")
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        raw_conn.close()

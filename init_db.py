@@ -49,11 +49,16 @@ def main():
         action="store_true",
         help="Full reset: drop, create tables, and seed",
     )
+    parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Run SQL migrations located in src/db/migrations/",
+    )
 
     args = parser.parse_args()
 
     # If no arguments, show help
-    if not any([args.init, args.seed, args.drop, args.reset, args.all]):
+    if not any([args.init, args.seed, args.drop, args.reset, args.all, args.migrate]):
         parser.print_help()
         return
 
@@ -66,6 +71,12 @@ def main():
 
         if args.seed or args.all:
             seed_db()
+
+        if args.migrate or args.all:
+            # run SQL migrations in src/db/migrations/
+            from src.db.migrations import run_sql_migrations
+
+            run_sql_migrations(str(Path(__file__).parent / "src" / "db" / "migrations"))
 
         # Show admin users if they should exist
         if not args.drop and (args.init or args.all or args.seed):

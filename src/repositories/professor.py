@@ -81,6 +81,24 @@ class ProfessorRepository(BaseRepository[Professor, ProfessorRead]):
             return self.orm_to_dto(orm_obj)
         return None
 
+    def get_by_nome_completo(self, nome: str) -> Optional[ProfessorRead]:
+        """Get professor by exact full name.
+
+        Args:
+            nome: Full professor name
+
+        Returns:
+            ProfessorRead DTO or None if not found
+        """
+        orm_obj = (
+            self.session.query(Professor)
+            .filter(Professor.nome_completo == nome)
+            .first()
+        )
+        if orm_obj:
+            return self.orm_to_dto(orm_obj)
+        return None
+
     def search(self, query: str) -> List[ProfessorRead]:
         """Search professors by name or username (case-insensitive).
 

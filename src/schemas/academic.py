@@ -61,6 +61,7 @@ class DemandaBase(BaseModel):
     vagas_disciplina: int = Field(default=0, ge=0)
     horario_sigaa_bruto: str = Field(..., max_length=255)  # e.g., "24M12 6T34"
     nivel_disciplina: str = Field(default="", max_length=50)
+    id_oferta_externo: Optional[str] = Field(default=None, max_length=100)
 
 
 class DemandaCreate(DemandaBase):
@@ -88,6 +89,7 @@ class DemandaRead(DemandaBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    id_oferta_externo: Optional[str] = None
 
     class Config:
         from_attributes = True

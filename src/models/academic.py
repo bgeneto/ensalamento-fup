@@ -83,6 +83,7 @@ class Demanda(BaseModel):
     turma_disciplina = Column(String(50), nullable=True)
     vagas_disciplina = Column(Integer, default=0)
     horario_sigaa_bruto = Column(String(255), nullable=False)  # e.g., "24M12 6T34"
+    id_oferta_externo = Column(String(100), nullable=True)
     nivel_disciplina = Column(String(50), nullable=True)  # Graduação, Pós-Graduação
 
     # Relationships

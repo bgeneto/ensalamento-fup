@@ -45,29 +45,70 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             vagas_disciplina=orm_obj.vagas_disciplina,
             horario_sigaa_bruto=orm_obj.horario_sigaa_bruto,
             nivel_disciplina=orm_obj.nivel_disciplina,
-            nao_alocar=orm_obj.nao_alocar,
+            id_oferta_externo=orm_obj.id_oferta_externo,
+            created_at=getattr(orm_obj, "created_at", None),
+            updated_at=getattr(orm_obj, "updated_at", None),
         )
 
     def dto_to_orm_create(self, dto: DemandaCreate) -> Demanda:
-        """Convert DemandaCreate DTO to ORM Demanda model for creation.
+        """Create a Demanda ORM instance from a DemandaCreate DTO or plain dict.
 
-        Args:
-            dto: DemandaCreate DTO
-
-        Returns:
-            Demanda ORM model instance (not persisted)
+        This method is robust to receiving either a Pydantic model or a dict
+        (some callers build dicts). It maps expected fields and returns an
+        unsaved Demanda instance ready to be added to a session.
         """
+
+        # helper to support both pydantic models and plain dicts
+        def _get(key, default=None):
+            if hasattr(dto, key):
+                return getattr(dto, key)
+            if isinstance(dto, dict):
+                return dto.get(key, default)
+            return default
+
+        semestre_id = _get("semestre_id")
+        codigo = _get("codigo_disciplina")
+        nome = _get("nome_disciplina")
+        professores = _get("professores_disciplina") or ""
+        turma = _get("turma_disciplina") or ""
+        vagas = _get("vagas_disciplina") or 0
+        horario = _get("horario_sigaa_bruto") or ""
+        nivel = _get("nivel_disciplina") or ""
+        id_oferta_externo = _get("id_oferta_externo")
+
         return Demanda(
-            semestre_id=dto.semestre_id,
-            codigo_disciplina=dto.codigo_disciplina,
-            nome_disciplina=dto.nome_disciplina,
-            professores_disciplina=dto.professores_disciplina,
-            turma_disciplina=dto.turma_disciplina,
-            vagas_disciplina=dto.vagas_disciplina,
-            horario_sigaa_bruto=dto.horario_sigaa_bruto,
-            nivel_disciplina=dto.nivel_disciplina,
-            nao_alocar=dto.nao_alocar,
+            semestre_id=semestre_id,
+            codigo_disciplina=codigo,
+            nome_disciplina=nome,
+            professores_disciplina=professores,
+            turma_disciplina=turma,
+            vagas_disciplina=vagas,
+            horario_sigaa_bruto=horario,
+            nivel_disciplina=nivel,
+            id_oferta_externo=id_oferta_externo,
         )
+
+    def set_external_id_for_existing(
+        self, semestre_id: int, codigo: str, turma: str, external_id: str
+    ) -> bool:
+        """If a demanda exists matching semestre+codigo+turma, set its id_oferta_externo and return True.
+
+        Returns True if an update was made, False otherwise.
+        """
+        orm_obj = (
+            self.session.query(Demanda)
+            .filter(
+                (Demanda.semestre_id == semestre_id)
+                & (Demanda.codigo_disciplina == codigo)
+                & (Demanda.turma_disciplina == turma)
+            )
+            .first()
+        )
+        if not orm_obj:
+            return False
+        orm_obj.id_oferta_externo = external_id
+        self.session.commit()
+        return True
 
     # ========================================================================
     # DOMAIN-SPECIFIC QUERY METHODS
@@ -234,6 +275,22 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             .all()
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def get_by_semestre_and_external_id(
+        self, semestre_id: int, id_externo: str
+    ) -> Optional[DemandaRead]:
+        """Get demanda by semester and external oferta id (id_oferta_externo)."""
+        orm_obj = (
+            self.session.query(Demanda)
+            .filter(
+                (Demanda.semestre_id == semestre_id)
+                & (Demanda.id_oferta_externo == id_externo)
+            )
+            .first()
+        )
+        if orm_obj:
+            return self.orm_to_dto(orm_obj)
+        return None
 
     def get_skip_allocation(self, semestre_id: int) -> List[DemandaRead]:
         """Get courses marked to skip allocation.
