@@ -18,6 +18,9 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 
+# Import settings to configure logging
+from src.config.settings import settings
+
 # Configure page
 st.set_page_config(
     page_title="Ensalamento FUP",

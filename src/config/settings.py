@@ -5,6 +5,8 @@ Loads configuration from .env file and provides access to all settings.
 """
 
 import os
+import logging
+import logging.handlers
 from pathlib import Path
 from typing import Optional
 
@@ -61,6 +63,69 @@ class Settings:
         # Application Settings
         self.DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
         self.ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
+        # Configure logging based on DEBUG setting
+        self._configure_logging()
+
+    def _configure_logging(self) -> None:
+        """Configure logging based on DEBUG setting."""
+        # Set log level
+        log_level = logging.DEBUG if self.DEBUG else logging.INFO
+
+        # Create logs directory if it doesn't exist
+        self.LOGS_DIR.mkdir(exist_ok=True)
+
+        # Get root logger
+        root_logger = logging.getLogger()
+
+        # Clear existing handlers
+        root_logger.handlers.clear()
+
+        # Set level
+        root_logger.setLevel(log_level)
+
+        # Create formatter
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+
+        # File handler with rotation (rotate daily, keep 7 days)
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            self.LOGS_DIR / "app.log",
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+
+        # Set SQLAlchemy logging level based on DEBUG
+        if self.DEBUG:
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+        else:
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+        # Suppress noisy third-party loggers that can cause log file feedback loops
+        logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)
+        logging.getLogger("watchdog.observers").setLevel(logging.WARNING)
+        logging.getLogger("watchdog").setLevel(logging.WARNING)
+
+        # Suppress other potentially noisy loggers in development
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+        logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(
+            logging.WARNING
+        )
+        logging.getLogger("streamlit.runtime.scriptrunner.script_run_context").setLevel(
+            logging.WARNING
+        )
 
     def __repr__(self) -> str:
         """String representation of settings."""

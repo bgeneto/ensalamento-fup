@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Dict, Optional
 
 import streamlit as st
 
-DEFAULT_TTL_SECONDS = 6
+DEFAULT_TTL_SECONDS = 8
 
 
 def set_session_feedback(
@@ -57,6 +58,14 @@ def display_session_feedback(
 
     if not result.get("displayed"):
         st.toast(message, icon=icon)
+
+        # Log feedback messages to file handler
+        logger = logging.getLogger(__name__)
+        if result.get("success"):
+            logger.info(f"User feedback: {message}")
+        else:
+            logger.error(f"User feedback: {message}")
+
         result["displayed"] = True
         st.session_state[state_key] = result
 
