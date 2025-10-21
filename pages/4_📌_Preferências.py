@@ -10,53 +10,16 @@ URL: ?page=Professores
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from pages.components.auth import initialize_page
 
-# ============================================================================
-# AUTHENTICATION CHECK
-# ============================================================================
-# Retrieve authenticator from session state (set by main.py)
-authenticator = st.session_state.get("authenticator")
-
-if authenticator is None:
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-# Call login with unrendered location to maintain session (required for page refresh fix)
-try:
-    authenticator.login(location="unrendered", key="authenticator-preferencias")
-except Exception as exc:
-    st.error(f"❌ Erro de autenticação: {exc}")
-    st.stop()
-
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status:
-    # Show logout button in sidebar
-    authenticator.logout(location="sidebar", key="logout-preferencias")
-elif auth_status is False:
-    st.error("❌ Acesso negado.")
-    st.stop()
-else:
-    # Not authenticated - redirect to main page
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-
-st.set_page_config(
+# Initialize page with authentication and configuration
+if not initialize_page(
     page_title="Preferências - Ensalamento",
     page_icon="📌",
     layout="wide",
-)
+    key_suffix="preferencias",
+):
+    st.stop()
 
 # ============================================================================
 # IMPORTS
@@ -172,8 +135,13 @@ with tab1:
 
                 st.subheader("Preferências dos Professores")
 
+                # Sort professors by name for the selectbox
+                professores_sorted = sorted(professores, key=lambda x: x.nome_completo)
+
                 # Select professor to manage preferences
-                prof_options = {prof.id: prof.nome_completo for prof in professores}
+                prof_options = {
+                    prof.id: prof.nome_completo for prof in professores_sorted
+                }
                 selected_prof_id = st.selectbox(
                     "Selecione um professor para gerenciar preferências:",
                     options=[""] + list(prof_options.keys()),
@@ -312,8 +280,12 @@ with tab1:
                         }
                     )
 
+                # Convert to DataFrame and sort by Professor name
+                df_prof = pd.DataFrame(prof_data)
+                df_prof = df_prof.sort_values(by=["Professor"]).reset_index(drop=True)
+
                 st.dataframe(
-                    prof_data,
+                    df_prof,
                     width="stretch",
                     hide_index=True,
                     column_config={"ID": None},  # Hide the ID column

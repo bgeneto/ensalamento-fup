@@ -47,6 +47,7 @@ class Predio(BaseModel):
     __tablename__ = "predios"
 
     nome = Column(String(255), nullable=False, unique=True)
+    descricao = Column(Text, nullable=False)
     campus_id = Column(Integer, ForeignKey("campus.id"), nullable=False)
 
     # Relationships

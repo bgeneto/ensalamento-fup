@@ -8,7 +8,14 @@ from sqlalchemy import text
 
 from src.config.database import _engine
 from src.models.base import Base
-from src.models.inventory import Campus, Predio, TipoSala, Sala, Caracteristica
+from src.models.inventory import (
+    Campus,
+    Predio,
+    TipoSala,
+    Sala,
+    Caracteristica,
+    sala_caracteristicas,
+)
 from src.models.horario import DiaSemana, HorarioBloco
 from src.models.academic import Semestre, Demanda, Professor, Usuario
 from src.models.allocation import Regra, AlocacaoSemestral, ReservaEsporadica
@@ -246,41 +253,76 @@ def seed_db():
                 )
 
         # Seed campuses
-        campus_data = {"nome": "FUP", "descricao": "Faculdade UnB Planaltina"}
+        campus_data = [
+            {"nome": "FUP", "descricao": "Faculdade UnB Planaltina"},
+            {"nome": "Darcy", "descricao": "Campus Darcy Ribeiro"},
+        ]
 
-        campus = session.query(Campus).filter(Campus.nome == "FUP").first()
-        if not campus:
-            campus = Campus(**campus_data)
-            session.add(campus)
-            session.flush()
-            print(f"  ✓ Added campus: {campus_data['nome']}")
+        campus_map = {}
+        for campus_info in campus_data:
+            existing = (
+                session.query(Campus).filter(Campus.nome == campus_info["nome"]).first()
+            )
+            if not existing:
+                campus = Campus(**campus_info)
+                session.add(campus)
+                session.flush()
+                campus_map[campus_info["nome"]] = campus
+                print(f"  ✓ Added campus: {campus_info['nome']}")
+            else:
+                campus_map[campus_info["nome"]] = existing
 
         # Seed buildings (predios)
-        predio_data = {"nome": "UAC", "campus_id": campus.id}
+        predios_data = [
+            {
+                "nome": "UAC",
+                "descricao": "Paulo Freire",
+                "id": 1,
+                "campus_nome": "FUP",  # Reference by campus name instead of campus.id
+            },
+            {
+                "nome": "UEP",
+                "descricao": "Cora Coralina",
+                "id": 2,
+                "campus_nome": "FUP",  # Reference by campus name instead of campus.id
+            },
+        ]
 
-        predio = (
-            session.query(Predio)
-            .filter(Predio.campus_id == campus.id, Predio.nome == "UAC")
-            .first()
-        )
-        if not predio:
-            predio = Predio(**predio_data)
-            session.add(predio)
-            session.flush()
-            print(f"  ✓ Added building: {predio_data['nome']}")
+        predios_map = {}
+        for predio_data in predios_data:
+            existing = (
+                session.query(Predio).filter(Predio.nome == predio_data["nome"]).first()
+            )
+            if not existing:
+                # Create building - pass nome, descricao, and campus_id
+                campus_nome = predio_data["campus_nome"]
+                selected_campus = campus_map.get(campus_nome)
+                if not selected_campus:
+                    # Fallback to first available campus if mapping fails
+                    selected_campus = next(iter(campus_map.values()))
+
+                predio = Predio(
+                    nome=predio_data["nome"],
+                    descricao=predio_data["descricao"],
+                    campus_id=selected_campus.id,
+                )
+                session.add(predio)
+                session.flush()
+                predios_map[predio_data["id"]] = predio
+                print(f"  ✓ Added building: {predio_data['nome']} (id={predio.id})")
+            else:
+                predios_map[predio_data["id"]] = existing
 
         # Seed room types
         tipos_sala_data = [
             {"nome": "Auditório", "descricao": "Auditório"},
             {"nome": "Sala de Aula", "descricao": "Sala de aula regular"},
-            {"nome": "Laboratório de Física", "descricao": "Laboratório de Física"},
-            {"nome": "Laboratório de Química", "descricao": "Laboratório de Química"},
-            {"nome": "Laboratório de Biologia", "descricao": "Laboratório de Biologia"},
-            {
-                "nome": "Laboratório de Informática",
-                "descricao": "Laboratório de Informática",
-            },
-            {"nome": "Sala de Seminário", "descricao": "Sala de Seminário"},
+            {"nome": "Lab. Fís.", "descricao": "Laboratório de Física"},
+            {"nome": "Lab. Quí.", "descricao": "Laboratório de Química"},
+            {"nome": "Lab. Bio.", "descricao": "Laboratório de Biologia"},
+            {"nome": "Lab. Geo.", "descricao": "Laboratório de Geologia"},
+            {"nome": "Lab. Info.", "descricao": "Laboratório de Informática"},
+            {"nome": "Seminário", "descricao": "Sala de Seminário"},
         ]
 
         tipo_sala_ref = None
@@ -300,48 +342,280 @@ def seed_db():
             elif tipo_data["nome"] == "Sala de Aula":
                 tipo_sala_ref = existing
 
-        # Seed rooms (salas)
+        # Seed rooms (salas) with detailed information
         salas_data = [
-            "A1-09/9",
-            "AT-22/7",
-            "AT-09/09",
-            "AT-48/10",
-            "A1-48/10",
-            "A1-19/63",
-            "A1-42/62",
-            "A1-42/60",
-            "A1-48/52",
-            "A1-48/50",
-            "A1-42/42",
-            "A1-48/40",
-            "A1-42/34",
-            "A1-48/32",
-            "A1-42/30",
-            "A1-48/22",
-            "A1-48/20",
-            "A1-42/12",
-            "A1-42/8",
-            "AT-42/30",
-            "AT-48/22",
-            "AT-48/20",
-            "AT-42/12",
+            # Detailed rooms from new data with specific attributes
+            {
+                "nome": "AT-42/12",
+                "capacidade": 36,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-48/20",
+                "capacidade": 16,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Mesas Redondas"],
+            },
+            {
+                "nome": "AT-48/22",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-42/30",
+                "capacidade": 35,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-42/8",
+                "capacidade": 30,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Quadro de Giz"],
+            },
+            {
+                "nome": "A1-42/12",
+                "capacidade": 30,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-48/20",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-48/22",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Quadro de Giz"],
+            },
+            {
+                "nome": "A1-42/30",
+                "capacidade": 35,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-48/32",
+                "capacidade": 12,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Mesas Redondas"],
+            },
+            {
+                "nome": "A1-42/34",
+                "capacidade": 30,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Quadro de Giz"],
+            },
+            {
+                "nome": "A1-48/40",
+                "capacidade": 15,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Mesas Redondas"],
+            },
+            {
+                "nome": "A1-42/42",
+                "capacidade": 30,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-48/50",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": ["Quadro de Giz"],
+            },
+            {
+                "nome": "A1-48/52",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-42/60",
+                "capacidade": 35,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-42/62",
+                "capacidade": 80,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-19/63",
+                "capacidade": 30,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-79/11",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 2,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-53/26",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Lab. Fís.",
+                "predio_id": 2,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-66/26",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Lab. Geo.",
+                "predio_id": 2,
+                "caracteristicas": [],
+            },
+            # Additional rooms from original list with default attributes
+            {
+                "nome": "A1-09/9",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-22/7",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-09/09",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-48/10",
+                "capacidade": 50,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "A1-48/10",
+                "capacidade": 50,
+                "andar": 1,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
         ]
 
-        for sala_nome in salas_data:
-            existing = session.query(Sala).filter(Sala.nome == sala_nome).first()
+        # Get all TipoSala records for mapping
+        tipos_sala_map = {tipo.nome: tipo for tipo in session.query(TipoSala).all()}
+
+        # Get all Caracteristica records for mapping
+        caracteristicas_map = {
+            carac.nome: carac for carac in session.query(Caracteristica).all()
+        }
+
+        for sala_info in salas_data:
+            existing = (
+                session.query(Sala).filter(Sala.nome == sala_info["nome"]).first()
+            )
             if not existing:
-                # Parse floor from prefix (A1 = 1st floor, AT = ground floor)
-                andar = "1" if sala_nome.startswith("A1") else "0"
+                # Get the tipo_sala_id
+                tipo_nome = sala_info["tipo_sala"]
+                tipo_sala = tipos_sala_map.get(tipo_nome)
+                if not tipo_sala:
+                    # Fallback to Sala de Aula if tipo not found
+                    tipo_sala = tipos_sala_map.get("Sala de Aula") or tipo_sala_ref
+
+                selected_predio = predios_map.get(sala_info["predio_id"])
+                if not selected_predio:
+                    # Fallback to predio_id 1 if mapping fails
+                    selected_predio = predios_map.get(1)
+                    if not selected_predio:
+                        # Fallback to first available predio if mapping fails
+                        selected_predio = next(iter(predios_map.values()))
+
                 sala = Sala(
-                    nome=sala_nome,
-                    predio_id=predio.id,
-                    tipo_sala_id=tipo_sala_ref.id if tipo_sala_ref else 1,
-                    capacidade=50,
-                    andar=andar,
+                    nome=sala_info["nome"],
+                    predio_id=(
+                        selected_predio.id
+                        if selected_predio
+                        else next(iter(predios_map.values())).id
+                    ),
+                    tipo_sala_id=(
+                        tipo_sala.id
+                        if tipo_sala
+                        else (tipo_sala_ref.id if tipo_sala_ref else 1)
+                    ),
+                    capacidade=sala_info["capacidade"],
+                    andar=sala_info["andar"],
                     tipo_assento="carteira",
                 )
                 session.add(sala)
-                print(f"  ✓ Added sala: {sala_nome} (andar={andar}, capacidade=50)")
+                session.flush()  # Flush to get the sala.id
+
+                # Add caracteristicas associations
+                for carac_nome in sala_info["caracteristicas"]:
+                    carac = caracteristicas_map.get(carac_nome)
+                    if carac:
+                        # Associate via the many-to-many table
+                        insert_stmt = sala_caracteristicas.insert().values(
+                            sala_id=sala.id, caracteristica_id=carac.id
+                        )
+                        session.execute(insert_stmt)
+
+                print(
+                    f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome}) {'+' + ', '.join(sala_info['caracteristicas']) if sala_info['caracteristicas'] else ''}"
+                )
 
         session.flush()
 
@@ -355,6 +629,7 @@ def seed_db():
             {"nome": "Ventilador"},
             {"nome": "Computadores"},
             {"nome": "Equipamento de Som"},
+            {"nome": "Mesas Redondas"},
         ]
 
         for carac_data in caracteristicas_data:

@@ -54,6 +54,7 @@ class PredioBase(BaseModel):
     """Base schema for Predio."""
 
     nome: str = Field(..., min_length=1, max_length=255)
+    descricao: str = Field(..., min_length=1, max_length=255)
     campus_id: int = Field(..., gt=0)
 
 
@@ -67,6 +68,7 @@ class PredioUpdate(BaseModel):
     """Schema for updating a Predio."""
 
     nome: Optional[str] = Field(None, min_length=1, max_length=255)
+    descricao: Optional[str] = Field(None, min_length=1, max_length=255)
     campus_id: Optional[int] = Field(None, gt=0)
 
 

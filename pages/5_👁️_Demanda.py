@@ -12,6 +12,20 @@ Route: pages/5_🎓_Demanda.py
 import streamlit as st
 from typing import List
 import pandas as pd
+from pages.components.auth import initialize_page
+
+# Initialize page with authentication and configuration
+if not initialize_page(
+    page_title="Demanda - Ensalamento",
+    page_icon="👁️",
+    layout="wide",
+    key_suffix="demanda",
+):
+    st.stop()
+
+# ============================================================================
+# IMPORTS
+# ============================================================================
 
 from src.config.database import get_db_session
 from src.repositories.semestre import SemestreRepository
@@ -21,51 +35,6 @@ from docs.sigaa_parser import SigaaScheduleParser
 from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
 
-
-# ============================================================================
-# BEGIN: AUTHENTICATION CHECK
-# ============================================================================
-# Retrieve authenticator from session state (set by main.py)
-authenticator = st.session_state.get("authenticator")
-
-if authenticator is None:
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-# Call login with unrendered location to maintain session (required for page refresh fix)
-try:
-    authenticator.login(location="unrendered", key="authenticator-demanda")
-except Exception as exc:
-    st.error(f"❌ Erro de autenticação: {exc}")
-    st.stop()
-
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status:
-    # Show logout button in sidebar
-    authenticator.logout(location="sidebar", key="logout-demanda")
-elif auth_status is False:
-    st.error("❌ Acesso negado.")
-    st.stop()
-else:
-    # Not authenticated - redirect to main page
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-# ============================================================================
-# END: AUTHENTICATION CHECK
-# ============================================================================
-
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-st.set_page_config(page_title="Demanda  - Ensalamento", page_icon="👁️", layout="wide")
 
 st.title("👁️ Demanda Semestral")
 
@@ -103,6 +72,7 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
                 "horario_legivel": horario_legivel,
                 "num_slots": num_slots,
                 "id_oferta_externo": data.get("id_oferta_externo"),
+                "codigo_curso": data.get("codigo_curso"),
             }
         )
 
@@ -121,6 +91,7 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
                 "horario_legivel",
                 "num_slots",
                 "id_oferta_externo",
+                "codigo_curso",
             ]
         )
 
@@ -205,6 +176,12 @@ with get_db_session() as session:
     st.subheader("Detalhes da Demanda Selecionada")
 
     filtro_disciplina = st.text_input("Buscar por Nome ou Código da Disciplina")
+
+    # Collect unique course codes for filter
+    cursos_unicos = sorted(df["codigo_curso"].fillna("").unique())
+    cursos_unicos = [c for c in cursos_unicos if c.strip()]  # Remove empty entries
+    filtro_curso = st.multiselect("Filtrar por Curso", options=cursos_unicos)
+
     lista_professores = sorted(list(profs_from_dem))
     filtro_professor = st.multiselect(
         "Filtrar por Professor", options=lista_professores
@@ -219,6 +196,10 @@ with get_db_session() as session:
             | df_filtrado["nome_disciplina"].str.lower().str.contains(term, na=False)
         ]
 
+    if filtro_curso:
+        # Filter by selected course codes
+        df_filtrado = df_filtrado[df_filtrado["codigo_curso"].isin(filtro_curso)]
+
     if filtro_professor:
         # keep rows where any of the selected professor names appear in the professores_disciplina cell
         mask = df_filtrado["professores_disciplina"].apply(
@@ -231,6 +212,7 @@ with get_db_session() as session:
 
     # Select and order columns for display
     display_cols = [
+        "codigo_curso",
         "codigo_disciplina",
         "nome_disciplina",
         "turma_disciplina",
@@ -247,6 +229,7 @@ with get_db_session() as session:
         st.dataframe(
             df_filtrado[display_cols].rename(
                 columns={
+                    "codigo_curso": "Curso",
                     "codigo_disciplina": "Código",
                     "nome_disciplina": "Disciplina",
                     "turma_disciplina": "Turma",
@@ -259,29 +242,47 @@ with get_db_session() as session:
             width="stretch",
         )
 
-if st.button(
-    f"🔄 Sincronizar demanda {semestre_selecionado}",
-    help="Importar demanda por salas do Sistema de Oferta",
-):
-    # Run the sync and store result in session state before rerun
-    try:
-        summary = sync_semester_from_api(semestre_selecionado)
-        # success
-        set_session_feedback(
-            "sync_semestre_result",
-            True,
-            f"Sincronização concluída: {summary['demandas']} demandas importadas, {summary['professores']} professores criados.",
-            ttl=8,
-            summary=summary,
-        )
-    except Exception as e:
-        # store error feedback
-        set_session_feedback(
-            "sync_semestre_result",
-            False,
-            f"❌ Erro na sincronização: {type(e).__name__}: {e}",
-            ttl=12,
-        )
+# Track sync processing state in session state
+if "sync_semestre_processing" not in st.session_state:
+    st.session_state.sync_semestre_processing = False
 
-    # Rerun once so display_session_feedback shows the message
+# Show spinner if processing is active from a previous rerun
+if st.session_state.sync_semestre_processing:
+    with st.spinner(
+        "🔄 Sincronizando dados da API... Isso pode levar alguns segundos."
+    ):
+        # Complete the sync operation
+        try:
+            summary = sync_semester_from_api(semestre_selecionado)
+            # success
+            set_session_feedback(
+                "sync_semestre_result",
+                True,
+                f"Sincronização concluída: {summary['demandas']} demandas importadas, {summary['professores']} professores criados.",
+                ttl=8,
+                summary=summary,
+            )
+        except Exception as e:
+            # store error feedback
+            set_session_feedback(
+                "sync_semestre_result",
+                False,
+                f"❌ Erro na sincronização: {type(e).__name__}: {e}",
+                ttl=12,
+            )
+
+        # Reset processing state
+        st.session_state.sync_semestre_processing = False
+
+        # Rerun to refresh the page and show results
+        st.rerun()
+
+# Sync button (disabled during processing)
+if st.button(
+    f"🔄 Sincronizar Demanda {semestre_selecionado}",
+    help="Importar demanda por salas do Sistema de Oferta",
+    disabled=st.session_state.sync_semestre_processing,
+):
+    # Set processing state and rerun to start spinner
+    st.session_state.sync_semestre_processing = True
     st.rerun()

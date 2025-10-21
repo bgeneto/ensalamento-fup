@@ -36,8 +36,8 @@ class PredioRepository(BaseRepository[Predio, PredioRead]):
         return PredioRead(
             id=orm_obj.id,
             nome=orm_obj.nome,
+            descricao=orm_obj.descricao,
             campus_id=orm_obj.campus_id,
-            codigo=None,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )
@@ -53,6 +53,7 @@ class PredioRepository(BaseRepository[Predio, PredioRead]):
         """
         return Predio(
             nome=dto.nome,
+            descricao=dto.descricao,
             campus_id=dto.campus_id,
         )
 

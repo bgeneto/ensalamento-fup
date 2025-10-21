@@ -6,7 +6,7 @@ BEGIN TRANSACTION;
 ALTER TABLE demandas ADD COLUMN id_oferta_externo TEXT;
 
 -- Create unique index to ensure idempotency: (semestre_id, id_oferta_externo)
-CREATE UNIQUE INDEX IF NOT EXISTS ux_demandas_semestre_id_oferta_externo
-ON demandas (semestre_id, id_oferta_externo);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_demandas_id_oferta_externo
+ON demandas (id_oferta_externo);
 
 COMMIT;

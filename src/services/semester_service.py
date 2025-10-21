@@ -102,7 +102,7 @@ def sync_semester_from_api(cod_semestre: str) -> Dict[str, int]:
                 logger.debug("Skipped oferta (external id exists): %s", detail)
                 continue
 
-            # No backfill: rely solely on id_oferta_externo uniqueness in the DB
+            codigo_curso = oferta.get("cod_curso", "")
 
             dto: Dict[str, Any] = {
                 "semestre_id": semestre.id,
@@ -113,6 +113,7 @@ def sync_semester_from_api(cod_semestre: str) -> Dict[str, int]:
                 "horario_sigaa_bruto": horario,
                 "professores_disciplina": professores_disciplina,
                 "id_oferta_externo": id_oferta_externo,
+                "codigo_curso": codigo_curso,
             }
 
             try:

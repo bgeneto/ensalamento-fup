@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS campus (
 CREATE TABLE IF NOT EXISTS predios (
     id INTEGER PRIMARY KEY,
     nome TEXT NOT NULL UNIQUE,
+    descricao TEXT NOT NULL,
     campus_id INTEGER NOT NULL,
     FOREIGN KEY (campus_id) REFERENCES campus (id)
 );

@@ -85,6 +85,9 @@ class Demanda(BaseModel):
     horario_sigaa_bruto = Column(String(255), nullable=False)  # e.g., "24M12 6T34"
     id_oferta_externo = Column(String(100), nullable=True)
     nivel_disciplina = Column(String(50), nullable=True)  # Graduação, Pós-Graduação
+    codigo_curso = Column(
+        String(50), nullable=True
+    )  # Course code from API (e.g., "GEAGRO")
 
     # Relationships
     semestre = relationship("Semestre", back_populates="demandas")

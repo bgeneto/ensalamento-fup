@@ -11,55 +11,16 @@ URL: ?page=Professores
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from pages.components.auth import initialize_page
 
-# ============================================================================
-# BEGIN: AUTHENTICATION CHECK
-# ============================================================================
-# Retrieve authenticator from session state (set by main.py)
-authenticator = st.session_state.get("authenticator")
-
-if authenticator is None:
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-# Call login with unrendered location to maintain session (required for page refresh fix)
-try:
-    authenticator.login(location="unrendered", key="authenticator-professores")
-except Exception as exc:
-    st.error(f"❌ Erro de autenticação: {exc}")
-    st.stop()
-
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status:
-    # Show logout button in sidebar
-    authenticator.logout(location="sidebar", key="logout-professores")
-elif auth_status is False:
-    st.error("❌ Acesso negado.")
-    st.stop()
-else:
-    # Not authenticated - redirect to main page
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-# ============================================================================
-# END: AUTHENTICATION CHECK
-# ============================================================================
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-
-st.set_page_config(
+# Initialize page with authentication and configuration
+if not initialize_page(
     page_title="Professores - Ensalamento",
     page_icon="👨‍🏫",
     layout="wide",
-)
+    key_suffix="professores",
+):
+    st.stop()
 
 # ============================================================================
 # IMPORTS
@@ -126,6 +87,9 @@ with tab1:
                     )
 
                 df = pd.DataFrame(prof_data)
+
+                # Sort by Nome (Name) in ascending order
+                df = df.sort_values(by=["Nome"]).reset_index(drop=True)
 
                 # Use st.data_editor with dynamic num_rows for CRUD operations
                 # Note: ID column is hidden but kept internally to track database records

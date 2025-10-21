@@ -46,6 +46,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             horario_sigaa_bruto=orm_obj.horario_sigaa_bruto,
             nivel_disciplina=orm_obj.nivel_disciplina,
             id_oferta_externo=orm_obj.id_oferta_externo,
+            codigo_curso=orm_obj.codigo_curso,
             created_at=getattr(orm_obj, "created_at", None),
             updated_at=getattr(orm_obj, "updated_at", None),
         )
@@ -75,6 +76,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         horario = _get("horario_sigaa_bruto") or ""
         nivel = _get("nivel_disciplina") or ""
         id_oferta_externo = _get("id_oferta_externo")
+        codigo_curso = _get("codigo_curso") or ""
 
         return Demanda(
             semestre_id=semestre_id,
@@ -86,6 +88,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             horario_sigaa_bruto=horario,
             nivel_disciplina=nivel,
             id_oferta_externo=id_oferta_externo,
+            codigo_curso=codigo_curso,
         )
 
     def set_external_id_for_existing(

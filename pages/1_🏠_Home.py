@@ -11,51 +11,16 @@ URL: ?page=Home
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from pages.components.auth import initialize_page
 
-# ============================================================================
-# AUTHENTICATION CHECK
-# ============================================================================
-# Retrieve authenticator from session state (set by main.py)
-authenticator = st.session_state.get("authenticator")
-
-if authenticator is None:
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-# Call login with unrendered location to maintain session (required for page refresh fix)
-try:
-    authenticator.login(location="unrendered", key="authenticator-home")
-except Exception as exc:
-    st.error(f"❌ Erro de autenticação: {exc}")
-    st.stop()
-
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status:
-    # Show logout button in sidebar
-    authenticator.logout(location="sidebar", key="logout-home")
-elif auth_status is False:
-    st.error("❌ Acesso negado.")
-    st.stop()
-else:
-    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-    # navigate back to main page where login widget is located
-    st.switch_page("main.py")
-    st.stop()
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-
-st.set_page_config(
+# Initialize page with authentication and configuration
+if not initialize_page(
     page_title="Home - Ensalamento",
     page_icon="🏠",
     layout="wide",
-)
+    key_suffix="home",
+):
+    st.stop()
 
 # ============================================================================
 # IMPORTS - Repositories
