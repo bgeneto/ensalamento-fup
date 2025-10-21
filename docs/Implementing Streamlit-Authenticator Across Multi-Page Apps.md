@@ -48,11 +48,11 @@ from yaml.loader import SafeLoader
 st.title("Streamlit-Authenticator")
 ```
 
-Next, per the setup guide, we can add the required information to read the config.yaml file (see the [docs](https://github.com/mkhorasani/Streamlit-Authenticator?tab=readme-ov-file#3-creating-a-config-file) on how this all works).
+Next, per the setup guide, we can add the required information to read the secrets.yaml file (see the [docs](https://github.com/mkhorasani/Streamlit-Authenticator?tab=readme-ov-file#3-creating-a-config-file) on how this all works).
 
 ```python
 # Load credentials from the YAML file
-with open("config.yaml") as file:
+with open("secrets.yaml") as file:
      config = yaml.load(file, Loader=SafeLoader)
 
 # Initialize the authenticator

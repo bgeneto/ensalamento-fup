@@ -144,7 +144,7 @@ class Usuario(BaseModel):
     - nome_completo: TEXT
     - role: TEXT DEFAULT 'professor'
 
-    NOTE: Passwords are stored in .streamlit/config.yaml for streamlit-authenticator,
+    NOTE: Passwords are stored in .streamlit/secrets.yaml for streamlit-authenticator,
     not in this database table. This table is for reference/audit only.
     """
 

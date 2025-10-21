@@ -130,6 +130,7 @@ dmypy.json
 
 # Streamlit specific
 .streamlit/secrets.toml
+
 # Allow config.toml to be committed
 !.streamlit/config.toml
 

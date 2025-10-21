@@ -74,7 +74,7 @@ Phase  Duration   Focus Area                      Dependencies    Status
 - [ ] Create `usuarios` table with roles support
 - [ ] Implement `UsuarioRepository` (CRUD operations)
 - [ ] Implement `AuthService` with password hashing (bcrypt)
-- [ ] Create `auth_config.yaml` template for streamlit-authenticator
+- [ ] Create `auth_secrets.yaml` template for streamlit-authenticator
 - [ ] Implement `authenticate()` helper function (check session state)
 - [ ] Create Login page (`src/main.py` or dedicated login.py)
 - [ ] Create User Management page (`pages/11_👥_Usuários.py`) - Admin only
@@ -550,7 +550,7 @@ Use this template for tracking progress on each phase:
 | Phase | Key Files to Create/Modify                                                                                                                                |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `src/config/`, `src/models/`, `src/schemas/`, `src/db/`, `Dockerfile`                                                                                     |
-| 2     | `src/services/auth_service.py`, `pages/11_👥_Usuários.py`, `src/config/auth_config.yaml`                                                                   |
+| 2     | `src/services/auth_service.py`, `pages/11_👥_Usuários.py`, `src/config/auth_secrets.yaml`                                                                  |
 | 3     | `src/services/inventory_service.py`, `pages/5_🏢_Inventário.py`, `pages/4_📊_Dashboard_Admin.py`                                                            |
 | 4     | `src/services/professor_service.py`, `pages/6_👨‍🎓_Professores.py`, `pages/13_⭐_Minhas_Preferências.py`                                                      |
 | 5     | `src/services/semester_service.py`, `src/services/api_service.py`, `pages/8_⚙️_Semestre.py`                                                                |

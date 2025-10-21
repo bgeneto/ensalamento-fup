@@ -88,7 +88,7 @@ ensalamento-fup/
 │   │   ├── __init__.py
 │   │   ├── settings.py         # Configuration & environment variables
 │   │   ├── database.py         # Database connection & session management
-│   │   └── auth_config.yaml    # streamlit-authenticator config
+│   │   └── auth_secrets.yaml    # streamlit-authenticator config
 │   │
 │   ├── models/                 # SQLAlchemy ORM models
 │   │   ├── __init__.py
@@ -245,7 +245,7 @@ ensalamento-fup/
 - `src/repositories/usuario_repository.py`
 - `src/models/usuario.py`
 - `pages/11_👥_Usuários.py` (admin)
-- `src/config/auth_config.yaml`
+- `src/config/auth_secrets.yaml`
 
 ---
 

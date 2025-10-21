@@ -179,7 +179,7 @@ repo = SalaRepository(session)
 salas = repo.get_all()
 
 df = pd.DataFrame([{"ID": s.id, "Nome": s.nome} for s in salas])
-st.dataframe(df, use_container_width=True)
+st.dataframe(df, width='stretch')
 
 session.close()
 ```

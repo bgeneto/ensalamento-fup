@@ -314,7 +314,7 @@ with tab1:
 
                 st.dataframe(
                     prof_data,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={"ID": None},  # Hide the ID column
                 )
@@ -649,7 +649,7 @@ with tab2:
 
                 # Submit button
                 submitted = st.form_submit_button(
-                    "💾 Criar Regra", type="primary", use_container_width=True
+                    "💾 Criar Regra", type="primary", width="stretch"
                 )
 
                 if submitted:

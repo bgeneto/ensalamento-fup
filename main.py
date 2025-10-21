@@ -76,7 +76,7 @@ st.markdown(
 
 def load_config():
     """Load configuration from YAML file."""
-    config_path = Path(".streamlit/config.yaml")
+    config_path = Path(".streamlit/secrets.yaml")
 
     if not config_path.exists():
         st.error(f"❌ Configuration file not found: {config_path}")

@@ -9,7 +9,7 @@
 ### Big Picture
 - **Frontend + Backend:** Multipage Streamlit app (no separate API layer)
 - **Database:** SQLite3 file-based (`data/ensalamento.db`), accessed via SQLAlchemy ORM
-- **Authentication:** `streamlit-authenticator` with YAML config (`.streamlit/config.yaml`)
+- **Authentication:** `streamlit-authenticator` with YAML config (`.streamlit/secrets.yaml`)
 - **Key Constraint:** System uses SIGAA time blocks (atomic scheduling units: M1, M2, T1, etc.) to prevent conflicts
 
 ### Three-Layer Structure
@@ -52,7 +52,7 @@ src/
 cd /home/bgeneto/github/ensalamento-fup
 streamlit run main.py
 ```
-**First run:** Auto-initializes DB (creates schema), seeds initial data (time blocks, room types, campus, 142 professors from CSV), creates admin user. Check `.streamlit/config.yaml` for credentials.
+**First run:** Auto-initializes DB (creates schema), seeds initial data (time blocks, room types, campus, 142 professors from CSV), creates admin user. Check `.streamlit/secrets.yaml` for credentials.
 
 ### Database Initialization & Seeding
 ```bash
@@ -257,7 +257,7 @@ if "import_result" in st.session_state:
 - **Tests:** `tests/` folder (test files match source structure: `test_repositories.py`, `test_models.py`)
 - **Data:** `data/` folder (SQLite DB file, CSV exports)
 - **Docs:** `docs/` folder (Markdown, never root)
-- **Configuration:** `.streamlit/config.yaml` (auth), `.env` (secrets via `Settings` class)
+- **Configuration:** `.streamlit/secrets.yaml` (auth), `.env` (secrets via `Settings` class)
 
 ## Integration Points & External Dependencies
 

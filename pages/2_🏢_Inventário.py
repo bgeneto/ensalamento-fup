@@ -1334,7 +1334,7 @@ with tab4:
                                 "💾 Salvar",
                                 key=f"update_{selected_sala_id}",
                                 help="Salva as características da sala",
-                                use_container_width=True,
+                                width="stretch",
                                 type="primary",
                             ):
                                 try:
@@ -1369,7 +1369,7 @@ with tab4:
                                 "🗑️ Limpar Sala",
                                 key=f"clear_{selected_sala_id}",
                                 help="Remove todas as características da sala",
-                                use_container_width=True,
+                                width="stretch",
                             ):
                                 try:
                                     success = sala_repo.set_caracteristicas_for_sala(

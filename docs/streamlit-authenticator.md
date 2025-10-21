@@ -102,7 +102,7 @@ api_key: # Optional - register to receive a free API key: https://stauthenticato
 import yaml
 from yaml.loader import SafeLoader
 
-with open('../config.yaml') as file:
+with open('../secrets.yaml') as file:
     config = yaml.load(file, Loader=SafeLoader)
 
 # Pre-hashing all plain text passwords once
@@ -517,11 +517,11 @@ if st.session_state.get('authentication_status'):
 * Please ensure that the config file is re-saved whenever the contents are modified or after using any of the widgets or buttons.
 
 ```python
-with open('../config.yaml', 'w') as file:
+with open('../secrets.yaml', 'w') as file:
     yaml.dump(config, file, default_flow_style=False, allow_unicode=True)
 ```
 * Please note that this step is not required if you are providing the config file as a path to the **Authenticate** class.
-  
+
 ## License
 
 This project is open source software licensed under the MIT License. The use of this software is governed by the terms specified in the [LICENSE](https://github.com/mkhorasani/Streamlit-Authenticator/blob/main/LICENSE) file.
