@@ -13,7 +13,7 @@ import pandas as pd
 from datetime import datetime
 
 # ============================================================================
-# AUTHENTICATION CHECK
+# BEGIN: AUTHENTICATION CHECK
 # ============================================================================
 # Retrieve authenticator from session state (set by main.py)
 authenticator = st.session_state.get("authenticator")
@@ -47,7 +47,9 @@ else:
     # navigate back to main page where login widget is located
     st.switch_page("main.py")
     st.stop()
-
+# ============================================================================
+# END: AUTHENTICATION CHECK
+# ============================================================================
 
 # ============================================================================
 # PAGE CONFIG

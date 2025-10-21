@@ -21,8 +21,9 @@ from docs.sigaa_parser import SigaaScheduleParser
 from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
 
+
 # ============================================================================
-# AUTHENTICATION CHECK
+# BEGIN: AUTHENTICATION CHECK
 # ============================================================================
 # Retrieve authenticator from session state (set by main.py)
 authenticator = st.session_state.get("authenticator")
@@ -34,15 +35,32 @@ if authenticator is None:
     st.switch_page("main.py")
     st.stop()
 
+# Call login with unrendered location to maintain session (required for page refresh fix)
 try:
-    authenticator.login(location="unrendered", key="authenticator-demandas")
+    authenticator.login(location="unrendered", key="authenticator-demanda")
 except Exception as exc:
     st.error(f"❌ Erro de autenticação: {exc}")
     st.stop()
 
-if not st.session_state.get("authentication_status"):
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status:
+    # Show logout button in sidebar
+    authenticator.logout(location="sidebar", key="logout-demanda")
+elif auth_status is False:
     st.error("❌ Acesso negado.")
     st.stop()
+else:
+    # Not authenticated - redirect to main page
+    st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
+    st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
+    # navigate back to main page where login widget is located
+    st.switch_page("main.py")
+    st.stop()
+# ============================================================================
+# END: AUTHENTICATION CHECK
+# ============================================================================
+
 
 # ============================================================================
 # PAGE CONFIG
