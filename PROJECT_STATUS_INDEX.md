@@ -154,9 +154,9 @@ tests/
 
 ### Phase 3: UI & Business Logic 🔲 UPCOMING
 
-- [ ] Concrete repository classes
-- [ ] Admin CRUD operations
-- [ ] Service layer implementation
+- [x] Concrete repository classes
+- [x] Admin CRUD operations
+- [x] Service layer implementation
 - [ ] Allocation algorithm
 - [ ] Real API integration
 - [ ] Advanced features

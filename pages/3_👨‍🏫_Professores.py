@@ -154,6 +154,10 @@ with tab1:
 
                 # Process changes from data editor
                 if len(edited_df) != len(df):
+                    # Process deletions/additions in batch to avoid repeated reruns.
+                    changes_made = False
+                    errors_occurred = False
+
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
                     edited_ids = set(
@@ -162,82 +166,106 @@ with tab1:
 
                     # Handle deletions (rows removed from edited_df)
                     deleted_ids = original_ids - edited_ids
-                    for prof_id in deleted_ids:
+                    if deleted_ids:
                         try:
                             with get_db_session() as session:
                                 prof_repo_delete = ProfessorRepository(session)
-                                prof_repo_delete.delete(int(prof_id))
+                                for prof_id in deleted_ids:
+                                    prof_repo_delete.delete(int(prof_id))
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Professor ID {prof_id} removido com sucesso!",
+                                f"{len(deleted_ids)} professor(es) removido(s) com sucesso!",
                                 action="delete",
                             )
+                            changes_made = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao deletar professor ID {prof_id}: {str(e)}",
+                                f"Erro ao deletar professor(es): {str(e)}",
                                 action="delete",
                             )
-                        st.rerun()
+                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
                         (edited_df["ID"].isna()) | (edited_df["ID"] == 0)
                     ].copy()
-                    for idx, row in new_rows.iterrows():
-                        nome = str(row["Nome"]).strip()
-                        username = str(row["Username"]).strip()
-                        mobilidade = bool(row["Mobilidade"])
-
-                        if not nome or not username:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Nome e Username são obrigatórios",
-                                action="create",
-                            )
-                            st.rerun()
-
+                    if not new_rows.empty:
+                        created = 0
                         try:
                             with get_db_session() as session:
                                 prof_repo_create = ProfessorRepository(session)
-                                # Check if already exists
-                                existing = prof_repo_create.get_by_username_login(
-                                    username
-                                )
-                                if existing:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Username '{username}' já existe no banco de dados",
-                                        action="create",
+                                for idx, row in new_rows.iterrows():
+                                    nome = str(row["Nome"]).strip()
+                                    username = str(row["Username"]).strip()
+                                    mobilidade = bool(row["Mobilidade"])
+
+                                    if not nome or not username:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Nome e Username são obrigatórios",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    # Check if already exists
+                                    existing = prof_repo_create.get_by_username_login(
+                                        username
                                     )
-                                else:
+                                    if existing:
+                                        # Show feedback but DO NOT force a rerun here:
+                                        # let the user fix the value in the data editor.
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            f"Username '{username}' já existe no banco de dados",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
                                     prof_dto = ProfessorCreate(
                                         nome_completo=nome,
                                         username_login=username,
                                         tem_baixa_mobilidade=mobilidade,
                                     )
                                     prof_repo_create.create(prof_dto)
-                                    set_session_feedback(
-                                        "crud_result",
-                                        True,
-                                        f"Professor {nome} adicionado com sucesso!",
-                                        action="create",
-                                    )
+                                    created += 1
+
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao criar professor: {str(e)}",
+                                f"Erro ao criar professor(es): {str(e)}",
                                 action="create",
                             )
+                            errors_occurred = True
+
+                        if created:
+                            set_session_feedback(
+                                "crud_result",
+                                True,
+                                f"{created} professor(es) adicionado(s) com sucesso!",
+                                action="create",
+                            )
+                            changes_made = True
+
+                    # If any DB changes were made, rerun once to refresh the table.
+                    if changes_made:
                         st.rerun()
+                    # If only errors occurred, do NOT rerun so user can edit the row in-place.
+                    # display_session_feedback will show the error toast below.
 
                 # Handle updates (rows with changes in existing records)
                 else:
+                    # Batch update handling to avoid immediate reruns on validation errors
+                    changes_made = False
+                    errors_occurred = False
+
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
                             original_row = df.iloc[idx]
@@ -264,7 +292,8 @@ with tab1:
                                         "Nome e Username são obrigatórios",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 try:
                                     with get_db_session() as session:
@@ -288,7 +317,8 @@ with tab1:
                                                         f"Username '{username}' já existe",
                                                         action="update",
                                                     )
-                                                    st.rerun()
+                                                    errors_occurred = True
+                                                    continue
 
                                             # Update fields
                                             current.nome_completo = nome
@@ -302,6 +332,7 @@ with tab1:
                                                 f"Professor(a) {nome} atualizado com sucesso!",
                                                 action="update",
                                             )
+                                            changes_made = True
                                 except Exception as e:
                                     set_session_feedback(
                                         "crud_result",
@@ -309,7 +340,11 @@ with tab1:
                                         f"Erro ao atualizar professor(a): {str(e)}",
                                         action="update",
                                     )
-                                st.rerun()
+                                    errors_occurred = True
+
+                    if changes_made:
+                        st.rerun()
+                    # If only errors occurred, do NOT rerun so user can fix values in-place.
 
                 # Display CRUD result if available
                 display_session_feedback("crud_result")
@@ -331,7 +366,7 @@ with tab2:
 
     import_method = st.radio(
         "Escolha o método de importação:",
-        ["📥 Upload CSV", "🔗 API Sistema de Oferta", "📝 Importação Manual"],
+        ["📥 Upload CSV", "📝 Importação Manual"],
         horizontal=True,
     )
 
@@ -459,25 +494,8 @@ with tab2:
             except Exception as e:
                 st.error(f"❌ Erro ao processar arquivo: {str(e)}")
 
-    # API Import
-    elif import_method == "🔗 API Sistema de Oferta":
-        st.markdown(
-            """
-        Integração com API do Sistema de Oferta ainda não configurada.
-
-        **Passos necessários:**
-        1. Configurar credenciais na página de Configurações
-        2. Testar conexão com API
-        3. Selecionar semestre e campus
-        4. Sincronizar dados
-        """
-        )
-
-        if st.button("🔧 Ir para Configurações", key="goto_config"):
-            st.info("Acesse a página de Configurações no menu lateral")
-
     # Manual Import
-    elif import_method == "📝 Importação Manual":
+    else:
         st.markdown("**Adicionar um professor manualmente:**")
 
         with st.form("form_professor"):

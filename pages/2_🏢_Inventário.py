@@ -166,6 +166,10 @@ with tab1:
 
                 # Process changes from data editor
                 if len(edited_df) != len(df):
+                    # Batch additions/deletions to avoid repeated reruns
+                    changes_made = False
+                    errors_occurred = False
+
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
                     edited_ids = set(
@@ -174,72 +178,75 @@ with tab1:
 
                     # Handle deletions (rows removed from edited_df)
                     deleted_ids = original_ids - edited_ids
-                    for campus_id in deleted_ids:
+                    if deleted_ids:
                         try:
                             with get_db_session() as session:
                                 campus_repo_delete = CampusRepository(session)
-                                campus_repo_delete.delete(int(campus_id))
+                                for campus_id in deleted_ids:
+                                    campus_repo_delete.delete(int(campus_id))
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Campus ID {campus_id} removido com sucesso!",
+                                f"{len(deleted_ids)} campus(s) removido(s) com sucesso!",
                                 action="delete",
                             )
+                            changes_made = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao deletar campus ID {campus_id}: {str(e)}",
+                                f"Erro ao deletar campus: {str(e)}",
                                 action="delete",
                             )
-                        st.rerun()
+                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
                         (edited_df["ID"].isna()) | (edited_df["ID"] == 0)
                     ].copy()
-                    for idx, row in new_rows.iterrows():
-                        nome = str(row["Nome"]).strip()
-                        descricao = str(row["Descrição"]).strip()
-                        if not nome:
-                            nome = None
-                        if not descricao:
-                            descricao = None
-
-                        if not nome:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Nome do campus é obrigatório",
-                                action="create",
-                            )
-                            st.rerun()
-
+                    if not new_rows.empty:
+                        created = 0
                         try:
                             with get_db_session() as session:
                                 campus_repo_create = CampusRepository(session)
-                                # Check if already exists
-                                existing = campus_repo_create.get_all()
-                                existing_names = [c.nome.lower() for c in existing]
-                                if nome.lower() in existing_names:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Campus '{nome}' já existe no banco de dados",
-                                        action="create",
-                                    )
-                                else:
+                                for idx, row in new_rows.iterrows():
+                                    nome = str(row["Nome"]).strip()
+                                    descricao = str(row["Descrição"]).strip()
+                                    if not nome:
+                                        nome = None
+                                    if not descricao:
+                                        descricao = None
+
+                                    if not nome:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Nome do campus é obrigatório",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    # Check if already exists
+                                    existing = campus_repo_create.get_all()
+                                    existing_names = [c.nome.lower() for c in existing]
+                                    if nome.lower() in existing_names:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            f"Campus '{nome}' já existe no banco de dados",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
                                     campus_dto = CampusCreate(
                                         nome=nome,
                                         descricao=descricao,
                                     )
                                     campus_repo_create.create(campus_dto)
-                                    set_session_feedback(
-                                        "crud_result",
-                                        True,
-                                        f"Campus {nome} adicionado com sucesso!",
-                                        action="create",
-                                    )
+                                    created += 1
+
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
@@ -247,7 +254,20 @@ with tab1:
                                 f"Erro ao criar campus: {str(e)}",
                                 action="create",
                             )
+                            errors_occurred = True
+
+                        if created:
+                            set_session_feedback(
+                                "crud_result",
+                                True,
+                                f"{created} campus(s) adicionado(s) com sucesso!",
+                                action="create",
+                            )
+                            changes_made = True
+
+                    if changes_made:
                         st.rerun()
+                    # If only errors occurred, avoid rerun so the user can edit
 
                 # Handle updates (rows with changes in existing records)
                 else:
@@ -420,6 +440,9 @@ with tab2:
 
                 # Process changes from data editor
                 if len(edited_df) != len(df):
+                    changes_made = False
+                    errors_occurred = False
+
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
                     edited_ids = set(
@@ -428,71 +451,80 @@ with tab2:
 
                     # Handle deletions (rows removed from edited_df)
                     deleted_ids = original_ids - edited_ids
-                    for predio_id in deleted_ids:
+                    if deleted_ids:
                         try:
                             with get_db_session() as session:
                                 predio_repo_delete = PredioRepository(session)
-                                predio_repo_delete.delete(int(predio_id))
+                                for predio_id in deleted_ids:
+                                    predio_repo_delete.delete(int(predio_id))
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Prédio ID {predio_id} removido com sucesso!",
+                                f"{len(deleted_ids)} prédio(s) removido(s) com sucesso!",
                                 action="delete",
                             )
+                            changes_made = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao deletar prédio ID {predio_id}: {str(e)}",
+                                f"Erro ao deletar prédio(s): {str(e)}",
                                 action="delete",
                             )
-                        st.rerun()
+                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
                         (edited_df["ID"].isna()) | (edited_df["ID"] == 0)
                     ].copy()
-                    for idx, row in new_rows.iterrows():
-                        nome = str(row["Nome"]).strip()
-                        campus_id = row["Campus"]
-
-                        if not nome:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Nome do prédio é obrigatório",
-                                action="create",
-                            )
-                            st.rerun()
-
-                        if not campus_id or pd.isna(campus_id):
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Campus deve ser selecionado",
-                                action="create",
-                            )
-                            st.rerun()
-
+                    if not new_rows.empty:
+                        created = 0
                         try:
                             with get_db_session() as session:
                                 predio_repo_create = PredioRepository(session)
-                                # Check if already exists
-                                existing = predio_repo_create.get_all()
-                                existing_names = [p.nome.lower() for p in existing]
-                                if nome.lower() in existing_names:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Prédio '{nome}' já existe no banco de dados",
-                                        action="create",
-                                    )
-                                else:
+                                for idx, row in new_rows.iterrows():
+                                    nome = str(row["Nome"]).strip()
+                                    campus_id = row["Campus"]
+
+                                    if not nome:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Nome do prédio é obrigatório",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    if not campus_id or pd.isna(campus_id):
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Campus deve ser selecionado",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    # Check if already exists
+                                    existing = predio_repo_create.get_all()
+                                    existing_names = [p.nome.lower() for p in existing]
+                                    if nome.lower() in existing_names:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            f"Prédio '{nome}' já existe no banco de dados",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
                                     predio_dto = PredioCreate(
                                         nome=nome,
                                         campus_id=int(campus_id),
                                     )
                                     predio_repo_create.create(predio_dto)
+                                    created += 1
                                     campus_name = campus_options.get(
                                         int(campus_id), "N/A"
                                     )
@@ -509,10 +541,20 @@ with tab2:
                                 f"Erro ao criar prédio: {str(e)}",
                                 action="create",
                             )
+                            errors_occurred = True
+
+                        if created:
+                            changes_made = True
+
+                    if changes_made:
                         st.rerun()
+                    # If only errors occurred, avoid rerun so user can edit
 
                 # Handle updates (rows with changes in existing records)
                 else:
+                    changes_made = False
+                    errors_occurred = False
+
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
                             original_row = df.iloc[idx]
@@ -533,7 +575,8 @@ with tab2:
                                         "Nome do prédio é obrigatório",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 if not campus_id or pd.isna(campus_id):
                                     set_session_feedback(
@@ -542,7 +585,8 @@ with tab2:
                                         "Campus deve ser selecionado",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 try:
                                     with get_db_session() as session:
@@ -573,7 +617,8 @@ with tab2:
                                                         f"Prédio '{nome}' já existe",
                                                         action="update",
                                                     )
-                                                    st.rerun()
+                                                    errors_occurred = True
+                                                    continue
 
                                             # Update fields
                                             predio_dto = PredioCreate(
@@ -593,6 +638,7 @@ with tab2:
                                                 f"Prédio {nome} atualizado com sucesso (Campus: {campus_name})!",
                                                 action="update",
                                             )
+                                            changes_made = True
                                 except Exception as e:
                                     set_session_feedback(
                                         "crud_result",
@@ -600,7 +646,11 @@ with tab2:
                                         f"Erro ao atualizar prédio: {str(e)}",
                                         action="update",
                                     )
-                                st.rerun()
+                                    errors_occurred = True
+
+                    if changes_made:
+                        st.rerun()
+                    # If only errors occurred, avoid rerun so user can fix values
 
                 # Display CRUD result if available
                 display_session_feedback("crud_result")
@@ -723,6 +773,9 @@ with tab3:
 
                 # Process changes from data editor
                 if len(edited_df) != len(df):
+                    changes_made = False
+                    errors_occurred = False
+
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
                     edited_ids = set(
@@ -731,82 +784,130 @@ with tab3:
 
                     # Handle deletions (rows removed from edited_df)
                     deleted_ids = original_ids - edited_ids
-                    for sala_id in deleted_ids:
+                    if deleted_ids:
                         try:
                             with get_db_session() as session:
                                 sala_repo_delete = SalaRepository(session)
-                                sala_repo_delete.delete(int(sala_id))
+                                for sala_id in deleted_ids:
+                                    sala_repo_delete.delete(int(sala_id))
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Sala ID {sala_id} removida com sucesso!",
+                                f"{len(deleted_ids)} sala(s) removida(s) com sucesso!",
                                 action="delete",
                             )
+                            changes_made = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao deletar sala ID {sala_id}: {str(e)}",
+                                f"Erro ao deletar sala(s): {str(e)}",
                                 action="delete",
                             )
-                        st.rerun()
+                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
                         (edited_df["ID"].isna()) | (edited_df["ID"] == 0)
                     ].copy()
-                    for idx, row in new_rows.iterrows():
-                        nome = str(row["Nome"]).strip()
-                        predio_id = row["Prédio"]
-                        tipo_sala_id = row["Tipo Sala"]
-                        capacidade = row["Capacidade"]
-                        andar = row["Andar"]
-                        tipo_assento = str(row["Tipo Assento"]).strip()
+                    if not new_rows.empty:
+                        created = 0
+                        try:
+                            with get_db_session() as session:
+                                sala_repo_create = SalaRepository(session)
+                                for idx, row in new_rows.iterrows():
+                                    nome = str(row["Nome"]).strip()
+                                    predio_id = row["Prédio"]
+                                    tipo_sala_id = row["Tipo Sala"]
+                                    capacidade = row["Capacidade"]
+                                    andar = row["Andar"]
+                                    tipo_assento = str(row["Tipo Assento"]).strip()
 
-                        if not nome:
+                                    if not nome:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Nome da sala é obrigatório",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    if not predio_id or pd.isna(predio_id):
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Prédio deve ser selecionado",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    if not tipo_sala_id or pd.isna(tipo_sala_id):
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Tipo sala deve ser selecionado",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    if (
+                                        not capacidade
+                                        or pd.isna(capacidade)
+                                        or capacidade < 1
+                                    ):
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Capacidade deve ser um número maior que 0",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    # Clean up optional fields
+                                    if pd.isna(andar) or andar == "":
+                                        andar = None
+                                    else:
+                                        andar = int(andar)
+
+                                    if not tipo_assento:
+                                        tipo_assento = None
+
+                                    # Create room - repository should validate foreign keys
+                                    sala_dto = SalaRead(
+                                        nome=nome,
+                                        predio_id=int(predio_id),
+                                        tipo_sala_id=int(tipo_sala_id),
+                                        capacidade=int(capacidade),
+                                        andar=andar,
+                                        tipo_assento=tipo_assento,
+                                    )
+                                    sala_repo_create.create(sala_dto)
+                                    created += 1
+                        except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                "Nome da sala é obrigatório",
+                                f"Erro ao criar sala(s): {str(e)}",
                                 action="create",
                             )
-                            st.rerun()
+                            errors_occurred = True
 
-                        if not predio_id or pd.isna(predio_id):
+                        if created:
                             set_session_feedback(
                                 "crud_result",
-                                False,
-                                "Prédio deve ser selecionado",
+                                True,
+                                f"{created} sala(s) adicionado(s) com sucesso!",
                                 action="create",
                             )
-                            st.rerun()
+                            changes_made = True
 
-                        if not tipo_sala_id or pd.isna(tipo_sala_id):
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Tipo sala deve ser selecionado",
-                                action="create",
-                            )
-                            st.rerun()
-
-                        if not capacidade or pd.isna(capacidade) or capacidade < 1:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Capacidade deve ser um número maior que 0",
-                                action="create",
-                            )
-                            st.rerun()
-
-                        # Clean up optional fields
-                        if pd.isna(andar) or andar == "":
-                            andar = None
-                        else:
-                            andar = int(andar)
-
-                        if not tipo_assento:
-                            tipo_assento = None
+                    if changes_made:
+                        st.rerun()
+                        # If only errors occurred, avoid rerun so user can edit
 
                         try:
                             with get_db_session() as session:
@@ -858,6 +959,9 @@ with tab3:
 
                 # Handle updates (rows with changes in existing records)
                 else:
+                    changes_made = False
+                    errors_occurred = False
+
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
                             original_row = df.iloc[idx]
@@ -901,7 +1005,8 @@ with tab3:
                                         "Nome da sala é obrigatório",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 if not predio_id or pd.isna(predio_id):
                                     set_session_feedback(
@@ -910,7 +1015,8 @@ with tab3:
                                         "Prédio deve ser selecionado",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 if not tipo_sala_id or pd.isna(tipo_sala_id):
                                     set_session_feedback(
@@ -919,7 +1025,8 @@ with tab3:
                                         "Tipo sala deve ser selecionado",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 if (
                                     not capacidade
@@ -932,7 +1039,8 @@ with tab3:
                                         "Capacidade deve ser um número maior que 0",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 # Clean up optional fields
                                 if pd.isna(andar) or andar == "":
@@ -970,7 +1078,8 @@ with tab3:
                                                         f"Sala '{nome}' já existe neste prédio",
                                                         action="update",
                                                     )
-                                                    st.rerun()
+                                                    errors_occurred = True
+                                                    continue
 
                                             # Update fields
                                             from src.schemas.inventory import SalaUpdate
@@ -996,6 +1105,7 @@ with tab3:
                                                 f"Sala {nome} atualizada com sucesso (Prédio: {predio_nome})!",
                                                 action="update",
                                             )
+                                            changes_made = True
                                 except Exception as e:
                                     set_session_feedback(
                                         "crud_result",
@@ -1003,7 +1113,11 @@ with tab3:
                                         f"Erro ao atualizar sala: {str(e)}",
                                         action="update",
                                     )
-                                st.rerun()
+                                    errors_occurred = True
+
+                    if changes_made:
+                        st.rerun()
+                    # If only errors occurred, avoid rerun so user can fix values
 
                 # Display CRUD result if available
                 display_session_feedback("crud_result")
@@ -1078,6 +1192,9 @@ with tab3:
 
                 # Process changes from data editor
                 if len(edited_df) != len(df):
+                    changes_made = False
+                    errors_occurred = False
+
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
                     edited_ids = set(
@@ -1086,72 +1203,75 @@ with tab3:
 
                     # Handle deletions (rows removed from edited_df)
                     deleted_ids = original_ids - edited_ids
-                    for caracteristica_id in deleted_ids:
+                    if deleted_ids:
                         try:
                             with get_db_session() as session:
                                 caracteristica_repo_delete = CaracteristicaRepository(
                                     session
                                 )
-                                caracteristica_repo_delete.delete(
-                                    int(caracteristica_id)
-                                )
+                                for caracteristica_id in deleted_ids:
+                                    caracteristica_repo_delete.delete(
+                                        int(caracteristica_id)
+                                    )
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Característica ID {caracteristica_id} removida com sucesso!",
+                                f"{len(deleted_ids)} característica(s) removida(s) com sucesso!",
                                 action="delete",
                             )
+                            changes_made = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
                                 False,
-                                f"Erro ao deletar característica ID {caracteristica_id}: {str(e)}",
+                                f"Erro ao deletar característica(s): {str(e)}",
                                 action="delete",
                             )
-                        st.rerun()
+                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
                         (edited_df["ID"].isna()) | (edited_df["ID"] == 0)
                     ].copy()
-                    for idx, row in new_rows.iterrows():
-                        nome = str(row["Nome"]).strip()
-
-                        if not nome:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                "Nome da característica é obrigatório",
-                                action="create",
-                            )
-                            st.rerun()
-
+                    if not new_rows.empty:
+                        created = 0
                         try:
                             with get_db_session() as session:
                                 caracteristica_repo_create = CaracteristicaRepository(
                                     session
                                 )
-                                # Check if already exists
-                                existing = caracteristica_repo_create.get_all()
-                                existing_names = [c.nome.lower() for c in existing]
-                                if nome.lower() in existing_names:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Característica '{nome}' já existe no banco de dados",
-                                        action="create",
-                                    )
-                                else:
+                                for idx, row in new_rows.iterrows():
+                                    nome = str(row["Nome"]).strip()
+
+                                    if not nome:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            "Nome da característica é obrigatório",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
+                                    # Check if already exists
+                                    existing = caracteristica_repo_create.get_all()
+                                    existing_names = [c.nome.lower() for c in existing]
+                                    if nome.lower() in existing_names:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            f"Característica '{nome}' já existe no banco de dados",
+                                            action="create",
+                                        )
+                                        errors_occurred = True
+                                        continue
+
                                     caracteristica_dto = CaracteristicaCreate(nome=nome)
                                     caracteristica_repo_create.create(
                                         caracteristica_dto
                                     )
-                                    set_session_feedback(
-                                        "crud_result",
-                                        True,
-                                        f"Característica {nome} adicionada com sucesso!",
-                                        action="create",
-                                    )
+                                    created += 1
+
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
@@ -1159,10 +1279,26 @@ with tab3:
                                 f"Erro ao criar característica: {str(e)}",
                                 action="create",
                             )
+                            errors_occurred = True
+
+                        if created:
+                            set_session_feedback(
+                                "crud_result",
+                                True,
+                                f"{created} característica(s) adicionada(s) com sucesso!",
+                                action="create",
+                            )
+                            changes_made = True
+
+                    if changes_made:
                         st.rerun()
+                    # If only errors occurred, avoid rerun so user can edit
 
                 # Handle updates (rows with changes in existing records)
                 else:
+                    changes_made = False
+                    errors_occurred = False
+
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
                             original_row = df.iloc[idx]
@@ -1181,7 +1317,8 @@ with tab3:
                                         "Nome da característica é obrigatório",
                                         action="update",
                                     )
-                                    st.rerun()
+                                    errors_occurred = True
+                                    continue
 
                                 try:
                                     with get_db_session() as session:
@@ -1211,7 +1348,8 @@ with tab3:
                                                         f"Característica '{nome}' já existe",
                                                         action="update",
                                                     )
-                                                    st.rerun()
+                                                    errors_occurred = True
+                                                    continue
 
                                             # Update fields
                                             caracteristica_dto = CaracteristicaCreate(
@@ -1227,6 +1365,7 @@ with tab3:
                                                 f"Característica {nome} atualizada com sucesso!",
                                                 action="update",
                                             )
+                                            changes_made = True
                                 except Exception as e:
                                     set_session_feedback(
                                         "crud_result",
@@ -1234,7 +1373,11 @@ with tab3:
                                         f"Erro ao atualizar característica: {str(e)}",
                                         action="update",
                                     )
-                                st.rerun()
+                                    errors_occurred = True
+
+                    if changes_made:
+                        st.rerun()
+                    # If only errors occurred, avoid rerun so user can fix values
 
                 # Display CRUD result if available
                 display_session_feedback("crud_result")

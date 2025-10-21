@@ -259,52 +259,27 @@ profs = prof_repo.search("João")  # Find professors named João
 - Result: 6 working repositories, 100% test coverage
 
 ### Milestone 2: Admin Inventory Pages 📋 (NEXT)
-- [ ] Create `pages/10_Inventory.py` (Room CRUD)
-- [ ] Create `pages/11_Professors.py` (Professor import/management)
-- [ ] Create `pages/12_Demands.py` (Course allocation dashboard)
-- Result: Admin can manage database
+- [ ] Create `pages/2_🏢_Inventário.py`
+
+- [ ] Create `pages/3_👨‍🏫_Professores.py` (Professor import/management)
+
+- [ ] Create `pages/4_📌_Preferências.py` (professor and course preferences )
+
+- [ ] Create `pages/5_📌_Demandas.py` ()
+
+  
 
 ### Milestone 3: Allocation Algorithm 🧠 (LATER)
 - [ ] Implement allocation service
 - [ ] Create room availability checker
 - [ ] Create conflict detector
-- [ ] Create `pages/13_Allocations.py` (Manual allocation)
+- [ ] Create `pages/6_Reservas.py` (Manual allocation/reservations)
 - Result: Can allocate courses to rooms
 
 ### Milestone 4: Reports & Export 📊 (FINAL)
 - [ ] Schedule export (PDF, Excel)
 - [ ] Conflict reports
 - [ ] Utilization reports
-
----
-
-## Files to Create
-
-```
-src/repositories/
-├── sala.py                  # Room queries
-├── predio.py               # Building queries
-├── campus.py               # Campus queries
-├── caracteristica.py       # Room characteristics
-├── professor.py            # Professor queries
-├── semestre.py             # Semester queries
-├── disciplina.py           # Course queries
-├── dia_semana.py           # Weekday queries
-├── horario_bloco.py        # Time block queries
-├── alocacao.py             # Allocation queries & conflict detection
-├── preferencia.py          # Professor preferences
-└── conflito.py             # Scheduling conflicts
-```
-
----
-
-## Success Criteria
-
-✅ All 12 repositories implemented
-✅ Each repository has 3-5+ domain-specific methods
-✅ All repositories tested with sample queries
-✅ Admin can query database through repositories
-✅ Ready for Streamlit pages to use repositories
 
 ---
 
@@ -317,9 +292,3 @@ src/repositories/
 
 ---
 
-## Questions Before Starting?
-
-- Should we use SQLAlchemy relationships or stick with IDs?
-- Any specific query optimizations needed?
-- Should repositories cache results?
-- Need pagination for large result sets?
