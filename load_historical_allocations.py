@@ -33,11 +33,14 @@ from src.repositories.sala import SalaRepository
 from src.repositories.dia_semana import DiaSemanaRepository
 from src.repositories.horario_bloco import HorarioBlocoRepository
 from src.repositories.base import BaseRepository
-from src.models.allocation import ReservaEsporadica
-from src.schemas.allocation import AlocacaoSemestralCreate, ReservaEsporadicaCreate
+from src.models.allocation import ReservaEsporadica, AlocacaoSemestral
+
+# We'll create our own DTO since the schema files are misaligned with actual models
 
 # Regex patterns for parsing course data
-COURSE_PATTERN = re.compile(r"^([A-Z]{3,}[0-9]+)\s*-\s*([^-\n]+?)(?:\s*-\s*(.+?))?$")
+# Course codes: 3-5 letters + 4 digits, may optionally end with dash for no-turma courses
+# Format: CODE - NAME - TURMA (where TURMA is optional T followed by number)
+COURSE_PATTERN = re.compile(r"^([A-Z]{3,5}\d{4}-?)\s*-\s*([^-\n]+?)(?:\s*-\s*T(\d+))?$")
 RESERVATION_PATTERN = re.compile(
     r"^(Ledoc|EducAção|biblioteca|auditório|[A-Z][a-z]{2,})$", re.IGNORECASE
 )
@@ -53,31 +56,11 @@ class ParsedAllocation(NamedTuple):
     titulo_evento: Optional[str]
 
 
-class ReservaEsporadicaRepository(
-    BaseRepository[ReservaEsporadica, ReservaEsporadicaCreate]
-):
+class ReservaEsporadicaRepository(BaseRepository):
     """Repository for ReservaEsporadica operations."""
 
     def __init__(self, session: Session):
         super().__init__(session, ReservaEsporadica)
-
-    def orm_to_dto(self, orm_obj: ReservaEsporadica) -> ReservaEsporadicaCreate:
-        return ReservaEsporadicaCreate(
-            sala_id=orm_obj.sala_id,
-            username_solicitante=orm_obj.username_solicitante,
-            titulo_evento=orm_obj.titulo_evento,
-            data_reserva=orm_obj.data_reserva,
-            codigo_bloco=orm_obj.codigo_bloco,
-        )
-
-    def dto_to_orm_create(self, dto: ReservaEsporadicaCreate) -> ReservaEsporadica:
-        return ReservaEsporadica(
-            sala_id=dto.sala_id,
-            username_solicitante=dto.username_solicitante,
-            titulo_evento=dto.titulo_evento,
-            data_reserva=dto.data_reserva,
-            codigo_bloco=dto.codigo_bloco,
-        )
 
 
 class CSVAllocator:
@@ -122,26 +105,47 @@ class CSVAllocator:
         """
         Parse a CSV cell containing allocation data.
 
-        Returns ParsedAllocation with course info or reservation flag.
+        First tries to parse as course code, if no valid course code can be inferred,
+        treats the whole string as a reservation title.
         """
         if not cell_value or cell_value.strip() == "":
             return ParsedAllocation(None, None, None, False, None)
 
-        # Check if it's a reservation (Ledoc, EducAção, etc.)
+        # Try to parse as course: "CODE - NAME - TURMA"
+        # CODE must be exactly 3-5 letters + 4 digits (no hyphens)
+        match = COURSE_PATTERN.match(cell_value.strip())
+        if match:
+            # Group 1: course code (may include trailing dash - we'll clean it)
+            codigo_raw = match.group(1).strip()
+            # Remove trailing dash from code if present (codes should never end with -)
+            codigo = codigo_raw.rstrip("-")
+
+            # Verify the code looks valid (3-5 letters + 4 digits, no trailing dash)
+            if not re.match(r"^[A-Z]{3,5}\d{4}$", codigo):
+                # Invalid code format, treat as reservation
+                return ParsedAllocation(None, None, None, True, cell_value.strip())
+
+            # Group 2: course name (can be empty for some cases)
+            nome = match.group(2).strip() if match.group(2) else ""
+
+            # Group 3: numeric turma only (digits after T)
+            turma_raw = match.group(3).strip() if match.group(3) else ""
+
+            # If no turma found, use default "1"
+            if not turma_raw:
+                turma = "1"
+            else:
+                # Ensure turma is numeric only, otherwise default to "1"
+                turma = turma_raw if turma_raw.isdigit() else "1"
+
+            return ParsedAllocation(codigo, nome, turma, False, None)
+
+        # First check if it's a known reservation type (Ledoc, EducAção, etc.)
         if RESERVATION_PATTERN.match(cell_value.strip()):
             return ParsedAllocation(None, None, None, True, cell_value.strip())
 
-        # Try to parse as course: "CODE - NAME - TURMA"
-        match = COURSE_PATTERN.match(cell_value.strip())
-        if match:
-            codigo = match.group(1).strip()
-            nome = match.group(2).strip() if match.group(2) else ""
-            turma = match.group(3).strip() if match.group(3) else ""
-            # Debug: print parsing results
-            # print(f"DEBUG: '{cell_value}' -> code='{codigo}', name='{nome}', turma='{turma}'")
-            return ParsedAllocation(codigo, nome, turma, False, None)
-
-        # If no pattern matches, treat as reservation with custom title
+        # If no course pattern matches AND not a known reservation type,
+        # treat the whole string as a reservation title
         return ParsedAllocation(None, None, None, True, cell_value.strip())
 
     def find_demanda(
@@ -203,7 +207,7 @@ class CSVAllocator:
             # Create reservation using model fields: sala_id, username_solicitante, titulo_evento, data_reserva, codigo_bloco
             reserva_data = {
                 "sala_id": sala_id,
-                "username_solicitante": "system",  # Admin user
+                "username_solicitante": "admin",  # Admin user
                 "titulo_evento": allocation.titulo_evento or "Reserva Histórica",
                 "data_reserva": f"2025-{(dia_id-2)*7 + 1:02d}-15",  # Fake date based on weekday
                 "codigo_bloco": bloco,
@@ -249,13 +253,13 @@ class CSVAllocator:
                 )
                 return
 
-            aloc_data = AlocacaoSemestralCreate(
-                semestre_id=semestre_id,
-                demanda_id=demanda_id,
-                sala_id=sala_id,
-                dia_semana_id=dia_id,
-                codigo_bloco=bloco,
-            )
+            aloc_data = {
+                "semestre_id": semestre_id,
+                "demanda_id": demanda_id,
+                "sala_id": sala_id,
+                "dia_semana_id": dia_id,
+                "codigo_bloco": bloco,
+            }
 
             # Check for conflicts
             if self.aloc_repo.check_conflict(sala_id, dia_id, bloco):
@@ -272,7 +276,9 @@ class CSVAllocator:
 
             if not self.dry_run:
                 try:
-                    self.aloc_repo.create(aloc_data)
+                    aloc_obj = AlocacaoSemestral(**aloc_data)
+                    self.session.add(aloc_obj)
+                    self.session.flush()
                     self.stats["allocations_created"] += 1
                 except Exception as e:
                     print(f"  ❌ Error creating allocation: {e}")
@@ -302,7 +308,11 @@ class CSVAllocator:
             return
 
         dia_sigaa = int(match.group(1))
-        bloco = time_slot  # Keep original format like "2M12"
+        turno = match.group(2)  # M, T, or N
+        slots_str = match.group(3)  # e.g., "34" (slots 3 and 4)
+
+        # Split into atomic blocks (e.g., "34" -> ["3", "4"] -> ["M3", "M4"])
+        atomic_blocks = [f"{turno}{slot}" for slot in slots_str]
 
         # Get dia_semana ORM object
         dia_obj = self.dia_repo.get_by_id_sigaa(dia_sigaa)
@@ -311,7 +321,9 @@ class CSVAllocator:
             self.stats["errors"] += 1
             return
 
-        print(f"Processing {time_slot} (dia {dia_sigaa}, bloco {bloco})")
+        print(
+            f"Processing {time_slot} (dia {dia_sigaa}, atomic blocks: {atomic_blocks})"
+        )
 
         # Process each allocation column (skip first column which is time slot)
         for i, allocation_cell in enumerate(row[1:], 1):
@@ -337,10 +349,11 @@ class CSVAllocator:
             # Parse the allocation
             allocation = self.parse_allocation_cell(cell_value)
 
-            # Process the allocation
-            self.process_allocation(
-                semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
-            )
+            # Process the allocation for each atomic block (e.g., M3 and M4 from "M34")
+            for bloco in atomic_blocks:
+                self.process_allocation(
+                    semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
+                )
 
     def load_csv(self, csv_path: str):
         """Load allocations from CSV file."""

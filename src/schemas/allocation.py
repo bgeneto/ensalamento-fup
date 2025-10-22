@@ -62,10 +62,8 @@ class AlocacaoSemestralBase(BaseModel):
     semestre_id: int = Field(..., gt=0)
     demanda_id: int = Field(..., gt=0)
     sala_id: int = Field(..., gt=0)
-    professor_id: Optional[int] = Field(default=None)
-    alocada: bool = Field(default=False)
-    confiavel: bool = Field(default=False)
-    motivo_nao_alocacao: str = Field(default="", max_length=255)
+    dia_semana_id: int = Field(..., gt=0)
+    codigo_bloco: str = Field(..., min_length=1, max_length=10)
 
 
 class AlocacaoSemestralCreate(AlocacaoSemestralBase):
@@ -80,10 +78,8 @@ class AlocacaoSemestralUpdate(BaseModel):
     semestre_id: Optional[int] = Field(None, gt=0)
     demanda_id: Optional[int] = Field(None, gt=0)
     sala_id: Optional[int] = Field(None, gt=0)
-    professor_id: Optional[int] = None
-    alocada: Optional[bool] = None
-    confiavel: Optional[bool] = None
-    motivo_nao_alocacao: Optional[str] = Field(None, max_length=255)
+    dia_semana_id: Optional[int] = Field(None, gt=0)
+    codigo_bloco: Optional[str] = Field(None, min_length=1, max_length=10)
 
 
 class AlocacaoSemestralRead(AlocacaoSemestralBase):
@@ -106,11 +102,11 @@ class ReservaEsporadicaBase(BaseModel):
     """Base schema for ReservaEsporadica (ad-hoc room reservation)."""
 
     sala_id: int = Field(..., gt=0)
-    dia_semana_id: int = Field(..., gt=0)
-    horario_bloco_id: int = Field(..., gt=0)
-    semestre_id: int = Field(..., gt=0)
-    motivo: str = Field(default="", max_length=255)
-    confirmada: bool = Field(default=False)
+    username_solicitante: str = Field(..., min_length=1, max_length=100)
+    titulo_evento: str = Field(..., min_length=1, max_length=255)
+    data_reserva: str = Field(..., min_length=10, max_length=10)  # DATE as YYYY-MM-DD
+    codigo_bloco: str = Field(..., min_length=1, max_length=10)
+    status: str = Field(default="Aprovada", max_length=50)
 
 
 class ReservaEsporadicaCreate(ReservaEsporadicaBase):
@@ -123,11 +119,11 @@ class ReservaEsporadicaUpdate(BaseModel):
     """Schema for updating a ReservaEsporadica."""
 
     sala_id: Optional[int] = Field(None, gt=0)
-    dia_semana_id: Optional[int] = Field(None, gt=0)
-    horario_bloco_id: Optional[int] = Field(None, gt=0)
-    semestre_id: Optional[int] = Field(None, gt=0)
-    motivo: Optional[str] = Field(None, max_length=255)
-    confirmada: Optional[bool] = None
+    username_solicitante: Optional[str] = Field(None, min_length=1, max_length=100)
+    titulo_evento: Optional[str] = Field(None, min_length=1, max_length=255)
+    data_reserva: Optional[str] = Field(None, min_length=10, max_length=10)
+    codigo_bloco: Optional[str] = Field(None, min_length=1, max_length=10)
+    status: Optional[str] = Field(None, max_length=50)
 
 
 class ReservaEsporadicaRead(ReservaEsporadicaBase):

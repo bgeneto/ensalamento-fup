@@ -88,7 +88,6 @@ CREATE TABLE IF NOT EXISTS demandas (
     turma_disciplina TEXT,
     vagas_disciplina INTEGER,
     horario_sigaa_bruto TEXT NOT NULL, -- O código Sigaa bruto (Ex: "24M12 6T34")
-    nivel_disciplina TEXT,
 
     FOREIGN KEY (semestre_id) REFERENCES semestres (id)
 );
