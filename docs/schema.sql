@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS demandas (
     semestre_id INTEGER NOT NULL,
     codigo_disciplina TEXT NOT NULL,
     nome_disciplina TEXT,
-    professores_disciplina TEXT, -- Texto bruto da API (Ex: "Dr. João Silva, Dra. Maria")
+    professores_disciplina TEXT, -- Texto bruto da API (Ex: "João Silva, Maria Silva")
     turma_disciplina TEXT,
     vagas_disciplina INTEGER,
     horario_sigaa_bruto TEXT NOT NULL, -- O código Sigaa bruto (Ex: "24M12 6T34")

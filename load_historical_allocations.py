@@ -40,7 +40,7 @@ from src.models.allocation import ReservaEsporadica, AlocacaoSemestral
 # Regex patterns for parsing course data
 # Course codes: 3-5 letters + 4 digits, may optionally end with dash for no-turma courses
 # Format: CODE - NAME - TURMA (where TURMA is optional T followed by number)
-COURSE_PATTERN = re.compile(r"^([A-Z]{3,5}\d{4}-?)\s*-\s*([^-\n]+?)(?:\s*-\s*T(\d+))?$")
+COURSE_PATTERN = re.compile(r"^([A-Z]{3,9}\d{4}-?)\s*-\s*([^-\n]+?)(?:\s*-\s*T(\d+))?$")
 RESERVATION_PATTERN = re.compile(
     r"^(Ledoc|EducAção|biblioteca|auditório|[A-Z][a-z]{2,})$", re.IGNORECASE
 )
@@ -154,6 +154,7 @@ class CSVAllocator:
         codigo: str,
         turma: str,
         horario_sigaa: Optional[str] = None,
+        nome_disciplina: Optional[str] = None,
     ) -> Optional[int]:
         """
         Find existing demanda ID by semester, code, and turma.
@@ -171,11 +172,12 @@ class CSVAllocator:
 
         # If not found and we have horario, create new demanda
         if horario_sigaa:
-            print(f"  ⚠️ Demanda not found for {codigo}-{turma}, creating...")
+            print(f"  ⚠️ Demanda not found for {codigo}, T{turma}, creating...")
             demanda_data = {
                 "semestre_id": semestre_id,
                 "codigo_disciplina": codigo,
-                "nome_disciplina": f"Disciplina {codigo}",  # Placeholder
+                "nome_disciplina": nome_disciplina
+                or f"Disciplina {codigo}",  # Use parsed name or placeholder
                 "turma_disciplina": turma,
                 "horario_sigaa_bruto": horario_sigaa,
                 "vagas_disciplina": 30,  # Default
@@ -200,6 +202,7 @@ class CSVAllocator:
         dia_id: int,
         bloco: str,
         allocation: ParsedAllocation,
+        demanda_id: Optional[int] = None,
     ):
         """Process a single allocation (course or reservation)."""
 
@@ -240,16 +243,10 @@ class CSVAllocator:
                 print(f"    [DRY RUN] Would create reserva: {allocation.titulo_evento}")
 
         else:
-            # Create course allocation
-            demanda_id = self.find_demanda(
-                semestre_id,
-                allocation.codigo_disciplina,
-                allocation.turma_disciplina,
-                f"{dia_id}{bloco}",
-            )
-            if not demanda_id:
+            # For courses, demanda_id should already be provided
+            if demanda_id is None:
                 print(
-                    f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina}-{allocation.turma_disciplina}"
+                    f"  ❌ No demanda_id provided for course allocation: {allocation.codigo_disciplina}-{allocation.turma_disciplina}"
                 )
                 return
 
@@ -349,11 +346,41 @@ class CSVAllocator:
             # Parse the allocation
             allocation = self.parse_allocation_cell(cell_value)
 
-            # Process the allocation for each atomic block (e.g., M3 and M4 from "M34")
-            for bloco in atomic_blocks:
-                self.process_allocation(
-                    semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
+            if not allocation.is_reservation:
+                # For courses, ensure demanda exists before creating allocations
+                # Use space-separated atomic blocks as horario_sigaa_bruto
+                horario_bruto = " ".join(
+                    [f"{dia_sigaa}{bloco}" for bloco in atomic_blocks]
                 )
+                demanda_id = self.find_demanda(
+                    semestre_id,
+                    allocation.codigo_disciplina,
+                    allocation.turma_disciplina,
+                    horario_bruto,  # Like "5T2 5T3" for time slot "5T23"
+                    allocation.nome_disciplina,
+                )
+                if not demanda_id:
+                    print(
+                        f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina}-T{allocation.turma_disciplina}"
+                    )
+                    continue
+
+                # Now create allocations for each atomic block
+                for bloco in atomic_blocks:
+                    self.process_allocation(
+                        semestre_id,
+                        sala.id,
+                        dia_obj.id_sigaa,
+                        bloco,
+                        allocation,
+                        demanda_id,
+                    )
+            else:
+                # For reservations, process each atomic block normally
+                for bloco in atomic_blocks:
+                    self.process_allocation(
+                        semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
+                    )
 
     def load_csv(self, csv_path: str):
         """Load allocations from CSV file."""
