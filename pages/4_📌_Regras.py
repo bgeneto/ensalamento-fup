@@ -3,8 +3,8 @@ Preferences Management Page
 
 Configure professor and courses preferences.
 
-Route: /pages/4_📌_Preferências.py
-URL: ?page=Professores
+Route: /pages/4_📌_Regras.py
+URL: /Regras
 """
 
 import streamlit as st
@@ -14,10 +14,10 @@ from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
 if not initialize_page(
-    page_title="Preferências - Ensalamento",
+    page_title="Regras - Ensalamento",
     page_icon="📌",
     layout="wide",
-    key_suffix="preferencias",
+    key_suffix="regras",
 ):
     st.stop()
 
@@ -84,9 +84,9 @@ def format_rule_display(
 # PAGE HEADER
 # ============================================================================
 
-st.title("📌 Gerenciamento de Preferências")
+st.title("📌 Gerenciamento de Regras")
 st.markdown(
-    "Gerencie as preferências de professores e disciplinas em relação às salas."
+    "Gerencie as regras e/ou preferências de alocação de sala para professores e disciplinas."
 )
 
 # ============================================================================
@@ -96,7 +96,7 @@ st.markdown(
 tab1, tab2 = st.tabs(["👨‍🏫 Professores", "📚 Disciplinas"])
 
 # =============================================================================
-# TAB 1: PROFESSOR PREFERENCES
+# TAB 1: PROFESSOR RULES
 # =============================================================================
 
 with tab1:
@@ -304,13 +304,13 @@ with tab1:
 
 
 # =============================================================================
-# TAB 2: DISCIPLINE PREFERENCES (RULES)
+# TAB 2: DISCIPLINE RULES
 # =============================================================================
 
 with tab2:
-    st.subheader("Preferências de Disciplinas")
+    st.subheader("Regras e Preferências de Disciplinas")
     st.markdown(
-        "Configure regras de alocação focadas em disciplinas (regras estáticas/duras e dinâmicas/suaves)."
+        "Configure regras e preferências de alocação focadas em disciplinas.As regras podems ser estáticas/rígidas e/ou regras dinâmicas/preferências."
     )
 
     try:
@@ -491,9 +491,9 @@ with tab2:
                     "DISCIPLINA_CARACTERISTICA",  # Soft: discipline prefers room with characteristic
                 ],
                 format_func=lambda x: {
-                    "DISCIPLINA_TIPO_SALA": "🔒 Regra Rígida: Tipo de Sala",
-                    "DISCIPLINA_SALA": "🔒 Regra Rígida: Sala Específica",
-                    "DISCIPLINA_CARACTERISTICA": "⭐ Preferência Suave: Característica",
+                    "DISCIPLINA_TIPO_SALA": "🔒 Regra: Tipo de Sala",
+                    "DISCIPLINA_SALA": "🔒 Regra: Sala Específica",
+                    "DISCIPLINA_CARACTERISTICA": "⭐ Preferência: Característica",
                 }.get(x, x),
                 key="rule_type_selector",
                 on_change=lambda: st.session_state.update(

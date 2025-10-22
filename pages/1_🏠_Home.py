@@ -5,7 +5,7 @@ Displays system status, key metrics, recent activities, and quick actions.
 Entry point for authenticated admins.
 
 Route: /pages/1_🏠_Home.py
-URL: ?page=Home
+URL: /Home
 """
 
 import streamlit as st

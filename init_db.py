@@ -4,7 +4,7 @@ Database initialization script for Ensalamento FUP.
 
 Usage:
     python init_db.py --init        # Create tables
-    python init_db.py --seed        # Seed with mock data
+    python init_db.py --seed        # Seed with real data
     python init_db.py --drop        # Drop all tables
     python init_db.py --reset       # Drop and recreate
     python init_db.py --all         # Drop, create, and seed (full reset)

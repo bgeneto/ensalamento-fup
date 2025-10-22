@@ -71,7 +71,7 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
 2.  Gestão de Tipos de Sala (CRUD).
 3.  Gestão de Blocos de Horário (Sigaa).
 4.  Gestão de Características de Salas (CRUD).
-5.  **Gestão de Professores e Preferências (CRUD).**
+5.  Gestão de Professores e Preferências (CRUD).
 6.  Sincronização de Demanda (Semestral, via API).
 7.  Gestão de Regras (focadas em Disciplinas).
 8.  Motor de Alocação (Semestral).
@@ -131,7 +131,6 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
     * `turma_disciplina`
     * `vagas_disciplina`
     * `horario_disciplina` (campo bruto, ex: `'2M12 4M12'`)
-    * `nível_disciplina`
 
 #### 3.1.4. Interfaces de Comunicação
 
@@ -174,7 +173,7 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
 * **RF-003.2 (Admin):** Na tela de gestão de Salas, o Admin deve poder associar/desassociar essas características a cada sala (relação N:N).
 * **RF-003.3 (Admin):** O sistema deve permitir a **inclusão de características dinâmicas** (tags) não previstas inicialmente.
 
-#### RF-003.A: Gestão de Professores e Preferências (NOVO REQUISITO)
+#### RF-003.A: Gestão de Professores e Preferências
 * **RF-003.A.1 (Admin):** O Admin deve ter acesso a uma interface de gerenciamento (CRUD) dedicada para **Professores**.
 * **RF-003.A.2 (Admin):** O Admin deve poder Criar, Editar e Deletar professores, definindo:
     * `nome_completo`: Este nome deve ser o texto exato que a API do Sistema de Oferta fornece (ex: "Dr. João Silva"), para permitir o *link* automático.
@@ -183,7 +182,6 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
 * **RF-003.A.3 (Admin):** O Admin deve poder, para qualquer professor, gerenciar suas **preferências suaves** (regras N:N):
     * Associar/desassociar Salas preferidas (tabela `professor_prefere_sala`).
     * Associar/desassociar Características preferidas (tabela `professor_prefere_caracteristica`, ex: "Prefere Projetor").
-* **RF-003.A.4 (Self-Service):** Um `Usuário Padrão` (ex: Professor) que esteja logado e tenha seu `username` vinculado a um perfil de `professor` (via `RF-003.A.2`) deve ter acesso a uma página "Minhas Preferências" onde pode gerenciar *apenas* suas próprias preferências suaves (`RF-003.A.3`).
 
 #### RF-004: Importação de Demanda (Sincronização)
 * **RF-004.1 (Admin):** O Admin deve ter uma interface (ex: página "Semestre") para gerenciar os dados do semestre.
@@ -204,7 +202,7 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
 * **RF-006.1 (Admin):** O Admin deve poder "Executar o Ensalamento" para um semestre selecionado.
 * **RF-006.2 (Parsing de Horário):** O motor deve *parsear* o `horario_sigaa_bruto` de cada `demanda` (ex: '24M12') em seus blocos atômicos constituintes (ex: [dia=2, bloco=M1], [dia=2, bloco=M2], [dia=4, bloco=M1], [dia=4, bloco=M2]).
 * **RF-006.3 (Lookup de Professor):** Para cada `demanda`, o motor deve ler o texto `professores_disciplina` e tentar encontrar o(s) `id`(s) correspondente(s) na tabela `professores`.
-* **RF-006.4 (Alocação de Regras Duras):** O motor deve primeiro alocar as demandas que se enquadram em **Restrições Duras**. A ordem de alocação deve priorizar as demandas mais restritas. As restrições duras incluem:
+* **RF-006.4 (Alocação de Regras Duras):** O motor deve primeiro alocar as demandas que se enquadram em **Restrições Duras**. A ordem de alocação deve priorizar as demandas mais restritas. As restrições rígidas/duras incluem:
     * Regras de Disciplina (`RF-005.1`).
     * Restrições de Professor (ex: `tem_baixa_mobilidade = true` $\rightarrow$ deve filtrar apenas salas no Térreo ou com `caracteristica` "Acesso para Cadeirantes").
     * Se houver conflito (duas regras duras competindo pelo mesmo bloco/sala), o sistema deve parar e reportar o conflito.
@@ -212,7 +210,8 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
     * Atende a uma regra suave de disciplina (`RF-005.2`).
     * Atende a uma preferência suave de professor (`RF-003.A.3`, ex: sala preferida, característica preferida).
     * Atende à capacidade (`RF-005.2.4`, capacidade $\ge$ vagas).
-* **RF-006.6 (Salvar):** O motor deve salvar o resultado na tabela `alocacoes_semestrais`. Cada *bloco atômico* alocado será uma **linha separada** nesta tabela.
+* **RF-006.6 (Regras de Frequência):** O motor deve utilizar o resultado de ensalamento de semestres anteriores na tabela `alocacoes_semestrais` para dar prioridade ao par disciplina<=>sala, isto é, quanto mais vezes uma disciplina tiver sido previamente alocada para uma mesma sala, maior é a sua prioridade. Este é uma regra que deve ser construída dinamicamente, ao ler as alocações (existentes) para dos semestres anteriores. 
+* **RF-006.7 (Salvar):** O motor deve salvar o resultado na tabela `alocacoes_semestrais`. Cada *bloco atômico* alocado será uma **linha separada** nesta tabela.
 
 #### RF-007: Visualização do Ensalamento
 * **RF-007.1 (Consolidada):** Deve haver uma visualização em formato de Grade de Horário/Calendário que **consolide (mostre juntos)** os dados de:

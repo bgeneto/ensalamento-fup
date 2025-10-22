@@ -6,7 +6,8 @@ Sistema de Oferta: seleção de semestre, métricas de resumo, avisos
 acionáveis (professores não cadastrados) e tabela filtrável com colunas
 amigáveis geradas pelo parser Sigaa.
 
-Route: pages/5_🎓_Demanda.py
+Route: pages/5_👁️_Demanda.py
+URL: /Demanda
 """
 
 import streamlit as st
@@ -234,9 +235,9 @@ with get_db_session() as session:
                     "nome_disciplina": "Disciplina",
                     "turma_disciplina": "Turma",
                     "vagas_disciplina": "Vagas",
-                    "professores_disciplina": "Professores (API)",
-                    "horario_legivel": "Horário (Legível)",
-                    "num_slots": "Nº de Slots",
+                    "professores_disciplina": "Professores",
+                    "horario_legivel": "Horário",
+                    "num_slots": "Slots",
                 }
             ),
             width="stretch",

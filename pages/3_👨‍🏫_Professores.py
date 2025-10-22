@@ -5,7 +5,7 @@ Manage faculty members with import capabilities from CSV and API integration.
 Configure professor availability and preferences.
 
 Route: /pages/3_👨‍🏫_Professores.py
-URL: ?page=Professores
+URL: /Professores
 """
 
 import streamlit as st
