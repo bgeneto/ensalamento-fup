@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""
+Load historical semester allocations from CSV file.
+
+This script loads historical course/room allocations from a CSV file,
+parsing the data and creating AlocacaoSemestral records for the semester
+history (RF-006.6 - rules based on historical allocations).
+
+Usage:
+    python load_historical_allocations.py [--dry-run] [--force] [CSV_FILE]
+
+Arguments:
+    CSV_FILE: Path to CSV file (default: docs/Ensalamento Oferta 2-2025.csv)
+
+Options:
+    --dry-run: Show what would be done without making changes
+    --force: Overwrite existing allocations for the same conflicts
+"""
+
+import csv
+import re
+from pathlib import Path
+from typing import List, Optional, Dict, Tuple, NamedTuple
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+
+from sqlalchemy.orm import Session
+
+from src.config.database import get_db_session
+from src.repositories.semestre import SemestreRepository
+from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.sala import SalaRepository
+from src.repositories.dia_semana import DiaSemanaRepository
+from src.repositories.horario_bloco import HorarioBlocoRepository
+from src.repositories.base import BaseRepository
+from src.models.allocation import ReservaEsporadica
+from src.schemas.allocation import AlocacaoSemestralCreate, ReservaEsporadicaCreate
+
+# Regex patterns for parsing course data
+COURSE_PATTERN = re.compile(r"^([A-Z]{3,}[0-9]+)\s*-\s*([^-\n]+?)(?:\s*-\s*(.+?))?$")
+RESERVATION_PATTERN = re.compile(
+    r"^(Ledoc|EducAção|biblioteca|auditório|[A-Z][a-z]{2,})$", re.IGNORECASE
+)
+
+
+class ParsedAllocation(NamedTuple):
+    """Parsed allocation data from CSV cell."""
+
+    codigo_disciplina: Optional[str]
+    nome_disciplina: Optional[str]
+    turma_disciplina: Optional[str]
+    is_reservation: bool
+    titulo_evento: Optional[str]
+
+
+class ReservaEsporadicaRepository(
+    BaseRepository[ReservaEsporadica, ReservaEsporadicaCreate]
+):
+    """Repository for ReservaEsporadica operations."""
+
+    def __init__(self, session: Session):
+        super().__init__(session, ReservaEsporadica)
+
+    def orm_to_dto(self, orm_obj: ReservaEsporadica) -> ReservaEsporadicaCreate:
+        return ReservaEsporadicaCreate(
+            sala_id=orm_obj.sala_id,
+            username_solicitante=orm_obj.username_solicitante,
+            titulo_evento=orm_obj.titulo_evento,
+            data_reserva=orm_obj.data_reserva,
+            codigo_bloco=orm_obj.codigo_bloco,
+        )
+
+    def dto_to_orm_create(self, dto: ReservaEsporadicaCreate) -> ReservaEsporadica:
+        return ReservaEsporadica(
+            sala_id=dto.sala_id,
+            username_solicitante=dto.username_solicitante,
+            titulo_evento=dto.titulo_evento,
+            data_reserva=dto.data_reserva,
+            codigo_bloco=dto.codigo_bloco,
+        )
+
+
+class CSVAllocator:
+    """Handles loading historical allocations from CSV."""
+
+    def __init__(
+        self,
+        session: Session,
+        dry_run: bool = False,
+        force: bool = False,
+        semester_name: str = "2025-2",
+    ):
+        self.session = session
+        self.dry_run = dry_run
+        self.force = force
+        self.semestre_name = semester_name
+
+        # Initialize repositories
+        self.sem_repo = SemestreRepository(session)
+        self.aloc_repo = AlocacaoRepository(session)
+        self.reserva_repo = ReservaEsporadicaRepository(session)
+        self.demanda_repo = DisciplinaRepository(session)
+        self.sala_repo = SalaRepository(session)
+        self.dia_repo = DiaSemanaRepository(session)
+        self.horario_repo = HorarioBlocoRepository(session)
+
+        # Stats
+        self.stats = {
+            "rows_processed": 0,
+            "allocations_created": 0,
+            "reservas_created": 0,
+            "demandas_created": 0,
+            "conflicts_skipped": 0,
+            "errors": 0,
+        }
+
+    def get_semestre(self):
+        """Get the 2025-2 semester."""
+        return self.sem_repo.get_by_name(self.semestre_name)
+
+    def parse_allocation_cell(self, cell_value: str) -> ParsedAllocation:
+        """
+        Parse a CSV cell containing allocation data.
+
+        Returns ParsedAllocation with course info or reservation flag.
+        """
+        if not cell_value or cell_value.strip() == "":
+            return ParsedAllocation(None, None, None, False, None)
+
+        # Check if it's a reservation (Ledoc, EducAção, etc.)
+        if RESERVATION_PATTERN.match(cell_value.strip()):
+            return ParsedAllocation(None, None, None, True, cell_value.strip())
+
+        # Try to parse as course: "CODE - NAME - TURMA"
+        match = COURSE_PATTERN.match(cell_value.strip())
+        if match:
+            codigo = match.group(1).strip()
+            nome = match.group(2).strip() if match.group(2) else ""
+            turma = match.group(3).strip() if match.group(3) else ""
+            # Debug: print parsing results
+            # print(f"DEBUG: '{cell_value}' -> code='{codigo}', name='{nome}', turma='{turma}'")
+            return ParsedAllocation(codigo, nome, turma, False, None)
+
+        # If no pattern matches, treat as reservation with custom title
+        return ParsedAllocation(None, None, None, True, cell_value.strip())
+
+    def find_demanda(
+        self,
+        semestre_id: int,
+        codigo: str,
+        turma: str,
+        horario_sigaa: Optional[str] = None,
+    ) -> Optional[int]:
+        """
+        Find existing demanda ID by semester, code, and turma.
+
+        If not found and horario_sigaa provided, create new demanda.
+        """
+        # Try exact match first
+        demandas = self.demanda_repo.get_by_semestre(semestre_id)
+        for demanda in demandas:
+            if (
+                demanda.codigo_disciplina == codigo
+                and demanda.turma_disciplina == turma
+            ):
+                return demanda.id
+
+        # If not found and we have horario, create new demanda
+        if horario_sigaa:
+            print(f"  ⚠️ Demanda not found for {codigo}-{turma}, creating...")
+            demanda_data = {
+                "semestre_id": semestre_id,
+                "codigo_disciplina": codigo,
+                "nome_disciplina": f"Disciplina {codigo}",  # Placeholder
+                "turma_disciplina": turma,
+                "horario_sigaa_bruto": horario_sigaa,
+                "vagas_disciplina": 30,  # Default
+                "professores_disciplina": "",  # Empty for now
+                "nivel_disciplina": "Graduação",
+            }
+
+            if not self.dry_run:
+                demanda = self.demanda_repo.create(demanda_data)
+                self.stats["demandas_created"] += 1
+                return demanda.id
+            else:
+                print(f"    [DRY RUN] Would create demanda: {codigo}-{turma}")
+                return None  # In dry run, can't return real ID
+
+        return None
+
+    def process_allocation(
+        self,
+        semestre_id: int,
+        sala_id: int,
+        dia_id: int,
+        bloco: str,
+        allocation: ParsedAllocation,
+    ):
+        """Process a single allocation (course or reservation)."""
+
+        if allocation.is_reservation:
+            # Create reservation using model fields: sala_id, username_solicitante, titulo_evento, data_reserva, codigo_bloco
+            reserva_data = {
+                "sala_id": sala_id,
+                "username_solicitante": "system",  # Admin user
+                "titulo_evento": allocation.titulo_evento or "Reserva Histórica",
+                "data_reserva": f"2025-{(dia_id-2)*7 + 1:02d}-15",  # Fake date based on weekday
+                "codigo_bloco": bloco,
+            }
+
+            # Check for conflicts
+            if self.aloc_repo.check_conflict(sala_id, dia_id, bloco):
+                if not self.force:
+                    print(
+                        f"  ⚠️ Skipping reserva conflict: sala {sala_id}, {dia_id}, {bloco}"
+                    )
+                    self.stats["conflicts_skipped"] += 1
+                    return
+                else:
+                    print(
+                        f"  🔄 Force-overwriting reserva conflict: sala {sala_id}, {dia_id}, {bloco}"
+                    )
+
+            if not self.dry_run:
+                try:
+                    # Create reserva object directly since schemas are misaligned
+                    reserva_obj = ReservaEsporadica(**reserva_data)
+                    self.session.add(reserva_obj)
+                    self.session.flush()
+                    self.stats["reservas_created"] += 1
+                except Exception as e:
+                    print(f"  ❌ Error creating reserva: {e}")
+                    self.stats["errors"] += 1
+            else:
+                print(f"    [DRY RUN] Would create reserva: {allocation.titulo_evento}")
+
+        else:
+            # Create course allocation
+            demanda_id = self.find_demanda(
+                semestre_id,
+                allocation.codigo_disciplina,
+                allocation.turma_disciplina,
+                f"{dia_id}{bloco}",
+            )
+            if not demanda_id:
+                print(
+                    f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina}-{allocation.turma_disciplina}"
+                )
+                return
+
+            aloc_data = AlocacaoSemestralCreate(
+                semestre_id=semestre_id,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                dia_semana_id=dia_id,
+                codigo_bloco=bloco,
+            )
+
+            # Check for conflicts
+            if self.aloc_repo.check_conflict(sala_id, dia_id, bloco):
+                if not self.force:
+                    print(
+                        f"  ⚠️ Skipping allocation conflict: sala {sala_id}, {dia_id}, {bloco}"
+                    )
+                    self.stats["conflicts_skipped"] += 1
+                    return
+                else:
+                    print(
+                        f"  🔄 Force-overwriting allocation conflict: sala {sala_id}, {dia_id}, {bloco}"
+                    )
+
+            if not self.dry_run:
+                try:
+                    self.aloc_repo.create(aloc_data)
+                    self.stats["allocations_created"] += 1
+                except Exception as e:
+                    print(f"  ❌ Error creating allocation: {e}")
+                    self.stats["errors"] += 1
+            else:
+                print(
+                    f"    [DRY RUN] Would create allocation: {allocation.codigo_disciplina} in sala {sala_id}"
+                )
+
+    def process_csv_row(
+        self, row: List[str], room_mapping: List[str], semestre_id: int
+    ):
+        """Process a single CSV row containing time block + allocations."""
+        self.stats["rows_processed"] += 1
+
+        # First column is the time block (e.g., "2M12")
+        time_slot = row[0].strip()
+        if not time_slot:
+            print(f"  ⚠️ Skipping empty time slot in row {self.stats['rows_processed']}")
+            return
+
+        # Parse time slot: digit(s) + turn + slots
+        match = re.match(r"^(\d+)([MTN])(\d+)$", time_slot)
+        if not match:
+            print(f"  ⚠️ Invalid time slot format: {time_slot}")
+            self.stats["errors"] += 1
+            return
+
+        dia_sigaa = int(match.group(1))
+        bloco = time_slot  # Keep original format like "2M12"
+
+        # Get dia_semana ORM object
+        dia_obj = self.dia_repo.get_by_id_sigaa(dia_sigaa)
+        if not dia_obj:
+            print(f"  ⚠️ Day {dia_sigaa} not found")
+            self.stats["errors"] += 1
+            return
+
+        print(f"Processing {time_slot} (dia {dia_sigaa}, bloco {bloco})")
+
+        # Process each allocation column (skip first column which is time slot)
+        for i, allocation_cell in enumerate(row[1:], 1):
+            if i > len(room_mapping):
+                break
+
+            sala_nome = room_mapping[i - 1]
+            cell_value = allocation_cell.strip()
+
+            if not cell_value:
+                continue  # Empty cell, skip
+
+            # Get sala ORM object
+            from src.models.inventory import Sala
+
+            sala_orm = self.session.query(Sala).filter(Sala.nome == sala_nome).first()
+            if not sala_orm:
+                print(f"  ⚠️ Room {sala_nome} not found")
+                self.stats["errors"] += 1
+                continue
+            sala = self.sala_repo.orm_to_dto(sala_orm)
+
+            # Parse the allocation
+            allocation = self.parse_allocation_cell(cell_value)
+
+            # Process the allocation
+            self.process_allocation(
+                semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
+            )
+
+    def load_csv(self, csv_path: str):
+        """Load allocations from CSV file."""
+
+        semestre = self.get_semestre()
+        if not semestre:
+            print(f"❌ Semester '{self.semestre_name}' not found!")
+            return False
+
+        print(
+            f"Loading historical allocations for semester {semestre.nome} (ID: {semestre.id})"
+        )
+        print(f"Mode: {'DRY RUN' if self.dry_run else 'LIVE'}")
+        print(f"Force mode: {self.force}")
+
+        csv_file = Path(csv_path)
+        if not csv_file.exists():
+            print(f"❌ CSV file not found: {csv_path}")
+            return False
+
+        with open(csv_file, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f, delimiter=";")
+
+            # Read header row with room names
+            header_row = next(reader)
+            room_mapping = [col.strip() for col in header_row if col.strip()]
+
+            print(f"Found {len(room_mapping)} rooms: {room_mapping[:3]}...")
+
+            # Skip the empty row after header
+            next(reader)
+
+            # Process each data row
+            for row in reader:
+                if not row or not row[0].strip():
+                    continue  # Skip empty rows
+
+                self.process_csv_row(row, room_mapping, semestre.id)
+
+        print("\n" + "=" * 50)
+        print("LOAD RESULTS:")
+        print(f"Rows processed: {self.stats['rows_processed']}")
+        print(f"Allocations created: {self.stats['allocations_created']}")
+        print(f"Reservas created: {self.stats['reservas_created']}")
+        print(f"Demandas created: {self.stats['demandas_created']}")
+        print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
+        print(f"Errors: {self.stats['errors']}")
+
+        if not self.dry_run and self.stats["errors"] == 0:
+            self.session.commit()
+            print("✅ All changes committed to database")
+        elif self.dry_run:
+            print("📋 Dry run completed (no database changes)")
+
+        return self.stats["errors"] == 0
+
+
+def main():
+    """Main entry point."""
+    parser = ArgumentParser(
+        description="Load historical semester allocations from CSV",
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python load_historical_allocations.py --dry-run
+  python load_historical_allocations.py --force docs/Ensalamento\\ Oferta\\ 2-2025.csv
+  python load_historical_allocations.py --dry-run /path/to/other.csv
+        """,
+    )
+
+    parser.add_argument(
+        "csv_file",
+        nargs="?",
+        default="docs/Ensalamento Oferta 2-2025.csv",
+        help="Path to CSV file (default: docs/Ensalamento Oferta 2-2025.csv)",
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without making changes",
+    )
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing allocations for conflicts",
+    )
+
+    parser.add_argument(
+        "--semester",
+        default="2025-2",
+        help="Semester name (e.g., '2025-2') (default: 2025-2)",
+    )
+
+    args = parser.parse_args()
+
+    if args.dry_run and args.force:
+        print("❌ Cannot use --dry-run and --force together")
+        return 1
+
+    with get_db_session() as session:
+        allocator = CSVAllocator(
+            session,
+            dry_run=args.dry_run,
+            force=args.force,
+            semester_name=args.semester,
+        )
+        success = allocator.load_csv(args.csv_file)
+
+    return 0 if success else 1
+
+
+if __name__ == "__main__":
+    exit(main())
