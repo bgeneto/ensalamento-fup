@@ -276,13 +276,13 @@ def seed_db():
         predios_data = [
             {
                 "nome": "UAC",
-                "descricao": "Paulo Freire",
+                "descricao": "Edifício Paulo Freire",
                 "id": 1,
                 "campus_nome": "FUP",  # Reference by campus name instead of campus.id
             },
             {
                 "nome": "UEP",
-                "descricao": "Cora Coralina",
+                "descricao": "Edifício Cora Coralina",
                 "id": 2,
                 "campus_nome": "FUP",  # Reference by campus name instead of campus.id
             },
@@ -315,14 +315,33 @@ def seed_db():
 
         # Seed room types
         tipos_sala_data = [
-            {"nome": "Auditório", "descricao": "Auditório"},
+            {"nome": "Auditório", "descricao": "Auditório Augusto Boal"},
+            {"nome": "Auditório 3", "descricao": "Auditório 3"},
             {"nome": "Sala de Aula", "descricao": "Sala de aula regular"},
-            {"nome": "Lab. Fís.", "descricao": "Laboratório de Física"},
-            {"nome": "Lab. Quí.", "descricao": "Laboratório de Química"},
-            {"nome": "Lab. Bio.", "descricao": "Laboratório de Biologia"},
+            {
+                "nome": "Lab. Fís. Geo. 1",
+                "descricao": "Laboratório de Física e Geologia 1",
+            },
+            {
+                "nome": "Lab. Fís. Geo. 2",
+                "descricao": "Laboratório de Física e Geologia 2",
+            },
+            {"nome": "Lab. Quí. 1", "descricao": "Laboratório de Química 1"},
+            {"nome": "Lab. Quí. 2", "descricao": "Laboratório de Química 2"},
+            {"nome": "Lab. Bio. 1", "descricao": "Laboratório de Biologia 1"},
+            {"nome": "Lab. Bio. 2", "descricao": "Laboratório de Biologia 2"},
             {"nome": "Lab. Geo.", "descricao": "Laboratório de Geologia"},
-            {"nome": "Lab. Info.", "descricao": "Laboratório de Informática"},
-            {"nome": "Seminário", "descricao": "Sala de Seminário"},
+            {"nome": "Lab. Info. 1", "descricao": "Laboratório de Informática 1"},
+            {"nome": "Lab. Info. 2", "descricao": "Laboratório de Informática 2"},
+            {"nome": "Lab. Mat.", "descricao": "Laboratório de Matemática"},
+            {
+                "nome": "Lab. Artes 1",
+                "descricao": "Laboratório de Linguagens e Artes 1",
+            },
+            {
+                "nome": "Lab. Artes 2",
+                "descricao": "Laboratório de Linguagens e Artes 2",
+            },
         ]
 
         tipo_sala_ref = None
@@ -344,14 +363,21 @@ def seed_db():
 
         # Seed rooms (salas) with detailed information
         salas_data = [
-            # Detailed rooms from new data with specific attributes
+            {
+                "nome": "AT-42/32",
+                "capacidade": 16,
+                "andar": 0,
+                "tipo_sala": "Lab. Mat.",
+                "predio_id": 1,
+                "caracteristicas": ["Mesas Redondas", "Ventilador"],
+            },
             {
                 "nome": "AT-42/12",
                 "capacidade": 36,
                 "andar": 0,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": [],
+                "caracteristicas": ["Projetor", "Quadro Branco", "Ventilador"],
             },
             {
                 "nome": "AT-48/20",
@@ -379,11 +405,11 @@ def seed_db():
             },
             {
                 "nome": "A1-42/8",
-                "capacidade": 30,
+                "capacidade": 40,
                 "andar": 1,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": ["Quadro de Giz"],
+                "caracteristicas": ["Quadro de Giz", "Projetor", "Ventilador"],
             },
             {
                 "nome": "A1-42/12",
@@ -407,7 +433,7 @@ def seed_db():
                 "andar": 1,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": ["Quadro de Giz"],
+                "caracteristicas": ["Quadro de Giz", "Projetor", "Ventilador"],
             },
             {
                 "nome": "A1-42/30",
@@ -419,11 +445,16 @@ def seed_db():
             },
             {
                 "nome": "A1-48/32",
-                "capacidade": 12,
+                "capacidade": 16,
                 "andar": 1,
-                "tipo_sala": "Sala de Aula",
+                "tipo_sala": "Lab. Artes 1",
                 "predio_id": 1,
-                "caracteristicas": ["Mesas Redondas"],
+                "caracteristicas": [
+                    "Mesas Redondas",
+                    "Projetor",
+                    "Ventilador",
+                    "Quadro Branco",
+                ],
             },
             {
                 "nome": "A1-42/34",
@@ -431,15 +462,20 @@ def seed_db():
                 "andar": 1,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": ["Quadro de Giz"],
+                "caracteristicas": ["Quadro de Giz", "Projetor", "Ventilador"],
             },
             {
                 "nome": "A1-48/40",
-                "capacidade": 15,
+                "capacidade": 16,
                 "andar": 1,
-                "tipo_sala": "Sala de Aula",
+                "tipo_sala": "Lab. Artes 2",
                 "predio_id": 1,
-                "caracteristicas": ["Mesas Redondas"],
+                "caracteristicas": [
+                    "Mesas Redondas",
+                    "Projetor",
+                    "Ventilador",
+                    "Quadro Branco",
+                ],
             },
             {
                 "nome": "A1-42/42",
@@ -455,7 +491,7 @@ def seed_db():
                 "andar": 1,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": ["Quadro de Giz"],
+                "caracteristicas": ["Quadro de Giz", "Projetor", "Ventilador"],
             },
             {
                 "nome": "A1-48/52",
@@ -477,17 +513,29 @@ def seed_db():
                 "nome": "A1-42/62",
                 "capacidade": 80,
                 "andar": 1,
-                "tipo_sala": "Sala de Aula",
+                "tipo_sala": "Auditório 3",
                 "predio_id": 1,
-                "caracteristicas": [],
+                "caracteristicas": ["Projetor", "Ventilador"],
             },
             {
                 "nome": "A1-19/63",
-                "capacidade": 30,
+                "capacidade": 40,
                 "andar": 1,
                 "tipo_sala": "Sala de Aula",
                 "predio_id": 1,
-                "caracteristicas": [],
+                "caracteristicas": ["Projetor", "Quadro Branco", "Ventilador"],
+            },
+            {
+                "nome": "A1-05/68",
+                "capacidade": 150,
+                "andar": 1,
+                "tipo_sala": "Auditório",
+                "predio_id": 1,
+                "caracteristicas": [
+                    "Projetor",
+                    "Ar Condicionado",
+                    "Equipamento de Som",
+                ],
             },
             {
                 "nome": "AT-79/11",
@@ -499,21 +547,52 @@ def seed_db():
             },
             {
                 "nome": "AT-53/26",
-                "capacidade": 50,
+                "capacidade": 40,
                 "andar": 0,
-                "tipo_sala": "Lab. Fís.",
+                "tipo_sala": "Lab. Fís. Geo. 1",
                 "predio_id": 2,
-                "caracteristicas": [],
+                "caracteristicas": ["Ventilador", "Quadro Branco"],
             },
             {
                 "nome": "AT-66/26",
-                "capacidade": 50,
+                "capacidade": 40,
                 "andar": 0,
-                "tipo_sala": "Lab. Geo.",
+                "tipo_sala": "Lab. Fís. Geo. 2",
                 "predio_id": 2,
+                "caracteristicas": ["Ventilador", "Quadro de Giz"],
+            },
+            {
+                "nome": "A1-20/7",
+                "capacidade": 24,
+                "andar": 1,
+                "tipo_sala": "Lab. Bio. 2",
+                "predio_id": 1,
                 "caracteristicas": [],
             },
-            # Additional rooms from original list with default attributes
+            {
+                "nome": "A1-09/9",
+                "capacidade": 36,
+                "andar": 1,
+                "tipo_sala": "Lab. Bio. 1",
+                "predio_id": 1,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-09/9",
+                "capacidade": 36,
+                "andar": 0,
+                "tipo_sala": "Lab. Quí. 2",
+                "predio_id": 1,
+                "caracteristicas": ["Ventilador"],
+            },
+            {
+                "nome": "AT-22/7",
+                "capacidade": 40,
+                "andar": 0,
+                "tipo_sala": "Lab. Quí. 1",
+                "predio_id": 1,
+                "caracteristicas": ["Ventilador"],
+            },
             {
                 "nome": "A1-09/9",
                 "capacidade": 50,
@@ -540,19 +619,19 @@ def seed_db():
             },
             {
                 "nome": "AT-48/10",
-                "capacidade": 50,
+                "capacidade": 22,
                 "andar": 0,
-                "tipo_sala": "Sala de Aula",
+                "tipo_sala": "Lab. Info. 1",
                 "predio_id": 1,
-                "caracteristicas": [],
+                "caracteristicas": ["Computadores", "Projetor", "Ar Condicionado"],
             },
             {
                 "nome": "A1-48/10",
-                "capacidade": 50,
+                "capacidade": 25,
                 "andar": 1,
-                "tipo_sala": "Sala de Aula",
+                "tipo_sala": "Lab. Info. 2",
                 "predio_id": 1,
-                "caracteristicas": [],
+                "caracteristicas": ["Computadores", "Projetor", "Ventilador"],
             },
         ]
 
