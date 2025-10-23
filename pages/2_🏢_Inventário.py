@@ -16,6 +16,7 @@ from pages.components.inventory.tab_campus import render_campus_tab
 from pages.components.inventory.tab_buildings import render_buildings_tab
 from pages.components.inventory.tab_rooms import render_rooms_tab
 from pages.components.inventory.tab_associations import render_associations_tab
+from pages.components.ui import page_footer
 
 # Initialize page with authentication and configuration
 if not initialize_page(
@@ -71,3 +72,6 @@ with tab3:
 
 with tab4:
     render_campus_tab()
+
+# Page Footer
+page_footer.show()

@@ -12,6 +12,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from pages.components.auth import initialize_page
+from pages.components.ui import page_footer
 
 # Initialize page with authentication and configuration
 if not initialize_page(
@@ -514,3 +515,6 @@ with tab2:
 
         # Display form result if available
         display_session_feedback("form_result")
+
+# Page Footer
+page_footer.show()

@@ -9,7 +9,7 @@ from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.schemas.academic import DemandaCreate
 from src.schemas.academic import ProfessorCreate
-from docs.sigaa_parser import SigaaScheduleParser
+from src.utils.sigaa_parser import SigaaScheduleParser
 
 
 parser = SigaaScheduleParser()

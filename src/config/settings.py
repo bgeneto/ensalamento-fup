@@ -22,6 +22,11 @@ class Settings:
         env_file = Path(__file__).parent.parent.parent / ".env"
         load_dotenv(env_file)
 
+        # Application Configuration
+        self.APP_NAME: str = os.getenv("APP_NAME", "Sistema de Ensalamento FUP/UnB")
+        self.APP_VERSION: str = os.getenv("APP_VERSION", "1.0.0")
+        self.BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8501")
+
         # Database Configuration
         self.DATABASE_URL: str = os.getenv(
             "DATABASE_URL", "sqlite:///./data/ensalamento.db"
@@ -31,18 +36,59 @@ class Settings:
         db_path = self.DATABASE_URL.replace("sqlite:///", "")
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-        # API Configuration
-        self.SISTEMA_OFERTA_API_URL: Optional[str] = os.getenv("SISTEMA_OFERTA_API_URL")
+        # Encryption
+        self.ENCRYPTION_KEY: Optional[str] = os.getenv("ENCRYPTION_KEY")
+
+        # API Configuration (Sistema de Oferta)
+        self.OFERTA_API_BASE_URL: Optional[str] = os.getenv("OFERTA_API_BASE_URL")
+        self.OFERTA_API_TIMEOUT: int = int(os.getenv("OFERTA_API_TIMEOUT", "10"))
+        # Legacy support for old variable names
+        self.SISTEMA_OFERTA_API_URL: Optional[str] = os.getenv(
+            "SISTEMA_OFERTA_API_URL", self.OFERTA_API_BASE_URL
+        )
         self.SISTEMA_OFERTA_API_KEY: Optional[str] = os.getenv("SISTEMA_OFERTA_API_KEY")
 
         # Email Configuration (Brevo)
         self.BREVO_API_KEY: Optional[str] = os.getenv("BREVO_API_KEY")
-        self.BREVO_FROM_EMAIL: Optional[str] = os.getenv("BREVO_FROM_EMAIL")
+        self.BREVO_SENDER_EMAIL: Optional[str] = os.getenv("BREVO_SENDER_EMAIL")
+        self.BREVO_SENDER_NAME: Optional[str] = os.getenv(
+            "BREVO_SENDER_NAME", "Sistema de Ensalamento FUP/UnB"
+        )
+        # Legacy support
+        self.BREVO_FROM_EMAIL: Optional[str] = os.getenv(
+            "BREVO_FROM_EMAIL", self.BREVO_SENDER_EMAIL
+        )
+
+        # Initial Superadmin Configuration (for first-time setup)
+        self.INITIAL_SUPERADMIN_EMAIL: Optional[str] = os.getenv(
+            "INITIAL_SUPERADMIN_EMAIL"
+        )
+        self.INITIAL_SUPERADMIN_PASSWORD: Optional[str] = os.getenv(
+            "INITIAL_SUPERADMIN_PASSWORD"
+        )
+        self.INITIAL_SUPERADMIN_NAME: Optional[str] = os.getenv(
+            "INITIAL_SUPERADMIN_NAME", "Superadmin"
+        )
 
         # Streamlit Configuration
-        self.STREAMLIT_SERVER_PORT: int = int(os.getenv("STREAMLIT_SERVER_PORT", 8501))
+        self.STREAMLIT_SERVER_PORT: int = int(
+            os.getenv("STREAMLIT_SERVER_PORT", "8501")
+        )
         self.STREAMLIT_SERVER_ADDRESS: str = os.getenv(
             "STREAMLIT_SERVER_ADDRESS", "0.0.0.0"
+        )
+        self.STREAMLIT_SERVER_HEADLESS: bool = (
+            os.getenv("STREAMLIT_SERVER_HEADLESS", "true").lower() == "true"
+        )
+        self.STREAMLIT_SERVER_ENABLE_CORS: bool = (
+            os.getenv("STREAMLIT_SERVER_ENABLE_CORS", "false").lower() == "true"
+        )
+        self.STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: bool = (
+            os.getenv("STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION", "false").lower()
+            == "true"
+        )
+        self.STREAMLIT_BROWSER_GATHER_USAGE_STATS: bool = (
+            os.getenv("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false").lower() == "true"
         )
         self.STREAMLIT_LOGGER_LEVEL: str = os.getenv("STREAMLIT_LOGGER_LEVEL", "info")
 
@@ -63,6 +109,9 @@ class Settings:
         # Application Settings
         self.DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
         self.ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
+        # Docker Configuration
+        self.HOST_UID: int = int(os.getenv("HOST_UID", "1000"))
 
         # Configure logging based on DEBUG setting
         self._configure_logging()

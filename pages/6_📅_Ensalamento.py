@@ -42,18 +42,12 @@ from src.utils.ui_feedback import (
 from src.models.inventory import Sala, Predio
 from src.models.academic import Professor
 from src.models.allocation import AlocacaoSemestral
-
+from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
+from pages.components.ui import page_footer
 
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
-
-
-def get_sigaa_schedule_parser():
-    """Create and return SigaaScheduleParser instance."""
-    from src.utils.sigaa_parser import SigaaScheduleParser
-
-    return SigaaScheduleParser()
 
 
 def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
@@ -74,7 +68,7 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
         blocks, key=lambda x: (x[1], x[0])
     )  # dia_sigaa, codigo_bloco
 
-    parser = get_sigaa_schedule_parser()
+    parser = get_sigaa_parser()
     combined = []
 
     current_start = None
@@ -189,16 +183,20 @@ try:
         sala_repo = SalaRepository(session)
         prof_repo = ProfessorRepository(session)
         disc_repo = DisciplinaRepository(session)
-        sem_repo = SemestreRepository(session)
         dia_repo = DiaSemanaRepository(session)
         horario_repo = HorarioBlocoRepository(session)
 
-        # Get basic data
-        semestres = sem_repo.get_all()
+        # Get semester options using cached helper
+        semester_options = get_semester_options()
+        if not semester_options:
+            st.warning("Nenhum semestre encontrado.")
+            st.stop()
+
+        # Get rooms data
         salas_orm = session.query(Sala).join(Predio).all()
 
         # Create filter options
-        semestres_options = {s.id: f"{s.nome}" for s in semestres}
+        semestres_options = {sem_id: sem_name for sem_id, sem_name in semester_options}
         salas_options = {s.id: f"{s.predio.nome}/{s.nome}" for s in salas_orm}
 
         col1, col2, col3 = st.columns(3)
@@ -208,9 +206,7 @@ try:
                 "Semestre:",
                 options=list(semestres_options.keys()),
                 format_func=lambda x: semestres_options.get(x, f"ID {x}"),
-                index=(
-                    len(semestres) - 1 if semestres else None
-                ),  # Select latest by default
+                index=0,  # Select first (most recent) by default
                 key="semester_filter",
             )
 
@@ -451,3 +447,6 @@ except Exception as e:
     import traceback
 
     st.code(traceback.format_exc())
+
+# Page Footer
+page_footer.show()

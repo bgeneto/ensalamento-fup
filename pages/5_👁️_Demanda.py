@@ -32,21 +32,20 @@ from src.config.database import get_db_session
 from src.repositories.semestre import SemestreRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
-from docs.sigaa_parser import SigaaScheduleParser
+from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
 from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
-
+from pages.components.ui import page_footer
 
 st.title("👁️ Demanda Semestral")
 
 # Display any persisted feedback from prior action
 display_session_feedback("sync_semestre_result")
 
-parser = SigaaScheduleParser()
-
 
 def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
     """Converte uma lista de DemandaRead DTOs para um DataFrame com colunas amigáveis."""
+    parser = get_sigaa_parser()
     rows = []
     for d in dtos:
         # Support Pydantic models or plain dicts
@@ -99,32 +98,32 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
     return df
 
 
+# Load semesters using cached helper
+semester_options = get_semester_options()
+if not semester_options:
+    st.info(
+        "Nenhum semestre encontrado. Importe um semestre na página de sincronização."
+    )
+    st.stop()
+
+# Create selectbox with semester names
+semester_names = [name for _, name in semester_options]
+semester_id_map = {name: sem_id for sem_id, name in semester_options}
+
+semestre_selecionado = st.selectbox(
+    "Semestre:",
+    options=semester_names,
+    width=150,
+)
+
+# Get selected semester ID
+selected_semester_id = semester_id_map[semestre_selecionado]
+
 with get_db_session() as session:
-    sem_repo = SemestreRepository(session)
     dem_repo = DisciplinaRepository(session)
     prof_repo = ProfessorRepository(session)
 
-    # Load semesters for the selectbox
-    semestres = [s.nome for s in sem_repo.get_all()]
-    if not semestres:
-        st.info(
-            "Nenhum semestre encontrado. Importe um semestre na página de sincronização."
-        )
-        st.stop()
-
-    semestre_selecionado = st.selectbox(
-        "Selecione o Semestre",
-        options=semestres,
-        width=150,
-    )
-
-    # Resolve semestre id
-    semestre = sem_repo.get_by_name(semestre_selecionado)
-    if not semestre:
-        st.error("Semestre selecionado não encontrado.")
-        st.stop()
-
-    demandas = dem_repo.get_by_semestre(semestre.id)
+    demandas = dem_repo.get_by_semestre(selected_semester_id)
     df = _demanda_dtos_to_df(demandas)
 
     # --- Métricas de Resumo ---
@@ -287,3 +286,6 @@ if st.button(
     # Set processing state and rerun to start spinner
     st.session_state.sync_semestre_processing = True
     st.rerun()
+
+# Page Footer
+page_footer.show()

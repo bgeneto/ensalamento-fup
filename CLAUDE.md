@@ -149,6 +149,62 @@ else:
 - Default TTL is 6 seconds; adjust per use case. The helper prevents duplicate toast emissions via the `displayed` flag.
 - See `pages/3_👨‍🏫_Professores.py` for a full example covering CRUD updates and CSV imports.
 
+### Streamlit Caching Strategy (CRITICAL for Performance)
+
+**REQUIRED MODULE**: All cached helpers are in `src/utils/cache_helpers.py`
+
+**Cache Types & Use Cases:**
+
+1. **`@st.cache_resource`** - For singleton objects (stateless utilities)
+   ```python
+   from src.utils.cache_helpers import get_sigaa_parser
+
+   # ✅ ALWAYS use cached singleton (never create new instances)
+   parser = get_sigaa_parser()  # 622x faster on cache hits
+   readable = parser.parse_to_human_readable("24M12")
+   ```
+
+2. **`@st.cache_data`** - For reference data lookups (with TTL)
+   ```python
+   from src.utils.cache_helpers import (
+       get_predio_options,      # Building ID → name (5-min TTL)
+       get_tipo_sala_options,   # Room type ID → name (5-min TTL)
+       get_semester_options,    # Semester list (10-min TTL)
+   )
+
+   # ✅ Use cached lookups in all pages
+   predio_options = get_predio_options()  # {1: "AT", 2: "UAC", ...}
+   semester_list = get_semester_options()  # [(5, "2026-1"), (4, "2025-2"), ...]
+   ```
+
+**❌ NEVER Cache:**
+- Functions with side effects (`st.write`, `st.markdown`, etc.)
+- Database sessions or ORM objects
+- User-specific data without user ID in cache key
+- Data that changes multiple times per minute
+
+**✅ ALWAYS Cache:**
+- Utility object singletons (SigaaScheduleParser)
+- Reference data lookups (buildings, room types, semesters)
+- Pure functions with deterministic outputs
+- Expensive computations with stable inputs
+
+**Cache Invalidation:**
+```python
+from src.utils.cache_helpers import clear_all_caches, clear_reference_data_cache
+
+# After admin updates reference data:
+clear_reference_data_cache()  # Clears lookups only
+# OR
+clear_all_caches()  # Nuclear option (clears everything)
+st.rerun()
+```
+
+**References:**
+- `docs/CACHING_OPTIMIZATION_ANALYSIS.md` - Full strategy & analysis
+- `docs/PHASE_2_SEMESTER_CACHE_SUMMARY.md` - Implementation examples
+- `src/utils/cache_helpers.py` - All cached helper functions
+
 ### Tests, Fix and Summaries
 
 - All test files you need to create must be placed in the  ‘tests’  folder at the project’s root.

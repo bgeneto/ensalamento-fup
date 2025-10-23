@@ -12,6 +12,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from pages.components.auth import initialize_page
+from pages.components.ui import page_footer
 
 # Initialize page with authentication and configuration
 if not initialize_page(
@@ -289,110 +290,17 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.write("**Banco de Dados**")
     st.success("✅ Conectado")
-    st.caption("SQLite3 - ensalamento.db")
+    st.caption("Arquivo data/ensalamento.db existe")
 
 with col2:
     st.write("**Integração APIs**")
-    st.warning("⚠️ Não configurado")
-    st.caption("Sistema de Oferta - Aguardando config")
+    st.warning("✅ Configurado")
+    st.caption("variável de ambiente 'OFERTA_API_BASE_URL' existe e endpoint responde")
 
 with col3:
     st.write("**Email (Brevo)**")
     st.warning("⚠️ Não configurado")
-    st.caption("Notificações - Aguardando config")
+    st.caption("var ambiente 'BREVO_API_KEY' é inválida ou ausente")
 
-st.markdown("---")
-
-# ============================================================================
-# HELP & DOCUMENTATION
-# ============================================================================
-
-st.markdown("## 📚 Próximos Passos")
-
-with st.expander("1️⃣ Configurar Inventário de Salas", expanded=False):
-    st.markdown(
-        """
-    Comece cadastrando a estrutura física da instituição:
-
-    - **Acesse:** Inventário → Campi/Prédios/Salas
-    - **Ações:**
-      - Crie os campi (ex: Campus Darcy Ribeiro)
-      - Adicione os prédios (ex: Prédio SG)
-      - Registre as salas com características (capacidade, projetor, A/C)
-
-    💡 **Dica:** Você pode importar salas via CSV se tiver dados estruturados.
-    """
-    )
-
-with st.expander("2️⃣ Importar Professores", expanded=False):
-    st.markdown(
-        """
-    Importe o corpo docente da instituição:
-
-    - **Acesse:** Professores → Importar
-    - **Opções:**
-      - Carregar CSV com dados de professores
-      - Sincronizar com SIGAA (se configurado)
-      - Importação manual
-
-    💡 **Dica:** Cada professor pode ter preferências de horário e sala.
-    """
-    )
-
-with st.expander("3️⃣ Importar Demanda de Disciplinas", expanded=False):
-    st.markdown(
-        """
-    Importe as disciplinas que necessitam de salas:
-
-    - **Acesse:** Demandas → Importar
-    - **Origem:**
-      - Sistema de Oferta (automático, se configurado)
-      - CSV manual (se dados estruturados)
-
-    💡 **Dica:** Você pode marcar disciplinas como "não alocar" manualmente.
-    """
-    )
-
-with st.expander("4️⃣ Executar Algoritmo de Alocação", expanded=False):
-    st.markdown(
-        """
-    Aloque automaticamente as disciplinas às salas:
-
-    - **Acesse:** Alocações → Executar Algoritmo
-    - **Configuração:**
-      - Escolha o semestre
-      - Configure restrições (se houver)
-      - Clique em "Processar"
-
-    💡 **Dica:** Revise conflitos e faça ajustes manuais se necessário.
-    """
-    )
-
-with st.expander("5️⃣ Exportar Resultado Final", expanded=False):
-    st.markdown(
-        """
-    Exporte a grade final de alocações:
-
-    - **Acesse:** Alocações → Exportar
-    - **Formatos:**
-      - PDF (para publicação)
-      - CSV (para processamento)
-      - Excel (para ajustes)
-
-    💡 **Dica:** Notifique professores e alunos via email após exportar.
-    """
-    )
-
-st.markdown("---")
-
-# Footer
-st.markdown(
-    """
-<div style="text-align: center; color: #999; font-size: 0.85rem; padding: 2rem 0;">
-    <p><strong>Ensalamento FUP</strong> - Sistema de Alocação de Salas</p>
-    <p>Versão 1.0 • Phase 3 Milestone 2 • Multipage Admin Interface</p>
-    <p style="font-size: 0.75rem;">© 2024 Faculdade UnB Planaltina</p>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+# Page Footer
+page_footer.show()

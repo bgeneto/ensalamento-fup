@@ -361,6 +361,35 @@ def seed_db():
             elif tipo_data["nome"] == "Sala de Aula":
                 tipo_sala_ref = existing
 
+        # Seed room characteristics FIRST (before rooms, so caracteristicas_map works)
+        caracteristicas_data = [
+            {"nome": "Projetor"},
+            {"nome": "Quadro Branco"},
+            {"nome": "Quadro de Giz"},
+            {"nome": "Acesso para Cadeirantes"},
+            {"nome": "Ar Condicionado"},
+            {"nome": "Ventilador"},
+            {"nome": "Computadores"},
+            {"nome": "Equipamento de Som"},
+            {"nome": "Mesas Redondas"},
+        ]
+
+        for carac_data in caracteristicas_data:
+            existing = (
+                session.query(Caracteristica)
+                .filter(Caracteristica.nome == carac_data["nome"])
+                .first()
+            )
+            if not existing:
+                carac = Caracteristica(**carac_data)
+                session.add(carac)
+                print(f"  ✓ Added characteristic: {carac_data['nome']}")
+
+        # Get all Caracteristica records for mapping (now they exist!)
+        caracteristicas_map = {
+            carac.nome: carac for carac in session.query(Caracteristica).all()
+        }
+
         # Seed rooms (salas) with detailed information
         salas_data = [
             {
@@ -638,11 +667,6 @@ def seed_db():
         # Get all TipoSala records for mapping
         tipos_sala_map = {tipo.nome: tipo for tipo in session.query(TipoSala).all()}
 
-        # Get all Caracteristica records for mapping
-        caracteristicas_map = {
-            carac.nome: carac for carac in session.query(Caracteristica).all()
-        }
-
         for sala_info in salas_data:
             existing = (
                 session.query(Sala).filter(Sala.nome == sala_info["nome"]).first()
@@ -682,45 +706,66 @@ def seed_db():
                 session.add(sala)
                 session.flush()  # Flush to get the sala.id
 
-                # Add caracteristicas associations
+                print(
+                    f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome}) {'+' + ', '.join(sala_info['caracteristicas']) if sala_info['caracteristicas'] else ''}"
+                )
+            else:
+                sala = existing
+                print(
+                    f"  → Sala already exists: {sala_info['nome']} (skipping creation)"
+                )
+
+            # Always check/create caracteristicas associations for this sala
+            # (whether it was just created or already existed)
+            if sala_info["caracteristicas"]:
+                print(
+                    f"    → Processing {len(sala_info['caracteristicas'])} characteristics for {sala_info['nome']}"
+                )
+
+                # Check existing associations for this sala
+                existing_associations = session.execute(
+                    sala_caracteristicas.select().where(
+                        sala_caracteristicas.c.sala_id == sala.id
+                    )
+                ).fetchall()
+                existing_carac_ids = {
+                    assoc.caracteristica_id for assoc in existing_associations
+                }
+
                 for carac_nome in sala_info["caracteristicas"]:
+                    print(
+                        f"    DEBUG: Processing characteristic '{carac_nome}' for room {sala_info['nome']}"
+                    )
                     carac = caracteristicas_map.get(carac_nome)
                     if carac:
-                        # Associate via the many-to-many table
-                        insert_stmt = sala_caracteristicas.insert().values(
-                            sala_id=sala.id, caracteristica_id=carac.id
+                        # Only create association if it doesn't already exist
+                        if carac.id not in existing_carac_ids:
+                            # Use manual insert with proper session management
+                            insert_stmt = sala_caracteristicas.insert().values(
+                                sala_id=sala.id, caracteristica_id=carac.id
+                            )
+                            session.execute(insert_stmt)
+                            print(
+                                f"    DEBUG: Inserted association sala_id={sala.id}, caracteristica_id={carac.id} for {carac_nome}"
+                            )
+                        else:
+                            print(
+                                f"    DEBUG: Association already exists for {carac_nome}"
+                            )
+                    else:
+                        print(
+                            f"    DEBUG: Characteristic '{carac_nome}' not found in map"
                         )
-                        session.execute(insert_stmt)
+            else:
+                print(f"    → No characteristics defined for {sala_info['nome']}")
 
+            # Only print the success message for newly created salas
+            if not existing:
                 print(
                     f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome}) {'+' + ', '.join(sala_info['caracteristicas']) if sala_info['caracteristicas'] else ''}"
                 )
 
-        session.flush()
-
-        # Seed room characteristics
-        caracteristicas_data = [
-            {"nome": "Projetor"},
-            {"nome": "Quadro Branco"},
-            {"nome": "Quadro de Giz"},
-            {"nome": "Acesso para Cadeirantes"},
-            {"nome": "Ar Condicionado"},
-            {"nome": "Ventilador"},
-            {"nome": "Computadores"},
-            {"nome": "Equipamento de Som"},
-            {"nome": "Mesas Redondas"},
-        ]
-
-        for carac_data in caracteristicas_data:
-            existing = (
-                session.query(Caracteristica)
-                .filter(Caracteristica.nome == carac_data["nome"])
-                .first()
-            )
-            if not existing:
-                carac = Caracteristica(**carac_data)
-                session.add(carac)
-                print(f"  ✓ Added characteristic: {carac_data['nome']}")
+        session.flush()  # Flush all sala and association inserts
 
         # Seed admin users
         admin_users_data = [

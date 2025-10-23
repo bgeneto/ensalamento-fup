@@ -21,6 +21,11 @@ from src.schemas.inventory import (
 )
 from src.config.database import get_db_session
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+from src.utils.cache_helpers import (
+    get_predio_options,
+    get_tipo_sala_options,
+    get_caracteristica_options,
+)
 
 # Needs to be imported from auth module for shared imports
 import sys
@@ -45,17 +50,13 @@ def render_rooms_tab():
     try:
         with get_db_session() as session:
             sala_repo = SalaRepository(session)
-            predio_repo = PredioRepository(session)
-            tipo_sala_repo = TipoSalaRepository(session)
 
-            # Get rooms and related data for dropdowns
+            # Get rooms
             salas = sala_repo.get_all()
-            predios = predio_repo.get_all()
-            tipos_sala = tipo_sala_repo.get_all()
 
-            # Create dropdown options
-            predio_options = {predio.id: predio.nome for predio in predios}
-            tipo_sala_options = {ts.id: ts.nome for ts in tipos_sala}
+            # Get cached lookup dictionaries
+            predio_options = get_predio_options()
+            tipo_sala_options = get_tipo_sala_options()
 
             if salas:
                 # Display summary
@@ -484,11 +485,11 @@ def render_rooms_tab():
                 st.info(
                     "📭 Nenhuma sala cadastrada ainda. Use a tabela acima para adicionar a primeira sala."
                 )
-                if not predios:
+                if not predio_options:
                     st.warning(
                         "ℹ️ Primeiro, cadastre ao menos um prédio na aba 'Prédios' para poder criar salas."
                     )
-                if not tipos_sala:
+                if not tipo_sala_options:
                     st.warning(
                         "ℹ️ Primeiro, cadastre ao menos um tipo sala na aba 'Características' para poder criar salas."
                     )

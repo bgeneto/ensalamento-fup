@@ -83,11 +83,9 @@ class AlocacaoSemestralUpdate(BaseModel):
 
 
 class AlocacaoSemestralRead(AlocacaoSemestralBase):
-    """Schema for reading AlocacaoSemestral (includes timestamps)."""
+    """Schema for reading AlocacaoSemestral."""
 
     id: int
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         from_attributes = True
