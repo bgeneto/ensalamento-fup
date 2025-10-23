@@ -8,6 +8,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 
+from src.schemas.academic import DemandaRead
+
 
 # ============================================================================
 # REGRA Schemas
@@ -86,6 +88,7 @@ class AlocacaoSemestralRead(AlocacaoSemestralBase):
     """Schema for reading AlocacaoSemestral."""
 
     id: int
+    demanda: Optional[DemandaRead] = None
 
     class Config:
         from_attributes = True

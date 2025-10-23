@@ -158,6 +158,131 @@ def format_schedule_display(allocation_records: List[Dict[str, Any]]) -> str:
     return " • ".join(schedule_parts) if schedule_parts else "Nenhum horário agendado"
 
 
+def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.DataFrame:
+    """
+    Create a schedule grid DataFrame for a room.
+
+    Args:
+        allocations: List of allocation/reservation objects
+        room_name: Name of the room
+
+    Returns:
+        DataFrame with time slots as index and days as columns
+    """
+    parser = get_sigaa_parser()
+
+    # Get all unique time slots used in this room's allocations
+    time_slots = set()
+    schedule_data = {}
+
+    # Weekdays mapping
+    weekdays = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+
+    # Initialize empty schedule
+    for dia_id, dia_name in weekdays.items():
+        schedule_data[dia_name] = {}
+
+    # Populate schedule data
+    for alloc in allocations:
+        # Check if this is a reservation (dict) or allocation (object)
+        if isinstance(alloc, dict) and alloc.get("type") == "reservation":
+            # Handle reservation
+            bloco = alloc["codigo_bloco"]
+            titulo = alloc["titulo"]
+            solicitante = alloc["solicitante"]
+
+            # For now, put all reservations in a separate section
+            # TODO: Properly map reservation dates to weekdays
+            dia_name = "RESERVAS"
+            if dia_name not in schedule_data:
+                schedule_data[dia_name] = {}
+
+            schedule_data[dia_name][bloco] = f"🎯 {titulo} ({solicitante})"
+            time_slots.add(bloco)
+        else:
+            # Handle regular allocation
+            dia_id = alloc.dia_semana_id
+            bloco = alloc.codigo_bloco
+
+            if dia_id not in weekdays:
+                continue
+
+            dia_name = weekdays[dia_id]
+
+            # Get course information
+            codigo_disciplina = (
+                alloc.demanda.codigo_disciplina if alloc.demanda is not None else "N/A"
+            )
+            nome_disciplina = (
+                alloc.demanda.nome_disciplina if alloc.demanda is not None else ""
+            )
+            disciplina = (
+                f"{codigo_disciplina} - {nome_disciplina}"
+                if nome_disciplina
+                else codigo_disciplina
+            )
+            turma = (
+                alloc.demanda.turma_disciplina if alloc.demanda is not None else "N/A"
+            )
+            professor = (
+                alloc.demanda.professores_disciplina
+                if alloc.demanda is not None
+                else "N/A"
+            )
+
+            schedule_data[dia_name][bloco] = f"{disciplina} (T{turma}) | {professor}"
+
+            time_slots.add(bloco)
+
+    if not time_slots:
+        return pd.DataFrame()
+
+    # Sort time slots chronologically using parser
+    def sort_key(block_code):
+        bloco_info = parser.MAP_SCHEDULE_TIMES.get(block_code, {})
+        start_time = bloco_info.get("inicio", "00:00")
+        # Convert to minutes for proper sorting
+        try:
+            hours, minutes = map(int, start_time.split(":"))
+            return hours * 60 + minutes
+        except ValueError:
+            return 0
+
+    sorted_time_slots = sorted(time_slots, key=sort_key)
+
+    # Create DataFrame
+    df_data = {}
+    for dia_name in weekdays.values():
+        df_data[dia_name] = []
+        for bloco in sorted_time_slots:
+            content = schedule_data.get(dia_name, {}).get(bloco, "")
+            df_data[dia_name].append(content)
+
+    # Handle reservations separately if any
+    if "RESERVAS" in schedule_data:
+        df_data["RESERVAS"] = []
+        for bloco in sorted_time_slots:
+            content = schedule_data["RESERVAS"].get(bloco, "")
+            df_data["RESERVAS"].append(content)
+
+    # Create DataFrame with time slots as index
+    df = pd.DataFrame(df_data, index=sorted_time_slots)
+
+    # Format index with human-readable times
+    formatted_index = []
+    for bloco in sorted_time_slots:
+        bloco_info = parser.MAP_SCHEDULE_TIMES.get(bloco, {})
+        start_time = bloco_info.get("inicio", bloco)
+        end_time = bloco_info.get("fim", "")
+        formatted_index.append(
+            f"{start_time}-{end_time}" if start_time != bloco else bloco
+        )
+
+    df.index = formatted_index
+
+    return df
+
+
 # ============================================================================
 # MAIN PAGE CONTENT
 # ============================================================================
@@ -272,13 +397,8 @@ try:
         if st.button("🔍 Atualizar Visualização", type="primary"):
             with st.spinner("Carregando dados..."):
 
-                # Build data structure based on view type
-                display_data = []
-
                 if view_type == "sala":
-                    # Get allocations and reservations for selected semester
-
-                    # Get semester allocations
+                    # Get allocations for selected semester
                     allocacoes = (
                         aloc_repo.get_by_semestre(selected_semestre)
                         if selected_semestre
@@ -288,119 +408,67 @@ try:
                     # Get all reservations (reservations don't have semester, they're date-based)
                     reservas = reserva_repo.get_all()
 
-                    # Group by room
-                    rooms_data = {}
-
+                    # Group allocations by room
+                    room_allocations = {}
                     for alloc in allocacoes:
                         room_id = alloc.sala_id
                         if selected_entity != "all" and room_id != selected_entity:
                             continue
 
-                        if room_id not in rooms_data:
-                            rooms_data[room_id] = {
+                        if room_id not in room_allocations:
+                            room_allocations[room_id] = {
                                 "room_name": salas_options.get(
                                     room_id, f"Sala {room_id}"
                                 ),
                                 "allocations": [],
-                                "reservations": [],
                             }
 
-                        # Get all blocks for this allocation
-                        blocks = []
-                        if hasattr(alloc, "dia_semana_id") and hasattr(
-                            alloc, "codigo_bloco"
-                        ):
-                            # This is a semester allocation
-                            blocks.append((alloc.codigo_bloco, alloc.dia_semana_id))
+                        room_allocations[room_id]["allocations"].append(alloc)
 
-                        if blocks:
-                            rooms_data[room_id]["allocations"].append(
-                                {
-                                    "type": "allocation",
-                                    "disciplina": (
-                                        alloc.demanda.codigo_disciplina
-                                        if alloc.demanda
-                                        else "N/A"
-                                    ),
-                                    "professor": (
-                                        alloc.demanda.professores_disciplina
-                                        if alloc.demanda
-                                        else "N/A"
-                                    ),
-                                    "turma": (
-                                        alloc.demanda.turma_disciplina
-                                        if alloc.demanda
-                                        else "N/A"
-                                    ),
-                                    "blocks": blocks,
-                                }
-                            )
-
+                    # Group reservations by room
                     for reserva in reservas:
                         room_id = reserva.sala_id
                         if selected_entity != "all" and room_id != selected_entity:
                             continue
 
-                        if room_id not in rooms_data:
-                            rooms_data[room_id] = {
+                        if room_id not in room_allocations:
+                            room_allocations[room_id] = {
                                 "room_name": salas_options.get(
                                     room_id, f"Sala {room_id}"
                                 ),
                                 "allocations": [],
-                                "reservations": [],
                             }
 
-                        # For reservations, we need to map the date to weekday
-                        # This is simplified - in real implementation, you'd need date-to-weekday conversion
-                        blocks = [
-                            (reserva.codigo_bloco, 0)
-                        ]  # Placeholder for date logic
-
-                        rooms_data[room_id]["reservations"].append(
-                            {
-                                "type": "reservation",
-                                "titulo": reserva.titulo_evento,
-                                "solicitante": reserva.username_solicitante,
-                                "data": reserva.data_reserva,
-                                "blocks": blocks,
-                            }
+                        # Convert reservation to allocation-like format for consistency
+                        reservation_alloc = {
+                            "type": "reservation",
+                            "titulo": reserva.titulo_evento,
+                            "solicitante": reserva.username_solicitante,
+                            "dia_semana_id": reserva.data_reserva,  # Placeholder - would need weekday mapping
+                            "codigo_bloco": reserva.codigo_bloco,
+                        }
+                        room_allocations[room_id]["allocations"].append(
+                            reservation_alloc
                         )
 
-                    # Convert to display format
-                    for room_id, data in rooms_data.items():
-                        # Combine allocations and reservations
-                        all_events = data["allocations"] + data["reservations"]
+                    # Display schedule grids for each room
+                    rooms_displayed = 0
+                    for room_id, room_data in room_allocations.items():
+                        room_name = room_data["room_name"]
+                        allocations = room_data["allocations"]
 
-                        if all_events:
-                            # Group by time blocks for display
-                            time_groups = {}
-                            for event in all_events:
-                                for bloco, dia in event["blocks"]:
-                                    key = f"{dia}-{bloco}"
-                                    if key not in time_groups:
-                                        time_groups[key] = []
-                                    time_groups[key].append(event)
+                        if not allocations:
+                            continue
 
-                            # Create display item
-                            display_item = {
-                                "Sala": data["room_name"],
-                                "Horários": format_schedule_display(all_events),
-                            }
+                        # Create room schedule grid
+                        room_grid = create_room_schedule_grid(allocations, room_name)
+                        if room_grid is not None and not room_grid.empty:
+                            rooms_displayed += 1
+                            st.subheader(f"🏢 {room_name}")
+                            st.dataframe(room_grid)
 
-                            # Add event details
-                            event_descriptions = []
-                            for event in all_events:
-                                if event["type"] == "allocation":
-                                    event_descriptions.append(
-                                        f"📘 {event['disciplina']} T{event['turma']} - {event['professor']}"
-                                    )
-                                else:
-                                    event_descriptions.append(
-                                        f"🎯 {event['titulo']} ({event['solicitante']})"
-                                    )
-
-                            display_item["Eventos"] = " | ".join(event_descriptions)
-                            display_data.append(display_item)
+                    if rooms_displayed == 0:
+                        st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
 
                 elif view_type == "professor":
                     st.info(
@@ -411,15 +479,6 @@ try:
                     st.info(
                         "📝 Visualização por disciplina será implementada em seguida..."
                     )
-
-                # Display results
-                if display_data:
-                    df = pd.DataFrame(display_data)
-                    st.dataframe(
-                        df, width="stretch", hide_index=True, use_container_width=True
-                    )
-                else:
-                    st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
 
         # Export options
         st.markdown("---")

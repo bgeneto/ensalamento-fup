@@ -7,11 +7,12 @@ conflict detection and availability checking.
 
 from typing import List, Optional, Tuple
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 
 from src.models.allocation import AlocacaoSemestral
 from src.schemas.allocation import AlocacaoSemestralRead, AlocacaoSemestralCreate
+from src.schemas.academic import DemandaRead
 from src.repositories.base import BaseRepository
 
 
@@ -35,6 +36,10 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         Returns:
             AlocacaoSemestralRead DTO
         """
+        demanda_dto = None
+        if hasattr(orm_obj, "demanda") and orm_obj.demanda:
+            demanda_dto = DemandaRead.from_orm(orm_obj.demanda)
+
         return AlocacaoSemestralRead(
             id=orm_obj.id,
             semestre_id=orm_obj.semestre_id,
@@ -42,6 +47,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             sala_id=orm_obj.sala_id,
             dia_semana_id=orm_obj.dia_semana_id,
             codigo_bloco=orm_obj.codigo_bloco,
+            demanda=demanda_dto,
         )
 
     def dto_to_orm_create(self, dto: AlocacaoSemestralCreate) -> AlocacaoSemestral:
@@ -210,6 +216,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         """
         orm_objs = (
             self.session.query(AlocacaoSemestral)
+            .options(joinedload(AlocacaoSemestral.demanda))
             .filter(AlocacaoSemestral.semestre_id == semestre_id)
             .all()
         )
