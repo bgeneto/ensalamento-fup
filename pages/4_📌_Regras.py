@@ -166,7 +166,7 @@ with tab1:
                     session.query(Sala).join(Predio, Sala.predio_id == Predio.id).all()
                 )
                 salas_options = {
-                    sala.id: f"{sala.predio.nome}/{sala.nome}" for sala in salas_orm
+                    sala.id: f"{sala.predio.nome}: {sala.nome}" for sala in salas_orm
                 }
 
                 st.subheader("Preferências dos Professores")
@@ -396,7 +396,7 @@ with tab2:
                     disc_options = {"": "Nenhuma disciplina na demanda atual"}
 
             # Create lookup dictionaries
-            salas_dict = {sala.id: f"{sala.predio.nome}/{sala.nome}" for sala in salas}
+            salas_dict = {sala.id: f"{sala.predio.nome}: {sala.nome}" for sala in salas}
             tipos_sala_dict = {tipo.id: tipo.nome for tipo in tipos_sala}
             caracteristicas_options = [
                 caract.nome for caract in caracteristicas

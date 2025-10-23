@@ -197,7 +197,7 @@ try:
 
         # Create filter options
         semestres_options = {sem_id: sem_name for sem_id, sem_name in semester_options}
-        salas_options = {s.id: f"{s.predio.nome}/{s.nome}" for s in salas_orm}
+        salas_options = {s.id: f"{s.predio.nome}: {s.nome}" for s in salas_orm}
 
         col1, col2, col3 = st.columns(3)
 

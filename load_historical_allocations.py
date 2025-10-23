@@ -111,42 +111,54 @@ class CSVAllocator:
         if not cell_value or cell_value.strip() == "":
             return ParsedAllocation(None, None, None, False, None)
 
-        # Try to parse as course: "CODE - NAME - TURMA"
-        # CODE must be exactly 3-5 letters + 4 digits (no hyphens)
-        match = COURSE_PATTERN.match(cell_value.strip())
-        if match:
-            # Group 1: course code (may include trailing dash - we'll clean it)
-            codigo_raw = match.group(1).strip()
+        cell_value = cell_value.strip()
+
+        # First check if it's a known reservation type (Ledoc, EducAção, etc.)
+        if RESERVATION_PATTERN.match(cell_value):
+            return ParsedAllocation(None, None, None, True, cell_value)
+
+        # Try to parse as course by splitting on " - "
+        parts = cell_value.split(" - ")
+        if len(parts) >= 2:
+            # Get potential code from first part
+            codigo_raw = parts[0].strip()
             # Remove trailing dash from code if present (codes should never end with -)
             codigo = codigo_raw.rstrip("-")
 
             # Verify the code looks valid (3-5 letters + 4 digits, no trailing dash)
-            if not re.match(r"^[A-Z]{3,5}\d{4}$", codigo):
-                # Invalid code format, treat as reservation
-                return ParsedAllocation(None, None, None, True, cell_value.strip())
+            if re.match(r"^[A-Z]{3,5}\d{4}$", codigo):
+                # Valid code, parse the rest
+                remaining_parts = parts[1:]
 
-            # Group 2: course name (can be empty for some cases)
-            nome = match.group(2).strip() if match.group(2) else ""
+                # Check if last part looks like a turma indicator (T followed by digits)
+                last_part = remaining_parts[-1].strip() if remaining_parts else ""
+                if last_part.startswith("T") and last_part[1:].isdigit():
+                    # Last part is turma
+                    nome_parts = remaining_parts[:-1]
+                    turma_raw = last_part[1:]
+                else:
+                    # No explicit turma, assume all remaining parts are name
+                    nome_parts = remaining_parts
+                    turma_raw = ""
 
-            # Group 3: numeric turma only (digits after T)
-            turma_raw = match.group(3).strip() if match.group(3) else ""
+                # Join name parts back with " - " (preserves internal dashes)
+                nome = " - ".join(part.strip() for part in nome_parts)
 
-            # If no turma found, use default "1"
-            if not turma_raw:
-                turma = "1"
-            else:
-                # Ensure turma is numeric only, otherwise default to "1"
-                turma = turma_raw if turma_raw.isdigit() else "1"
+                # Clean up name
+                nome = nome.strip()
 
-            return ParsedAllocation(codigo, nome, turma, False, None)
+                # If no turma found, use default "1"
+                if not turma_raw:
+                    turma = "1"
+                else:
+                    # Ensure turma is numeric only
+                    turma = turma_raw if turma_raw.isdigit() else "1"
 
-        # First check if it's a known reservation type (Ledoc, EducAção, etc.)
-        if RESERVATION_PATTERN.match(cell_value.strip()):
-            return ParsedAllocation(None, None, None, True, cell_value.strip())
+                return ParsedAllocation(codigo, nome, turma, False, None)
 
         # If no course pattern matches AND not a known reservation type,
         # treat the whole string as a reservation title
-        return ParsedAllocation(None, None, None, True, cell_value.strip())
+        return ParsedAllocation(None, None, None, True, cell_value)
 
     def find_demanda(
         self,
@@ -190,7 +202,7 @@ class CSVAllocator:
                 self.stats["demandas_created"] += 1
                 return demanda.id
             else:
-                print(f"    [DRY RUN] Would create demanda: {codigo}-{turma}")
+                print(f"    [DRY RUN] Would create demanda: {codigo} (T{turma})")
                 return None  # In dry run, can't return real ID
 
         return None
@@ -361,7 +373,7 @@ class CSVAllocator:
                 )
                 if not demanda_id:
                     print(
-                        f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina}-T{allocation.turma_disciplina}"
+                        f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina} (T{allocation.turma_disciplina})"
                     )
                     continue
 
