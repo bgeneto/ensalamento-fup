@@ -22,7 +22,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
     Returns:
         bool: True if any allocation action was triggered (for page refresh)
     """
-    st.header(f"📋 Fila de Demandas Pendentes")
+    st.header(f"📊 Status das Demandas")
 
     # Initialize filters if not provided
     if filters is None:
@@ -63,7 +63,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
         )
 
         if not filtered_demands:
-            st.info("ℹ️ Nenhuma demanda encontrada com os filtros aplicados.")
+            st.warning("Nenhuma demanda encontrada com os filtros aplicados.", icon="⚠️")
             return False
 
         # Show count

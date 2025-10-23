@@ -273,7 +273,7 @@ with tab1:
 
                 st.markdown("---")
 
-                st.write("### 📋 Listagem das Preferências dos Professores")
+                st.write("### 👁️ Visualização das Preferências dos Professores")
 
                 # Display summary
                 st.markdown(f"**Total de professores: {len(professores)}**")

@@ -19,7 +19,7 @@ def _get_footer_html() -> str:
     <div style="text-align: center; color: #999; font-size: 0.85rem; padding: 0rem 0;">
         <p><strong>{app_name}</strong></p>
         <p>Versão {app_version} • Beta 1</p>
-        <p style="font-size: 0.75rem;">© 2025-{year} Faculdade UnB Planaltina</p>
+        <p style="font-size: 0.75rem;">© 2025-{year} bgeneto • Faculdade UnB Planaltina</p>
     </div>
     """
 

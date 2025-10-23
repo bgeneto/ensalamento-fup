@@ -29,8 +29,16 @@ if not initialize_page(
 # ============================================================================
 
 st.title("🖱️ Alocação Manual de Salas")
-st.markdown(
-    "Selecione demandas pendentes na fila à esquerda e receba sugestões de salas à direita."
+
+st.info(
+    """
+    ℹ️ INSTRUÇÕES
+
+    - Selecione o semestre desejado no menu abaixo.
+    - A lista de demandas pendentes será exibida. Se a lista estiver vazia (nenhuma demanda encontrada), verifique se os dados foram importados do Sistema de Oferta corretamente na página "👁️ Demanda" no menu ao lado.
+    - Clique em "🎯 Alocar Sala" em qualquer demanda para abrir o assistente de alocação à direita.
+    - Escolha uma sala sugerida ou use a seleção manual para alocar a demanda.
+    """,
 )
 
 # Display any persisted feedback from allocation actions
@@ -81,11 +89,28 @@ if selected_demand_id:
 
     with col_assistant:
         # Show allocation assistant for selected demand
-        action_taken = render_allocation_assistant(
-            selected_demand_id, selected_semester
-        )
-        if action_taken:
-            st.rerun()  # Refresh page after allocation
+        result = render_allocation_assistant(selected_demand_id, selected_semester)
+
+        # Handle allocation results and feedback
+        if result and isinstance(result, dict):
+            if result.get("action_taken"):
+                # Set feedback based on allocation result
+                if "allocation_success" in result:
+                    success = result["allocation_success"]
+                    message = result["feedback_message"]
+                    ttl = 6 if success else 8
+
+                    from src.utils.ui_feedback import set_session_feedback
+
+                    set_session_feedback(
+                        "allocation_result",
+                        success,
+                        message,
+                        ttl=ttl,
+                    )
+
+                # Refresh page after any action
+                st.rerun()
 
 else:
     # Single column layout showing full demand queue

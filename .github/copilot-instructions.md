@@ -174,7 +174,7 @@ else:
 | Call `.login()` on every page with location="main" | Only call with location="main" on main.py | Multiple login widgets will confuse the app |
 | Try to re-authenticate by re-creating authenticator | Retrieve from session state | Session state from cookies is lost if recreated |
 
-**Reference:** [Implementing Streamlit-Authenticator Across Multi-Page Apps](https://towardsdatascience.com/implementing-streamlit-authenticator-across-multi-page-apps-5ad70ac315b3/)
+**Reference:** [Implementing Streamlit-Authenticator Across Multi-Page Apps]('/docs/Implementing Streamlit-Authenticator Across Multi-Page Apps.md')
 
 See also: `MULTIPAGE_AUTH_FIX.md`, `SESSION_STATE_PERSISTENCE_SUMMARY.md`, `AUTHENTICATION_MISTAKES_TO_AVOID.md`
 

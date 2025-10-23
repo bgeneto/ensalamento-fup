@@ -132,7 +132,7 @@ class AllocationSuggestionsService:
 
         suggestion = RoomSuggestion(
             sala_id=room.id,
-            nome_sala=f"{self._get_predio_name(room.predio_id)}/{room.nome}",
+            nome_sala=f"{self._get_predio_name(room.predio_id)}: {room.nome}",
             tipo_sala_nome=self._get_tipo_sala_name(room.tipo_sala_id),
             capacidade=room.capacidade or 0,
             andar=room.andar,
@@ -215,8 +215,8 @@ class AllocationSuggestionsService:
             config = json.loads(rule.config_json)
 
             if rule.tipo_regra == "DISCIPLINA_TIPO_SALA":
-                required_type = config.get("tipo_sala_nome")
-                return room.tipo_sala and room.tipo_sala.nome == required_type
+                required_type_id = config.get("tipo_sala_id")
+                return room.tipo_sala_id == required_type_id
 
             elif rule.tipo_regra == "DISCIPLINA_SALA":
                 required_room_id = config.get("sala_id")

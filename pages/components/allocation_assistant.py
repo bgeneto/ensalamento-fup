@@ -8,7 +8,6 @@ from src.config.database import get_db_session
 from src.services.manual_allocation_service import ManualAllocationService
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.sala import SalaRepository
-from src.utils.ui_feedback import set_session_feedback
 from src.utils.cache_helpers import get_sigaa_parser
 
 
@@ -30,14 +29,16 @@ def _get_tipo_sala_name_from_id(tipo_sala_id: int, session) -> str:
     return row[0] if row else "N/A"
 
 
-def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[bool]:
+def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[dict]:
     """
     Render the allocation assistant panel for a selected demand.
 
     Returns:
-        True if allocation was successful (triggers page refresh)
-        False if there were errors but no success
-        None if no action was taken
+        dict with keys:
+            - action_taken: bool - True if user performed allocation or cancelled
+            - allocation_success: bool - True if allocation succeeded
+            - feedback_message: str - Feedback message to display (if allocation_success is not None)
+        None if no action was taken (just displaying)
     """
     st.header("🖱️ Assistente de Alocação")
 
@@ -84,17 +85,19 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[b
         suggestions = alloc_service.get_suggestions_for_demand(demanda_id, semester_id)
 
         if not suggestions.top_suggestions:
-            st.warning("⚠️ Nenhuma sugestão de sala encontrada.")
+            st.warning("Nenhuma sugestão de sala encontrada.", icon="⚠️")
 
         # Display top suggestions
         if suggestions.top_suggestions:
-            _render_suggestions_section(
+            result = _render_suggestions_section(
                 "🏆 Sugestões Principais",
                 suggestions.top_suggestions,
                 demanda_id,
                 alloc_service,
                 semester_id,
             )
+            if result:
+                return result
 
         # Display other available rooms
         if suggestions.other_available:
@@ -102,13 +105,15 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[b
                 f"📋 Outras Salas Disponíveis ({len(suggestions.other_available)})",
                 expanded=len(suggestions.top_suggestions) == 0,
             ):
-                _render_suggestions_section(
+                result = _render_suggestions_section(
                     "Salas disponíveis com pontuação menor",
                     suggestions.other_available,
                     demanda_id,
                     alloc_service,
                     semester_id,
                 )
+                if result:
+                    return result
 
         # Display conflicting rooms
         if suggestions.conflicting_rooms:
@@ -119,7 +124,9 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[b
 
         # Manual selection option
         st.markdown("---")
-        _render_manual_selection(demanda, sala_repo, alloc_service, session)
+        result = _render_manual_selection(demanda, sala_repo, alloc_service, session)
+        if result:
+            return result
 
         # Cancel button
         if st.button(
@@ -129,7 +136,7 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[b
         ):
             if "allocation_selected_demand" in st.session_state:
                 del st.session_state.allocation_selected_demand
-            return True  # Trigger refresh
+            return {"action_taken": True}  # Trigger refresh
 
 
 def _render_suggestions_section(
@@ -154,7 +161,7 @@ def _render_suggestions_section(
 
 def _render_room_suggestion_card(
     suggestion, demanda_id: int, alloc_service: ManualAllocationService
-) -> bool:
+) -> Optional[dict]:
     """Render a single room suggestion card with allocation button."""
     with st.container(border=True):
         # Room header
@@ -208,26 +215,22 @@ def _render_room_suggestion_card(
                         demanda_id, suggestion.sala_id
                     )
 
-                    if result.success:
-                        set_session_feedback(
-                            "allocation_result",
-                            True,
-                            f"✅ Alocação realizada! {result.allocated_blocks_count} blocos criados na sala '{suggestion.nome_sala}'",
-                            ttl=6,
-                        )
-                    else:
-                        set_session_feedback(
-                            "allocation_result",
-                            False,
-                            f"❌ Falha na alocação: {result.error_message}",
-                            ttl=8,
-                        )
-
-                    # Clear selection and trigger refresh
+                    # Clear selection and return action result
                     if "allocation_selected_demand" in st.session_state:
                         del st.session_state.allocation_selected_demand
 
-                    return True
+                    # Return structured data instead of boolean
+                    feedback_message = (
+                        f"Alocação realizada! {result.allocated_blocks_count} blocos criados na sala '{suggestion.nome_sala}'"
+                        if result.success
+                        else f"❌ Falha na alocação: {result.error_message}"
+                    )
+
+                    return {
+                        "action_taken": True,
+                        "allocation_success": result.success,
+                        "feedback_message": feedback_message,
+                    }
 
     return False
 
@@ -260,7 +263,9 @@ def _render_manual_selection(
     # This respects the "fully manual" requirement
 
     with st.expander("Selecionar Sala Manualmente", expanded=False):
-        st.write("⚠️ **Atenção:** Seleção manual não verifica regras automaticamente.")
+        st.write(
+            "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
+        )
 
         # Get all rooms for selection
         all_rooms = sala_repo.get_all()
@@ -270,7 +275,7 @@ def _render_manual_selection(
         for room in all_rooms:
             # Use helper function to get building name since SalaRead DTO only has predio_id
             predio_name = _get_predio_name_from_id(room.predio_id, session)
-            room_options[room.id] = f"{predio_name}/{room.nome}"
+            room_options[room.id] = f"{predio_name}: {room.nome}"
 
         selected_room_id = st.selectbox(
             "Escolher sala:",
@@ -307,26 +312,22 @@ def _render_manual_selection(
                             demanda.id, selected_room_id
                         )
 
-                        if result.success:
-                            predio_name = _get_predio_name_from_id(
-                                selected_room.predio_id, session
-                            )
-                            set_session_feedback(
-                                "allocation_result",
-                                True,
-                                f"✅ Alocação manual realizada! {result.allocated_blocks_count} blocos criados em '{predio_name}/{selected_room.nome}'",
-                                ttl=6,
-                            )
-                        else:
-                            set_session_feedback(
-                                "allocation_result",
-                                False,
-                                f"❌ Falha na alocação: {result.error_message}",
-                                ttl=8,
-                            )
-
-                        # Clear selection and trigger refresh
+                        # Clear selection and return action result
                         if "allocation_selected_demand" in st.session_state:
                             del st.session_state.allocation_selected_demand
 
-                        return True
+                        # Return structured data instead of boolean
+                        predio_name = _get_predio_name_from_id(
+                            selected_room.predio_id, session
+                        )
+                        feedback_message = (
+                            f"✅ Alocação manual realizada! {result.allocated_blocks_count} blocos criados em '{predio_name}: {selected_room.nome}'"
+                            if result.success
+                            else f"❌ Falha na alocação: {result.error_message}"
+                        )
+
+                        return {
+                            "action_taken": True,
+                            "allocation_success": result.success,
+                            "feedback_message": feedback_message,
+                        }

@@ -385,6 +385,9 @@ def seed_db():
                 session.add(carac)
                 print(f"  ✓ Added characteristic: {carac_data['nome']}")
 
+        # Flush to ensure characteristics are visible in database
+        session.flush()
+
         # Get all Caracteristica records for mapping (now they exist!)
         caracteristicas_map = {
             carac.nome: carac for carac in session.query(Caracteristica).all()
@@ -705,21 +708,18 @@ def seed_db():
                 )
                 session.add(sala)
                 session.flush()  # Flush to get the sala.id
-
                 print(
-                    f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome}) {'+' + ', '.join(sala_info['caracteristicas']) if sala_info['caracteristicas'] else ''}"
+                    f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome})"
                 )
             else:
                 sala = existing
-                print(
-                    f"  → Sala already exists: {sala_info['nome']} (skipping creation)"
-                )
+                print(f"  → Sala already exists: {sala_info['nome']}")
 
             # Always check/create caracteristicas associations for this sala
             # (whether it was just created or already existed)
             if sala_info["caracteristicas"]:
                 print(
-                    f"    → Processing {len(sala_info['caracteristicas'])} characteristics for {sala_info['nome']}"
+                    f"    → Processing {len(sala_info['caracteristicas'])} characteristics for {sala_info['nome']}: {sala_info['caracteristicas']}"
                 )
 
                 # Check existing associations for this sala
@@ -731,11 +731,10 @@ def seed_db():
                 existing_carac_ids = {
                     assoc.caracteristica_id for assoc in existing_associations
                 }
+                print(f"    → Found {len(existing_carac_ids)} existing associations")
 
+                inserted_count = 0
                 for carac_nome in sala_info["caracteristicas"]:
-                    print(
-                        f"    DEBUG: Processing characteristic '{carac_nome}' for room {sala_info['nome']}"
-                    )
                     carac = caracteristicas_map.get(carac_nome)
                     if carac:
                         # Only create association if it doesn't already exist
@@ -745,25 +744,25 @@ def seed_db():
                                 sala_id=sala.id, caracteristica_id=carac.id
                             )
                             session.execute(insert_stmt)
+                            inserted_count += 1
                             print(
-                                f"    DEBUG: Inserted association sala_id={sala.id}, caracteristica_id={carac.id} for {carac_nome}"
+                                f"    ✓ Inserted: sala_id={sala.id}, caracteristica_id={carac.id} ({carac_nome})"
                             )
                         else:
                             print(
-                                f"    DEBUG: Association already exists for {carac_nome}"
+                                f"    → Association already exists for {carac_nome} on room {sala_info['nome']}"
                             )
                     else:
                         print(
-                            f"    DEBUG: Characteristic '{carac_nome}' not found in map"
+                            f"    ⚠️ Characteristic '{carac_nome}' not found in map for room {sala_info['nome']}"
                         )
+                print(f"    → Total inserted: {inserted_count}")
+                if inserted_count > 0:
+                    print(
+                        f"    ✅ Added {inserted_count} characteristics to {sala_info['nome']}: {', '.join(sala_info['caracteristicas'])}"
+                    )
             else:
                 print(f"    → No characteristics defined for {sala_info['nome']}")
-
-            # Only print the success message for newly created salas
-            if not existing:
-                print(
-                    f"  ✓ Added sala: {sala_info['nome']} (andar={sala_info['andar']}, capacidade={sala_info['capacidade']}, tipo={tipo_nome}) {'+' + ', '.join(sala_info['caracteristicas']) if sala_info['caracteristicas'] else ''}"
-                )
 
         session.flush()  # Flush all sala and association inserts
 

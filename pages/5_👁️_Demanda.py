@@ -39,6 +39,16 @@ from pages.components.ui import page_footer
 
 st.title("👁️ Demanda Semestral")
 
+st.info(
+    """
+    ℹ️ INFORMAÇÃO
+
+    Esta página permite importar e visualizar as demandas de disciplinas de um semestre por meio da integração com Sistema de Oferta FUP/UnB.
+
+    Basta selecionar o semestre desejado e clicar em "🔄 Sincronizar Demanda" para importar os dados mais recentes do sistema de oferta.
+    """,
+)
+
 # Display any persisted feedback from prior action
 display_session_feedback("sync_semestre_result")
 
@@ -224,7 +234,10 @@ with get_db_session() as session:
 
     # If dataframe empty show a friendly message
     if df_filtrado.empty:
-        st.info("Nenhuma demanda encontrada para o semestre/filtragem selecionada.")
+        st.warning(
+            "Nenhuma demanda encontrada para o semestre/filtragem selecionada. Use outro semestre ou sincronize os dados novamente clicando no botão abaixo.",
+            icon="⚠️",
+        )
     else:
         st.dataframe(
             df_filtrado[display_cols].rename(
