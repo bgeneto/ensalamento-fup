@@ -3,9 +3,15 @@ Academic domain models (Semester, Demand, Professor, User).
 """
 
 from sqlalchemy import Column, ForeignKey, Integer, String, Text, Boolean, Table
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declarative_base
 
 from src.models.base import BaseModel
+
+
+# Create Base for models that don't need BaseModel fields but use same metadata registry
+from src.models.base import BaseModel
+
+Base = declarative_base(metadata=BaseModel.registry.metadata)
 
 
 # Association table for Professor-Preferred Rooms
@@ -84,7 +90,6 @@ class Demanda(BaseModel):
     vagas_disciplina = Column(Integer, default=0)
     horario_sigaa_bruto = Column(String(255), nullable=False)  # e.g., "24M12 6T34"
     id_oferta_externo = Column(String(100), nullable=True)
-    nivel_disciplina = Column(String(50), nullable=True)  # Graduação, Pós-Graduação
     codigo_curso = Column(
         String(50), nullable=True
     )  # Course code from API (e.g., "GEAGRO")
@@ -136,11 +141,11 @@ class Professor(BaseModel):
         return f"<Professor(id={self.id}, nome='{self.nome_completo}')>"
 
 
-class Usuario(BaseModel):
+class Usuario(Base):
     """User entity for authentication and audit logging.
 
     IMPORTANT: Schema defines username as TEXT PRIMARY KEY, not auto-incrementing id.
-    This model uses BaseModel which includes id/created_at/updated_at.
+    This model does NOT inherit from BaseModel since usuarios table has no id/created_at/updated_at.
 
     Fields in database schema:
     - username: PRIMARY KEY (TEXT, NOT NULL)
@@ -154,12 +159,10 @@ class Usuario(BaseModel):
 
     __tablename__ = "usuarios"
 
-    username = Column(String(100), nullable=False, unique=True)
+    username = Column(String(100), primary_key=True, nullable=False)
     password_hash = Column(String(255), nullable=True)  # For future use if needed
     nome_completo = Column(String(255), nullable=True)
     role = Column(String(50), default="admin")  # admin, professor, gestor, etc.
 
     def __repr__(self) -> str:
-        return (
-            f"<Usuario(id={self.id}, username='{self.username}', role='{self.role}')>"
-        )
+        return f"<Usuario(username='{self.username}', role='{self.role}')>"

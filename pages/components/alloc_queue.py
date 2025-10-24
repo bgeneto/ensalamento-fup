@@ -13,7 +13,7 @@ from src.utils.cache_helpers import get_sigaa_parser
 
 def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = None):
     """
-    Render the demand queue with cards for unallocated demands.
+    Render the demand queue with cards for demands based on allocation status filter.
 
     Args:
         semester_id: ID of the semester to show demands for
@@ -32,6 +32,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
     search_filter = filters.get("search_text", "")
     professor_filter = filters.get("professor_filter", "")
     course_filter = filters.get("course_filter", "")
+    allocation_status_filter = filters.get("allocation_status", "unallocated")
 
     with get_db_session() as session:
         alloc_service = ManualAllocationService(session)
@@ -54,20 +55,28 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
             progress_pct = progress["allocation_percent"] / 100
             st.progress(progress_pct, text=f"{progress['allocation_percent']:.1f}%")
 
-        # Get unallocated demands
-        unallocated_demandas = alloc_service.get_unallocated_demands(semester_id)
+        # Get demands based on allocation status filter
+        if allocation_status_filter == "allocated":
+            demandas = alloc_service.get_allocated_demands(semester_id)
+            header_title = f"Demandas Alocadas ({len(demandas)})"
+        elif allocation_status_filter == "all":
+            demandas = alloc_service.get_all_demands(semester_id)
+            header_title = f"Todas as Demandas ({len(demandas)})"
+        else:  # "unallocated" or default
+            demandas = alloc_service.get_unallocated_demands(semester_id)
+            header_title = f"Demandas Pendentes ({len(demandas)})"
 
         # Apply filters
         filtered_demands = _apply_filters(
-            unallocated_demandas, search_filter, professor_filter, course_filter
+            demandas, search_filter, professor_filter, course_filter
         )
 
         if not filtered_demands:
             st.warning("Nenhuma demanda encontrada com os filtros aplicados.", icon="⚠️")
             return False
 
-        # Show count
-        st.subheader(f"Demandas para Alocar ({len(filtered_demands)})")
+        # Show count with appropriate title
+        st.subheader(header_title)
 
         # Display as cards
         action_triggered = False

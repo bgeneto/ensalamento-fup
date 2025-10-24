@@ -392,7 +392,7 @@ try:
 
         with col2:
             selected_entity = st.selectbox(
-                "Sala:",
+                "🚪 Sala:",
                 options=["all"] + list(salas_options.keys()),
                 format_func=lambda x: (
                     "Todas as salas" if x == "all" else salas_options.get(x, f"ID {x}")
@@ -480,7 +480,7 @@ try:
                         "width": "100%",
                         "fit_columns_on_grid_load": True,
                         "theme": "streamlit",  # Use streamlit theme for consistency
-                        "key": f"room_grid_{room_id}",
+                        "key": f"room_grid_{room_id}_{selected_semestre}",
                         "allow_unsafe_jscode": True,
                     }
 
@@ -494,7 +494,7 @@ try:
                         with col1:
                             if st.button(
                                 "📥 CSV",
-                                key=f"export_csv_{room_id}",
+                                key=f"export_csv_{room_id}_{selected_semestre}",
                                 help=f"Exportar planilha de {room_name} para CSV",
                             ):
                                 csv_data = room_grid.to_csv(index=True)
@@ -503,7 +503,7 @@ try:
                                     data=csv_data,
                                     file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
                                     mime="text/csv",
-                                    key=f"download_csv_{room_id}",
+                                    key=f"download_csv_{room_id}_{selected_semestre}",
                                 )
                     else:
                         # Simple mode without enterprise features

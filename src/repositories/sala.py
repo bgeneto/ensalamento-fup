@@ -43,7 +43,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=orm_obj.tipo_sala_id,
             capacidade=orm_obj.capacidade,
             andar=orm_obj.andar,
-            tipo_assento=orm_obj.tipo_assento,
+            descricao=orm_obj.descricao,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )
@@ -63,7 +63,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=dto.tipo_sala_id,
             capacidade=dto.capacidade,
             andar=dto.andar,
-            tipo_assento=dto.tipo_assento,
+            descricao=dto.descricao,
         )
 
     # ========================================================================
@@ -155,18 +155,18 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
 
-    def get_by_tipo_assento(self, tipo_assento: str) -> List[SalaRead]:
-        """Get all rooms with specific seating type.
+    def get_by_descricao(self, descricao: str) -> List[SalaRead]:
+        """Get all rooms with specific descricao.
 
         Args:
-            tipo_assento: Seating type (e.g., 'carteira', 'poltrona')
+            descricao: descricao (e.g., 'Sala de Aulo')
 
         Returns:
             List of SalaRead DTOs sorted by room name
         """
         orm_objs = (
             self.session.query(Sala)
-            .filter(Sala.tipo_assento == tipo_assento)
+            .filter(Sala.descricao == descricao)
             .order_by(Sala.nome)
             .all()
         )

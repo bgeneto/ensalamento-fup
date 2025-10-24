@@ -2,7 +2,15 @@
 Allocation and reservation models.
 """
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, Boolean
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Boolean,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from src.models.base import BaseModel
@@ -52,6 +60,19 @@ class AlocacaoSemestral(BaseModel):
     dia_semana_id = Column(Integer, ForeignKey("dias_semana.id_sigaa"), nullable=False)
     codigo_bloco = Column(
         String(10), ForeignKey("horarios_bloco.codigo_bloco"), nullable=False
+    )
+
+    __table_args__ = (
+        # UNIQUE constraint to prevent scheduling conflicts:
+        # Cannot have same semester/room/day/block allocation
+        UniqueConstraint(
+            "semestre_id",
+            "sala_id",
+            "dia_semana_id",
+            "codigo_bloco",
+            name="ux_alocacoes_semestrais_unica",
+        ),
+        {"sqlite_autoincrement": True},
     )
 
     # Relationships

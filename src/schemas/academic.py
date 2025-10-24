@@ -60,7 +60,6 @@ class DemandaBase(BaseModel):
     turma_disciplina: str = Field(default="", max_length=50)
     vagas_disciplina: int = Field(default=0, ge=0)
     horario_sigaa_bruto: str = Field(..., max_length=255)  # e.g., "24M12 6T34"
-    nivel_disciplina: str = Field(default="", max_length=50)
     id_oferta_externo: Optional[str] = Field(default=None, max_length=100)
     codigo_curso: str = Field(default="", max_length=50)
 
@@ -81,7 +80,6 @@ class DemandaUpdate(BaseModel):
     turma_disciplina: Optional[str] = Field(None, max_length=50)
     vagas_disciplina: Optional[int] = Field(None, ge=0)
     horario_sigaa_bruto: Optional[str] = Field(None, max_length=255)
-    nivel_disciplina: Optional[str] = Field(None, max_length=50)
 
 
 class DemandaRead(DemandaBase):
@@ -166,14 +164,11 @@ class UsuarioUpdate(BaseModel):
 
 
 class UsuarioRead(UsuarioBase):
-    """Schema for reading Usuario (includes timestamps).
+    """Schema for reading Usuario.
 
     Note: Password is never returned in DTO.
+    Usuario table only has username/password_hash/nome_completo/role.
     """
-
-    id: int
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         from_attributes = True

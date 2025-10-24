@@ -199,6 +199,25 @@ class ManualAllocationService:
 
         return [self.demanda_repo.orm_to_dto(d) for d in unallocated]
 
+    def get_allocated_demands(self, semester_id: int) -> List[dict]:
+        """Get all demands in a semester that have been allocated."""
+        # Get all demands for semester
+        demandas = self.demanda_repo.get_by_semestre(semester_id)
+
+        # Get allocated demand IDs
+        allocations = self.alocacao_repo.get_by_semestre(semester_id)
+        allocated_ids = set(alloc.demanda_id for alloc in allocations)
+
+        # Filter to only allocated demands
+        allocated = [d for d in demandas if d.id in allocated_ids]
+
+        return [self.demanda_repo.orm_to_dto(d) for d in allocated]
+
+    def get_all_demands(self, semester_id: int) -> List[dict]:
+        """Get all demands in a semester regardless of allocation status."""
+        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        return [self.demanda_repo.orm_to_dto(d) for d in demandas]
+
     def get_suggestions_for_demand(self, demanda_id: int, semester_id: int):
         """Get room suggestions for a specific demand."""
         return self.suggestions_service.calculate_suggestions(demanda_id, semester_id)

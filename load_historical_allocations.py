@@ -230,7 +230,6 @@ class CSVAllocator:
                 "horario_sigaa_bruto": horario_sigaa,
                 "vagas_disciplina": 30,  # Default
                 "professores_disciplina": "",
-                "nivel_disciplina": "Graduação",
             }
 
             if not self.dry_run:
@@ -553,7 +552,6 @@ class CSVAllocator:
                     "horario_sigaa_bruto": horario_agg,
                     "vagas_disciplina": 30,  # Default
                     "professores_disciplina": "",
-                    "nivel_disciplina": "Graduação",
                 }
 
                 if not self.dry_run:

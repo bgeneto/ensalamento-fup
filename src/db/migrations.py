@@ -255,7 +255,7 @@ def seed_db():
         # Seed campuses
         campus_data = [
             {"nome": "FUP", "descricao": "Faculdade UnB Planaltina"},
-            {"nome": "Darcy", "descricao": "Campus Darcy Ribeiro"},
+            {"nome": "DARCY", "descricao": "Campus Darcy Ribeiro"},
         ]
 
         campus_map = {}
@@ -315,33 +315,15 @@ def seed_db():
 
         # Seed room types
         tipos_sala_data = [
-            {"nome": "Auditório", "descricao": "Auditório Augusto Boal"},
-            {"nome": "Auditório 3", "descricao": "Auditório 3"},
-            {"nome": "Sala de Aula", "descricao": "Sala de aula regular"},
-            {
-                "nome": "Lab. Fís. Geo. 1",
-                "descricao": "Laboratório de Física e Geologia 1",
-            },
-            {
-                "nome": "Lab. Fís. Geo. 2",
-                "descricao": "Laboratório de Física e Geologia 2",
-            },
-            {"nome": "Lab. Quí. 1", "descricao": "Laboratório de Química 1"},
-            {"nome": "Lab. Quí. 2", "descricao": "Laboratório de Química 2"},
-            {"nome": "Lab. Bio. 1", "descricao": "Laboratório de Biologia 1"},
-            {"nome": "Lab. Bio. 2", "descricao": "Laboratório de Biologia 2"},
-            {"nome": "Lab. Geo.", "descricao": "Laboratório de Geologia"},
-            {"nome": "Lab. Info. 1", "descricao": "Laboratório de Informática 1"},
-            {"nome": "Lab. Info. 2", "descricao": "Laboratório de Informática 2"},
-            {"nome": "Lab. Mat.", "descricao": "Laboratório de Matemática"},
-            {
-                "nome": "Lab. Artes 1",
-                "descricao": "Laboratório de Linguagens e Artes 1",
-            },
-            {
-                "nome": "Lab. Artes 2",
-                "descricao": "Laboratório de Linguagens e Artes 2",
-            },
+            {"nome": "Auditório"},
+            {"nome": "Sala de Aula"},
+            {"nome": "Laboratório de Física e Geologia"},
+            {"nome": "Laboratório de Química"},
+            {"nome": "Laboratório de Biologia"},
+            {"nome": "Laboratório de Geologia"},
+            {"nome": "Laboratório de Informática"},
+            {"nome": "Laboratório de Matemática"},
+            {"nome": "Laboratório de Linguagens e Artes"},
         ]
 
         tipo_sala_ref = None
@@ -397,9 +379,10 @@ def seed_db():
         salas_data = [
             {
                 "nome": "AT-42/32",
+                "descricao": "Lab. Mat.",
                 "capacidade": 16,
                 "andar": 0,
-                "tipo_sala": "Lab. Mat.",
+                "tipo_sala": "Laboratório de Matemática",
                 "predio_id": 1,
                 "caracteristicas": ["Mesas Redondas", "Ventilador"],
             },
@@ -477,9 +460,10 @@ def seed_db():
             },
             {
                 "nome": "A1-48/32",
+                "descricao": "Lab. Ling. Artes 1",
                 "capacidade": 16,
                 "andar": 1,
-                "tipo_sala": "Lab. Artes 1",
+                "tipo_sala": "Laboratório de Linguagens e Artes",
                 "predio_id": 1,
                 "caracteristicas": [
                     "Mesas Redondas",
@@ -498,9 +482,10 @@ def seed_db():
             },
             {
                 "nome": "A1-48/40",
+                "descricao": "Lab. Ling. Artes 2",
                 "capacidade": 16,
                 "andar": 1,
-                "tipo_sala": "Lab. Artes 2",
+                "tipo_sala": "Laboratório de Linguagens e Artes",
                 "predio_id": 1,
                 "caracteristicas": [
                     "Mesas Redondas",
@@ -543,9 +528,10 @@ def seed_db():
             },
             {
                 "nome": "A1-42/62",
+                "descricao": "Auditório 3",
                 "capacidade": 80,
                 "andar": 1,
-                "tipo_sala": "Auditório 3",
+                "tipo_sala": "Auditório",
                 "predio_id": 1,
                 "caracteristicas": ["Projetor", "Ventilador"],
             },
@@ -559,6 +545,7 @@ def seed_db():
             },
             {
                 "nome": "A1-05/68",
+                "descricao": "Auditório Augusto Boal",
                 "capacidade": 150,
                 "andar": 1,
                 "tipo_sala": "Auditório",
@@ -579,49 +566,55 @@ def seed_db():
             },
             {
                 "nome": "AT-53/26",
+                "descricao": "Lab. Fís. Geo. 1",
                 "capacidade": 40,
                 "andar": 0,
-                "tipo_sala": "Lab. Fís. Geo. 1",
+                "tipo_sala": "Laboratório de Física e Geologia",
                 "predio_id": 2,
                 "caracteristicas": ["Ventilador", "Quadro Branco"],
             },
             {
                 "nome": "AT-66/26",
+                "descricao": "Lab. Fís. Geo. 2",
                 "capacidade": 40,
                 "andar": 0,
-                "tipo_sala": "Lab. Fís. Geo. 2",
+                "tipo_sala": "Laboratório de Física e Geologia",
                 "predio_id": 2,
                 "caracteristicas": ["Ventilador", "Quadro de Giz"],
             },
             {
                 "nome": "A1-20/7",
+                "descricao": "Lab. Bio. 2",
                 "capacidade": 24,
                 "andar": 1,
-                "tipo_sala": "Lab. Bio. 2",
+                "tipo_sala": "Laboratório de Biologia",
                 "predio_id": 1,
                 "caracteristicas": [],
             },
             {
                 "nome": "A1-09/9",
+                "descricao": "Lab. Bio. 1",
                 "capacidade": 36,
                 "andar": 1,
-                "tipo_sala": "Lab. Bio. 1",
+                "tipo_sala": "Laboratório de Biologia",
                 "predio_id": 1,
                 "caracteristicas": [],
             },
             {
                 "nome": "AT-09/9",
+                "descricao": "Lab. Quí. 2",
                 "capacidade": 36,
                 "andar": 0,
-                "tipo_sala": "Lab. Quí. 2",
+                "tipo_sala": "Laboratório de Química",
                 "predio_id": 1,
                 "caracteristicas": ["Ventilador"],
             },
             {
                 "nome": "AT-22/7",
+                "descricao": "Lab. Quí. 1",
                 "capacidade": 40,
                 "andar": 0,
-                "tipo_sala": "Lab. Quí. 1",
+                "tipo_sala": "Laboratório de Química",
                 "predio_id": 1,
                 "caracteristicas": ["Ventilador"],
             },
@@ -651,17 +644,28 @@ def seed_db():
             },
             {
                 "nome": "AT-48/10",
+                "descricao": "Lab. Info. 1",
                 "capacidade": 22,
                 "andar": 0,
-                "tipo_sala": "Lab. Info. 1",
+                "tipo_sala": "Laboratório de Informática",
                 "predio_id": 1,
                 "caracteristicas": ["Computadores", "Projetor", "Ar Condicionado"],
             },
             {
                 "nome": "A1-48/10",
+                "descricao": "Lab. Info. 2",
                 "capacidade": 25,
                 "andar": 1,
-                "tipo_sala": "Lab. Info. 2",
+                "tipo_sala": "Laboratório de Informática",
+                "predio_id": 1,
+                "caracteristicas": ["Computadores", "Projetor", "Ventilador"],
+            },
+            {
+                "nome": "AT-25/26",
+                "descricao": "Auditório Cora Coralina",
+                "capacidade": 120,
+                "andar": 0,
+                "tipo_sala": "Auditório",
                 "predio_id": 1,
                 "caracteristicas": ["Computadores", "Projetor", "Ventilador"],
             },
@@ -692,6 +696,9 @@ def seed_db():
 
                 sala = Sala(
                     nome=sala_info["nome"],
+                    descricao=sala_info.get(
+                        "descricao"
+                    ),  # ADDED: Include descricao if provided
                     predio_id=(
                         selected_predio.id
                         if selected_predio
@@ -704,7 +711,6 @@ def seed_db():
                     ),
                     capacidade=sala_info["capacidade"],
                     andar=sala_info["andar"],
-                    tipo_assento="carteira",
                 )
                 session.add(sala)
                 session.flush()  # Flush to get the sala.id

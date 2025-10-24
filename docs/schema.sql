@@ -22,17 +22,16 @@ CREATE TABLE IF NOT EXISTS predios (
 CREATE TABLE IF NOT EXISTS tipos_sala (
     id INTEGER PRIMARY KEY,
     nome TEXT NOT NULL UNIQUE,
-    descricao TEXT
 );
 
 CREATE TABLE IF NOT EXISTS salas (
     id INTEGER PRIMARY KEY,
     nome TEXT NOT NULL, -- (Ex: "A1-09/9", "AT-53/26")
+    descricao TEXT DEFAULT NULL, -- (Ex: "Laboratório de Informática 1", "Laboratório de Química 1")
     predio_id INTEGER NOT NULL,
     tipo_sala_id INTEGER NOT NULL,
     capacidade INTEGER DEFAULT 0,
     andar INTEGER,
-    tipo_assento TEXT,
 
     UNIQUE (nome, predio_id),
     FOREIGN KEY (predio_id) REFERENCES predios (id),
@@ -88,6 +87,8 @@ CREATE TABLE IF NOT EXISTS demandas (
     turma_disciplina TEXT,
     vagas_disciplina INTEGER,
     horario_sigaa_bruto TEXT NOT NULL, -- O código Sigaa bruto (Ex: "24M12 6T34")
+    id_oferta_externo TEXT, -- Optional external offer ID
+    codigo_curso TEXT, -- Course code (e.g., "GEAGRO")
 
     FOREIGN KEY (semestre_id) REFERENCES semestres (id)
 );

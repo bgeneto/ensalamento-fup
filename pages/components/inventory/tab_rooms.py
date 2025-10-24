@@ -39,7 +39,7 @@ def render_rooms_tab():
 
     st.info(
         """
-        Edite os dados diretamente na tabela abaixo. Para salas, é necessário selecionar um prédio e tipo sala existentes.
+        Edite os dados diretamente na tabela abaixo. Para salas, é necessário selecionar um prédio e tipo de sala existentes.
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
@@ -69,11 +69,11 @@ def render_rooms_tab():
                         {
                             "ID": sala.id,
                             "Nome": sala.nome,
-                            "Prédio": sala.predio_id,
+                            "Descrição": sala.descricao or "",
                             "Tipo Sala": sala.tipo_sala_id,
+                            "Prédio": sala.predio_id,
                             "Capacidade": sala.capacidade,
                             "Andar": sala.andar,  # Integer field
-                            "Tipo Assento": sala.tipo_assento or "",
                         }
                     )
 
@@ -176,11 +176,11 @@ def render_rooms_tab():
                                 sala_repo_create = SalaRepository(session)
                                 for idx, row in new_rows.iterrows():
                                     nome = str(row["Nome"]).strip()
+                                    descricao = str(row["Descrição"]).strip()
                                     predio_id = row["Prédio"]
                                     tipo_sala_id = row["Tipo Sala"]
                                     capacidade = row["Capacidade"]
                                     andar = row["Andar"]
-                                    tipo_assento = str(row["Tipo Assento"]).strip()
 
                                     if not nome:
                                         set_session_feedback(
@@ -206,7 +206,7 @@ def render_rooms_tab():
                                         set_session_feedback(
                                             "crud_result",
                                             False,
-                                            "Tipo sala deve ser selecionado",
+                                            "Tipo de sala deve ser selecionado",
                                             action="create",
                                         )
                                         errors_occurred = True
@@ -232,8 +232,8 @@ def render_rooms_tab():
                                     else:
                                         andar = int(andar)
 
-                                    if not tipo_assento:
-                                        tipo_assento = None
+                                    if not descricao:
+                                        descricao = None
 
                                     # Create room - repository should validate foreign keys
                                     sala_dto = SalaRead(
@@ -242,7 +242,7 @@ def render_rooms_tab():
                                         tipo_sala_id=int(tipo_sala_id),
                                         capacidade=int(capacidade),
                                         andar=andar,
-                                        tipo_assento=tipo_assento,
+                                        descricao=descricao,
                                     )
                                     sala_repo_create.create(sala_dto)
                                     created += 1
@@ -295,7 +295,7 @@ def render_rooms_tab():
                                         tipo_sala_id=int(tipo_sala_id),
                                         capacidade=int(capacidade),
                                         andar=andar,
-                                        tipo_assento=tipo_assento,
+                                        descricao=descricao,
                                     )
                                     sala_repo_create.create(sala_dto)
                                     predio_nome = predio_options.get(
@@ -336,8 +336,8 @@ def render_rooms_tab():
                                 row["Capacidade"] != original_row["Capacidade"]
                             )
                             andar_changed = row["Andar"] != original_row["Andar"]
-                            tipo_assento_changed = (
-                                row["Tipo Assento"] != original_row["Tipo Assento"]
+                            descricao_changed = (
+                                row["Descrição"] != original_row["Descrição"]
                             )
 
                             if any(
@@ -347,7 +347,7 @@ def render_rooms_tab():
                                     tipo_sala_changed,
                                     capacidade_changed,
                                     andar_changed,
-                                    tipo_assento_changed,
+                                    descricao_changed,
                                 ]
                             ):
                                 nome = str(row["Nome"]).strip()
@@ -355,7 +355,7 @@ def render_rooms_tab():
                                 tipo_sala_id = row["Tipo Sala"]
                                 capacidade = row["Capacidade"]
                                 andar = row["Andar"]
-                                tipo_assento = str(row["Tipo Assento"]).strip()
+                                descricao = str(row["Descrição"]).strip()
 
                                 if not nome:
                                     set_session_feedback(
@@ -381,7 +381,7 @@ def render_rooms_tab():
                                     set_session_feedback(
                                         "crud_result",
                                         False,
-                                        "Tipo sala deve ser selecionado",
+                                        "Tipo de sala deve ser selecionado",
                                         action="update",
                                     )
                                     errors_occurred = True
@@ -407,8 +407,8 @@ def render_rooms_tab():
                                 else:
                                     andar = int(andar)
 
-                                if not tipo_assento:
-                                    tipo_assento = None
+                                if not descricao:
+                                    descricao = None
 
                                 try:
                                     with get_db_session() as session:
@@ -449,7 +449,7 @@ def render_rooms_tab():
                                                 tipo_sala_id=int(tipo_sala_id),
                                                 capacidade=int(capacidade),
                                                 andar=andar,
-                                                tipo_assento=tipo_assento,
+                                                descricao=descricao,
                                             )
                                             sala_repo_update.update(
                                                 sala_id, sala_update_dto
@@ -491,7 +491,7 @@ def render_rooms_tab():
                     )
                 if not tipo_sala_options:
                     st.warning(
-                        "ℹ️ Primeiro, cadastre ao menos um tipo sala na aba 'Características' para poder criar salas."
+                        "ℹ️ Primeiro, cadastre ao menos um tipo de sala na aba 'Características' para poder criar salas."
                     )
 
     except Exception as e:
@@ -772,7 +772,6 @@ def render_rooms_tab():
                         {
                             "ID": tipo_sala.id,
                             "Nome": tipo_sala.nome,
-                            "Descrição": tipo_sala.descricao or "",
                         }
                     )
 
@@ -790,11 +789,7 @@ def render_rooms_tab():
                         "Nome": st.column_config.TextColumn(
                             "Nome",
                             required=True,
-                            help="Nome do tipo sala (ex: Sala de Aula, Laboratório)",
-                        ),
-                        "Descrição": st.column_config.TextColumn(
-                            "Descrição",
-                            help="Descrição opcional do tipo sala",
+                            help="Nome do tipo de sala (ex: Sala de Aula, Laboratório)",
                         ),
                     },
                     key="tipo_sala_table_editor",
@@ -846,20 +841,16 @@ def render_rooms_tab():
                                 tipo_sala_repo_create = TipoSalaRepository(session)
                                 for idx, row in new_rows.iterrows():
                                     nome = str(row["Nome"]).strip()
-                                    descricao = str(row["Descrição"]).strip()
 
                                     if not nome:
                                         set_session_feedback(
                                             "crud_result",
                                             False,
-                                            "Nome do tipo sala é obrigatório",
+                                            "Nome do tipo de sala é obrigatório",
                                             action="create",
                                         )
                                         errors_occurred = True
                                         continue
-
-                                    if not descricao:
-                                        descricao = None
 
                                     # Check if already exists
                                     existing = tipo_sala_repo_create.get_all()
@@ -870,15 +861,13 @@ def render_rooms_tab():
                                         set_session_feedback(
                                             "crud_result",
                                             False,
-                                            f"Tipo sala '{nome}' já existe no banco de dados",
+                                            f"Tipo de sala '{nome}' já existe no banco de dados",
                                             action="create",
                                         )
                                         errors_occurred = True
                                         continue
 
-                                    tipo_sala_dto = TipoSalaCreate(
-                                        nome=nome, descricao=descricao
-                                    )
+                                    tipo_sala_dto = TipoSalaCreate(nome=nome)
                                     tipo_sala_repo_create.create(tipo_sala_dto)
                                     created += 1
 
@@ -916,26 +905,19 @@ def render_rooms_tab():
 
                             # Check if any field changed
                             nome_changed = row["Nome"] != original_row["Nome"]
-                            descricao_changed = (
-                                row["Descrição"] != original_row["Descrição"]
-                            )
 
-                            if nome_changed or descricao_changed:
+                            if nome_changed:
                                 nome = str(row["Nome"]).strip()
-                                descricao = str(row["Descrição"]).strip()
 
                                 if not nome:
                                     set_session_feedback(
                                         "crud_result",
                                         False,
-                                        "Nome do tipo sala é obrigatório",
+                                        "Nome do tipo de sala é obrigatório",
                                         action="update",
                                     )
                                     errors_occurred = True
                                     continue
-
-                                if not descricao:
-                                    descricao = None
 
                                 try:
                                     with get_db_session() as session:
@@ -965,16 +947,14 @@ def render_rooms_tab():
                                                     set_session_feedback(
                                                         "crud_result",
                                                         False,
-                                                        f"Tipo sala '{nome}' já existe",
+                                                        f"Tipo de sala '{nome}' já existe",
                                                         action="update",
                                                     )
                                                     errors_occurred = True
                                                     continue
 
                                             # Update fields
-                                            tipo_sala_dto = TipoSalaCreate(
-                                                nome=nome, descricao=descricao
-                                            )
+                                            tipo_sala_dto = TipoSalaCreate(nome=nome)
                                             tipo_sala_repo_update.update(
                                                 tipo_sala_id, tipo_sala_dto
                                             )
@@ -982,7 +962,7 @@ def render_rooms_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Tipo sala {nome} atualizado com sucesso!",
+                                                f"Tipo de sala {nome} atualizado com sucesso!",
                                                 action="update",
                                             )
                                             changes_made = True
@@ -990,7 +970,7 @@ def render_rooms_tab():
                                     set_session_feedback(
                                         "crud_result",
                                         False,
-                                        f"Erro ao atualizar tipo sala: {str(e)}",
+                                        f"Erro ao atualizar tipo de sala: {str(e)}",
                                         action="update",
                                     )
                                     errors_occurred = True
@@ -1004,7 +984,7 @@ def render_rooms_tab():
 
             else:
                 st.info(
-                    "📭 Nenhum tipo sala cadastrado ainda. Use a tabela acima para adicionar o primeiro tipo sala."
+                    "📭 Nenhum tipo de sala cadastrado ainda. Use a tabela acima para adicionar o primeiro tipo de sala."
                 )
 
     except Exception as e:

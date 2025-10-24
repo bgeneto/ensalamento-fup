@@ -36,7 +36,6 @@ class TipoSalaRepository(BaseRepository[TipoSala, TipoSalaRead]):
         return TipoSalaRead(
             id=orm_obj.id,
             nome=orm_obj.nome,
-            descricao=orm_obj.descricao,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )
@@ -52,5 +51,4 @@ class TipoSalaRepository(BaseRepository[TipoSala, TipoSalaRead]):
         """
         return TipoSala(
             nome=dto.nome,
-            descricao=dto.descricao,
         )

@@ -290,7 +290,7 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.write("**Banco de Dados**")
     st.success("✅ Conectado")
-    st.caption("Arquivo data/ensalamento.db existe")
+    st.caption("Arquivo ensalamento.db existe")
 
 with col2:
     st.write("**Integração APIs**")

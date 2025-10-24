@@ -2,7 +2,16 @@
 Domain models for inventory management (Campus, Building, Room, etc.)
 """
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, Table, Boolean
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Table,
+    Boolean,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from src.models.base import BaseModel
@@ -64,7 +73,6 @@ class TipoSala(BaseModel):
     __tablename__ = "tipos_sala"
 
     nome = Column(String(255), nullable=False, unique=True)
-    descricao = Column(Text, nullable=True)
 
     # Relationships
     salas = relationship("Sala", back_populates="tipo_sala")
@@ -95,11 +103,11 @@ class Sala(BaseModel):
     __tablename__ = "salas"
 
     nome = Column(String(255), nullable=False)
+    descricao = Column(Text, nullable=True)
     predio_id = Column(Integer, ForeignKey("predios.id"), nullable=False)
     tipo_sala_id = Column(Integer, ForeignKey("tipos_sala.id"), nullable=False)
     capacidade = Column(Integer, default=0)
     andar = Column(Integer, nullable=True)
-    tipo_assento = Column(String(100), nullable=True)
 
     # Relationships
     predio = relationship("Predio", back_populates="salas")
@@ -115,7 +123,8 @@ class Sala(BaseModel):
     )
 
     __table_args__ = (
-        # Unique constraint on name within a building
+        # Unique constraint on name within a building (as defined in schema.sql)
+        UniqueConstraint("nome", "predio_id", name="unique_room_name_per_building"),
         {"sqlite_autoincrement": True},
     )
 

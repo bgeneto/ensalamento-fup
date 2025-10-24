@@ -44,7 +44,6 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             turma_disciplina=orm_obj.turma_disciplina,
             vagas_disciplina=orm_obj.vagas_disciplina,
             horario_sigaa_bruto=orm_obj.horario_sigaa_bruto,
-            nivel_disciplina=orm_obj.nivel_disciplina,
             id_oferta_externo=orm_obj.id_oferta_externo,
             codigo_curso=orm_obj.codigo_curso,
             created_at=getattr(orm_obj, "created_at", None),
@@ -74,7 +73,6 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         turma = _get("turma_disciplina") or ""
         vagas = _get("vagas_disciplina") or 0
         horario = _get("horario_sigaa_bruto") or ""
-        nivel = _get("nivel_disciplina") or ""
         id_oferta_externo = _get("id_oferta_externo")
         codigo_curso = _get("codigo_curso") or ""
 
@@ -86,7 +84,6 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             turma_disciplina=turma,
             vagas_disciplina=vagas,
             horario_sigaa_bruto=horario,
-            nivel_disciplina=nivel,
             id_oferta_externo=id_oferta_externo,
             codigo_curso=codigo_curso,
         )
@@ -164,23 +161,6 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         orm_objs = (
             self.session.query(Demanda)
             .filter(Demanda.professores_disciplina.ilike(f"%{professor_name}%"))
-            .order_by(Demanda.codigo_disciplina)
-            .all()
-        )
-        return [self.orm_to_dto(obj) for obj in orm_objs]
-
-    def get_by_nivel(self, nivel: str) -> List[DemandaRead]:
-        """Get courses by level (Graduação, Pós-Graduação).
-
-        Args:
-            nivel: Course level
-
-        Returns:
-            List of DemandaRead DTOs sorted by course code
-        """
-        orm_objs = (
-            self.session.query(Demanda)
-            .filter(Demanda.nivel_disciplina == nivel)
             .order_by(Demanda.codigo_disciplina)
             .all()
         )

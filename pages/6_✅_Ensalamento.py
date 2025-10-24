@@ -57,14 +57,33 @@ if not semester_options_list:
 
 # Create options dict for selectbox
 semester_options = {sem_id: sem_name for sem_id, sem_name in semester_options_list}
-selected_semester = st.selectbox(
-    "📅 Semestre:",
-    options=list(semester_options.keys()),
-    format_func=lambda x: semester_options.get(x, f"ID {x}"),
-    index=0,  # Select first (most recent) by default
-    key="semester_select_manual_alloc",
-    width=150,
-)
+demandas_options = {
+    "all": "Todas as demandas",
+    "allocated": "Demandas alocadas",
+    "unallocated": "Demandas pendentes",
+}
+
+col1, col2 = st.columns(2)
+
+with col1:
+    selected_semester = st.selectbox(
+        "📅 Semestre:",
+        options=list(semester_options.keys()),
+        format_func=lambda x: semester_options.get(x, f"ID {x}"),
+        index=0,  # Select first (most recent) by default
+        key="semester_select_manual_alloc",
+    )
+
+
+with col2:
+    selected_demandas = st.selectbox(
+        "Demandas:",
+        options=list(demandas_options.keys()),
+        format_func=lambda x: demandas_options.get(x, f"ID {x}"),
+        index=2,  # Default to "unallocated" (pending demands)
+        key="demandas_filter",
+    )
+
 
 # ============================================================================
 # MAIN LAYOUT - TWO COLUMN ALLOCATION INTERFACE
@@ -82,6 +101,7 @@ if selected_demand_id:
         with st.expander("📋 Fila de Demandas (Selecionada)", expanded=True):
             filters = {
                 "semester_id": selected_semester,
+                "allocation_status": selected_demandas,
                 # Could add more filters here if needed
             }
             action_taken = render_demand_queue(selected_semester, filters)
@@ -113,7 +133,10 @@ if selected_demand_id:
 
 else:
     # Single column layout showing full demand queue
-    action_taken = render_demand_queue(selected_semester)
+    filters = {
+        "allocation_status": selected_demandas,
+    }
+    action_taken = render_demand_queue(selected_semester, filters)
     if action_taken:
         st.rerun()  # Refresh page after selecting a demand
 
@@ -123,7 +146,7 @@ else:
 
 st.markdown("---")
 
-with st.expander("ℹ️ Sobre a Alocação Manual", expanded=False):
+with st.expander("ℹ️ Sobre a Alocação", expanded=False):
     st.markdown(
         """
     ### Como Funciona

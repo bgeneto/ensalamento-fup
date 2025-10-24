@@ -115,7 +115,6 @@ def sample_sala(db_session, sample_predio, sample_tipo_sala):
         tipo_sala_id=sample_tipo_sala.id,
         capacidade=30,
         andar=1,
-        tipo_assento="Carteira",
     )
     db_session.add(sala)
     db_session.commit()
@@ -198,7 +197,6 @@ def sample_demanda(db_session, sample_semestre):
         nome_disciplina="Programação I",
         professores_disciplina="Prof. João Silva",
         horario_sigaa_bruto="M1;M2;SEG",
-        nivel_disciplina="Graduação",
         nao_alocar=False,
     )
     db_session.add(demanda)

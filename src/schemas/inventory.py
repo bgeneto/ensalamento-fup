@@ -92,7 +92,6 @@ class TipoSalaBase(BaseModel):
     """Base schema for TipoSala."""
 
     nome: str = Field(..., min_length=1, max_length=100)
-    descricao: str = Field(default="", max_length=255)
 
 
 class TipoSalaCreate(TipoSalaBase):
@@ -105,7 +104,6 @@ class TipoSalaUpdate(BaseModel):
     """Schema for updating a TipoSala."""
 
     nome: Optional[str] = Field(None, min_length=1, max_length=100)
-    descricao: Optional[str] = Field(None, max_length=255)
 
 
 class TipoSalaRead(TipoSalaBase):
@@ -162,11 +160,11 @@ class SalaBase(BaseModel):
     """Base schema for Sala."""
 
     nome: str = Field(..., min_length=1, max_length=255)
+    descricao: Optional[str] = Field(default=None, max_length=500)
     predio_id: int = Field(..., gt=0)
     tipo_sala_id: int = Field(..., gt=0)
     capacidade: int = Field(default=30, ge=1)
     andar: Optional[int] = Field(default=None)
-    tipo_assento: Optional[str] = Field(default=None, max_length=100)
 
 
 class SalaCreate(SalaBase):
@@ -179,11 +177,11 @@ class SalaUpdate(BaseModel):
     """Schema for updating a Sala."""
 
     nome: Optional[str] = Field(None, min_length=1, max_length=255)
+    descricao: Optional[str] = Field(None, max_length=500)
     predio_id: Optional[int] = Field(None, gt=0)
     tipo_sala_id: Optional[int] = Field(None, gt=0)
     capacidade: Optional[int] = Field(None, ge=1)
     andar: Optional[int] = Field(None)
-    tipo_assento: Optional[str] = Field(None, max_length=100)
 
 
 class SalaRead(SalaBase):

@@ -138,7 +138,6 @@ dmypy.json
 *.db
 *.sqlite
 *.sqlite3
-**/pint_of_science.db
 
 # IDEs
 .vscode/

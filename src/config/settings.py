@@ -28,9 +28,7 @@ class Settings:
         self.BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8501")
 
         # Database Configuration
-        self.DATABASE_URL: str = os.getenv(
-            "DATABASE_URL", "sqlite:///./data/ensalamento.db"
-        )
+        self.DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ensalamento.db")
 
         # Ensure data directory exists
         db_path = self.DATABASE_URL.replace("sqlite:///", "")
@@ -99,11 +97,9 @@ class Settings:
 
         # Project Paths
         self.PROJECT_ROOT = Path(__file__).parent.parent.parent
-        self.DATA_DIR = self.PROJECT_ROOT / "data"
         self.LOGS_DIR = self.PROJECT_ROOT / "logs"
 
         # Create necessary directories
-        self.DATA_DIR.mkdir(exist_ok=True)
         self.LOGS_DIR.mkdir(exist_ok=True)
 
         # Application Settings

@@ -36,7 +36,7 @@ class PredioRepository(BaseRepository[Predio, PredioRead]):
         return PredioRead(
             id=orm_obj.id,
             nome=orm_obj.nome,
-            descricao=orm_obj.descricao,
+            descricao=orm_obj.descricao,  # Required field, should not be None in DB
             campus_id=orm_obj.campus_id,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,

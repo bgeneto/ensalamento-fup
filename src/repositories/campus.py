@@ -36,7 +36,7 @@ class CampusRepository(BaseRepository[Campus, CampusRead]):
         return CampusRead(
             id=orm_obj.id,
             nome=orm_obj.nome,
-            descricao=orm_obj.descricao,
+            descricao=orm_obj.descricao or "",
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )
