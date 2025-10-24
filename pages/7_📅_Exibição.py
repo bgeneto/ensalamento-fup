@@ -230,7 +230,7 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
                 else "N/A"
             )
 
-            schedule_data[dia_name][bloco] = f"{disciplina} (T{turma}) | {professor}"
+            schedule_data[dia_name][bloco] = f"{disciplina}\n{professor}"
 
             time_slots.add(bloco)
 
@@ -324,7 +324,7 @@ try:
         semestres_options = {sem_id: sem_name for sem_id, sem_name in semester_options}
         salas_options = {s.id: f"{s.predio.nome}: {s.nome}" for s in salas_orm}
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         with col1:
             selected_semestre = st.selectbox(
@@ -336,149 +336,90 @@ try:
             )
 
         with col2:
-            view_type = st.selectbox(
-                "Visualizar por:",
-                options=["sala", "professor", "disciplina"],
-                format_func=lambda x: {
-                    "sala": "Por Sala",
-                    "professor": "Por Professor",
-                    "disciplina": "Por Disciplina",
-                }.get(x, x),
-                key="view_type_filter",
+            selected_entity = st.selectbox(
+                "Sala:",
+                options=["all"] + list(salas_options.keys()),
+                format_func=lambda x: (
+                    "Todas as salas" if x == "all" else salas_options.get(x, f"ID {x}")
+                ),
+                key="entity_filter",
             )
 
-        with col3:
-            if view_type == "sala":
-                selected_entity = st.selectbox(
-                    "Sala:",
-                    options=["all"] + list(salas_options.keys()),
-                    format_func=lambda x: (
-                        "Todas as salas"
-                        if x == "all"
-                        else salas_options.get(x, f"ID {x}")
-                    ),
-                    key="entity_filter",
-                )
-            elif view_type == "professor":
-                all_professores = prof_repo.get_all()
-                prof_options = {p.id: p.nome_completo for p in all_professores}
-                selected_entity = st.selectbox(
-                    "Professor:",
-                    options=["all"] + list(prof_options.keys()),
-                    format_func=lambda x: (
-                        "Todos os professores"
-                        if x == "all"
-                        else prof_options.get(x, f"ID {x}")
-                    ),
-                    key="entity_filter",
-                )
-            else:  # disciplina
-                try:
-                    all_disciplinas = disc_repo.get_all()
-                    disc_options = {
-                        d.id: f"{d.codigo_disciplina} - {d.nome_disciplina}"
-                        for d in all_disciplinas
+        # Show reservations only if checkbox is checked
+        show_reservations = st.checkbox(
+            "Mostrar Reservas",
+            value=False,
+            help="Incluir reservas esporádicas na visualização",
+            key="show_reservations",
+        )
+
+        # Get data based on filters and display by default
+        with st.spinner("Carregando dados..."):
+            # Get allocations for selected semester
+            allocacoes = (
+                aloc_repo.get_by_semestre(selected_semestre)
+                if selected_semestre
+                else []
+            )
+
+            # Get reservations only if checkbox is checked
+            reservas = reserva_repo.get_all() if show_reservations else []
+
+            # Group allocations by room
+            room_allocations = {}
+            for alloc in allocacoes:
+                room_id = alloc.sala_id
+                if selected_entity != "all" and room_id != selected_entity:
+                    continue
+
+                if room_id not in room_allocations:
+                    room_allocations[room_id] = {
+                        "room_name": salas_options.get(room_id, f"Sala {room_id}"),
+                        "allocations": [],
                     }
-                    selected_entity = st.selectbox(
-                        "Disciplina:",
-                        options=["all"] + list(disc_options.keys()),
-                        format_func=lambda x: (
-                            "Todas as disciplinas"
-                            if x == "all"
-                            else disc_options.get(x, f"ID {x}")
-                        ),
-                        key="entity_filter",
-                    )
-                except Exception as e:
-                    st.warning(f"Não foi possível carregar disciplinas: {str(e)}")
-                    selected_entity = "all"
 
-        # Get data based on filters
-        if st.button("🔍 Atualizar Visualização", type="primary"):
-            with st.spinner("Carregando dados..."):
+                room_allocations[room_id]["allocations"].append(alloc)
 
-                if view_type == "sala":
-                    # Get allocations for selected semester
-                    allocacoes = (
-                        aloc_repo.get_by_semestre(selected_semestre)
-                        if selected_semestre
-                        else []
-                    )
+            # Group reservations by room
+            for reserva in reservas:
+                room_id = reserva.sala_id
+                if selected_entity != "all" and room_id != selected_entity:
+                    continue
 
-                    # Get all reservations (reservations don't have semester, they're date-based)
-                    reservas = reserva_repo.get_all()
+                if room_id not in room_allocations:
+                    room_allocations[room_id] = {
+                        "room_name": salas_options.get(room_id, f"Sala {room_id}"),
+                        "allocations": [],
+                    }
 
-                    # Group allocations by room
-                    room_allocations = {}
-                    for alloc in allocacoes:
-                        room_id = alloc.sala_id
-                        if selected_entity != "all" and room_id != selected_entity:
-                            continue
+                # Convert reservation to allocation-like format for consistency
+                reservation_alloc = {
+                    "type": "reservation",
+                    "titulo": reserva.titulo_evento,
+                    "solicitante": reserva.username_solicitante,
+                    "dia_semana_id": reserva.data_reserva,  # Placeholder - would need weekday mapping
+                    "codigo_bloco": reserva.codigo_bloco,
+                }
+                room_allocations[room_id]["allocations"].append(reservation_alloc)
 
-                        if room_id not in room_allocations:
-                            room_allocations[room_id] = {
-                                "room_name": salas_options.get(
-                                    room_id, f"Sala {room_id}"
-                                ),
-                                "allocations": [],
-                            }
+            # Display schedule grids for each room
+            rooms_displayed = 0
+            for room_id, room_data in room_allocations.items():
+                room_name = room_data["room_name"]
+                allocations = room_data["allocations"]
 
-                        room_allocations[room_id]["allocations"].append(alloc)
+                if not allocations:
+                    continue
 
-                    # Group reservations by room
-                    for reserva in reservas:
-                        room_id = reserva.sala_id
-                        if selected_entity != "all" and room_id != selected_entity:
-                            continue
+                # Create room schedule grid
+                room_grid = create_room_schedule_grid(allocations, room_name)
+                if room_grid is not None and not room_grid.empty:
+                    rooms_displayed += 1
+                    st.subheader(f"🏢 {room_name}")
+                    st.table(room_grid)
 
-                        if room_id not in room_allocations:
-                            room_allocations[room_id] = {
-                                "room_name": salas_options.get(
-                                    room_id, f"Sala {room_id}"
-                                ),
-                                "allocations": [],
-                            }
-
-                        # Convert reservation to allocation-like format for consistency
-                        reservation_alloc = {
-                            "type": "reservation",
-                            "titulo": reserva.titulo_evento,
-                            "solicitante": reserva.username_solicitante,
-                            "dia_semana_id": reserva.data_reserva,  # Placeholder - would need weekday mapping
-                            "codigo_bloco": reserva.codigo_bloco,
-                        }
-                        room_allocations[room_id]["allocations"].append(
-                            reservation_alloc
-                        )
-
-                    # Display schedule grids for each room
-                    rooms_displayed = 0
-                    for room_id, room_data in room_allocations.items():
-                        room_name = room_data["room_name"]
-                        allocations = room_data["allocations"]
-
-                        if not allocations:
-                            continue
-
-                        # Create room schedule grid
-                        room_grid = create_room_schedule_grid(allocations, room_name)
-                        if room_grid is not None and not room_grid.empty:
-                            rooms_displayed += 1
-                            st.subheader(f"🏢 {room_name}")
-                            st.table(room_grid)
-
-                    if rooms_displayed == 0:
-                        st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
-
-                elif view_type == "professor":
-                    st.info(
-                        "📝 Visualização por professor será implementada em seguida..."
-                    )
-
-                else:  # disciplina
-                    st.info(
-                        "📝 Visualização por disciplina será implementada em seguida..."
-                    )
+            if rooms_displayed == 0:
+                st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
 
         # Export options
         st.markdown("---")

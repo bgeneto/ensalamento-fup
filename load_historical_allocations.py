@@ -7,14 +7,15 @@ parsing the data and creating AlocacaoSemestral records for the semester
 history (RF-006.6 - rules based on historical allocations).
 
 Usage:
-    python load_historical_allocations.py [--dry-run] [--force] [CSV_FILE]
+    python load_historical_allocations.py [--dry-run] [--force] [--enable-reservations] [CSV_FILE]
 
 Arguments:
     CSV_FILE: Path to CSV file (default: docs/Ensalamento Oferta 2-2025.csv)
 
 Options:
     --dry-run: Show what would be done without making changes
-    --force: Overwrite existing allocations for the same conflicts
+    --force: Overwrite existing allocations for conflicts
+    --enable-reservations: Enable creation of ReservaEsporadica records (default: disabled)
 """
 
 import csv
@@ -73,11 +74,13 @@ class CSVAllocator:
         dry_run: bool = False,
         force: bool = False,
         semester_name: str = "2025-2",
+        enable_reservations: bool = False,
     ):
         self.session = session
         self.dry_run = dry_run
         self.force = force
         self.semestre_name = semester_name
+        self.enable_reservations = enable_reservations
 
         # Initialize repositories
         self.sem_repo = SemestreRepository(session)
@@ -226,7 +229,7 @@ class CSVAllocator:
                 "turma_disciplina": turma,
                 "horario_sigaa_bruto": horario_sigaa,
                 "vagas_disciplina": 30,  # Default
-                "professores_disciplina": "Não Designado",
+                "professores_disciplina": "",
                 "nivel_disciplina": "Graduação",
             }
 
@@ -258,6 +261,12 @@ class CSVAllocator:
         """Process a single allocation (course or reservation)."""
 
         if allocation.is_reservation:
+            if not self.enable_reservations:
+                print(
+                    f"    ⏭️ Skipping reservation creation (disabled): {allocation.titulo_evento}"
+                )
+                return
+
             # Create reservation using model fields: sala_id, username_solicitante, titulo_evento, data_reserva, codigo_bloco
             reserva_data = {
                 "sala_id": sala_id,
@@ -539,7 +548,7 @@ class CSVAllocator:
                     "turma_disciplina": turma,
                     "horario_sigaa_bruto": horario_agg,
                     "vagas_disciplina": 30,  # Default
-                    "professores_disciplina": "Não Designado",
+                    "professores_disciplina": "",
                     "nivel_disciplina": "Graduação",
                 }
 
@@ -654,6 +663,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--enable-reservations",
+        action="store_true",
+        help="Enable creation of ReservaEsporadica records (default: disabled)",
+    )
+
+    parser.add_argument(
         "--semester",
         default="2025-2",
         help="Semester name (e.g., '2025-2') (default: 2025-2)",
@@ -671,6 +686,7 @@ Examples:
             dry_run=args.dry_run,
             force=args.force,
             semester_name=args.semester,
+            enable_reservations=args.enable_reservations,
         )
         success = allocator.load_csv(args.csv_file)
 
