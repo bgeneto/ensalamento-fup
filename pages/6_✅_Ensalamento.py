@@ -17,8 +17,8 @@ from pages.components.ui import page_footer
 
 # Initialize page with authentication and configuration
 if not initialize_page(
-    page_title="Alocação Manual - Sistema de Ensalamento",
-    page_icon="🖱️",
+    page_title="Alocação - Ensalamento",
+    page_icon="✅",
     layout="wide",
     key_suffix="alloc_manual",
 ):
@@ -28,7 +28,7 @@ if not initialize_page(
 # PAGE HEADER
 # ============================================================================
 
-st.title("🖱️ Alocação Manual de Salas")
+st.title("✅ Ensalamento")
 
 st.info(
     """
@@ -48,8 +48,6 @@ display_session_feedback("allocation_result")
 # FILTERS SECTION
 # ============================================================================
 
-st.subheader("🎯 Seleção de Semestre")
-
 # Get available semesters using cached helper
 semester_options_list = get_semester_options()
 
@@ -65,6 +63,7 @@ selected_semester = st.selectbox(
     format_func=lambda x: semester_options.get(x, f"ID {x}"),
     index=0,  # Select first (most recent) by default
     key="semester_select_manual_alloc",
+    width=150,
 )
 
 # ============================================================================

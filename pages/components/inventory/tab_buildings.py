@@ -21,7 +21,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
 def render_buildings_tab():
-    st.subheader("Gerenciamento de Prédios")
+    st.subheader("🏢 Gerenciamento de Prédios")
 
     st.info(
         """

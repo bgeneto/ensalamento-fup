@@ -21,7 +21,6 @@ import csv
 import re
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple, NamedTuple
-from collections import defaultdict
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 
 from sqlalchemy.orm import Session
@@ -170,54 +169,22 @@ class CSVAllocator:
         nome_disciplina: Optional[str] = None,
     ) -> Optional[int]:
         """
-        Find existing demanda ID by semester and code.
-
-        If horario_sigaa provided, uses it as additional matching criterion.
-        Removes turma comparison from search logic.
+        Find existing demanda ID by semester, code, and turma.
 
         If not found and horario_sigaa provided, create new demanda.
         """
+        # Try exact match first
         demandas = self.demanda_repo.get_by_semestre(semestre_id)
-        print(f"    🔍 Searching for demanda: {codigo}, horario: {horario_sigaa}")
-
-        # Search through existing demandas
         for demanda in demandas:
-            if demanda.codigo_disciplina == codigo:
-                # Check horario match if provided
-                if horario_sigaa:
-                    if (
-                        hasattr(demanda, "horario_sigaa_bruto")
-                        and demanda.horario_sigaa_bruto
-                    ):
-                        # Check if the search horario is contained in the complete aggregated horario
-                        if horario_sigaa in demanda.horario_sigaa_bruto:
-                            print(
-                                f"      ✅ Found matching demanda (ID: {demanda.id}) with same horario: {horario_sigaa}"
-                            )
-                            return demanda.id
-                        else:
-                            print(
-                                f"      ❌ Horario mismatch - existing: '{demanda.horario_sigaa_bruto}' vs new: '{horario_sigaa}', skipping..."
-                            )
-                            continue
-                    else:
-                        print(
-                            f"      ❌ No horario found in existing demanda (ID: {demanda.id}), but new has: '{horario_sigaa}', skipping..."
-                        )
-                        continue
-                else:
-                    # No horario provided for matching, take first match by code only
-                    horario_completo = demanda.horario_sigaa_bruto or "no horario"
-                    print(
-                        f"      ✅ Found demanda (ID: {demanda.id}) with complete horario: '{horario_completo}'"
-                    )
-                    return demanda.id
+            if (
+                demanda.codigo_disciplina == codigo
+                and demanda.turma_disciplina == turma
+            ):
+                return demanda.id
 
-        # Not found, create new if horario provided
+        # If not found and we have horario, create new demanda
         if horario_sigaa:
-            print(
-                f"  ⚠️ Demanda not found for {codigo} with horario '{horario_sigaa}', creating..."
-            )
+            print(f"  ⚠️ Demanda not found for {codigo}, T{turma}, creating...")
             demanda_data = {
                 "semestre_id": semestre_id,
                 "codigo_disciplina": codigo,
@@ -226,7 +193,7 @@ class CSVAllocator:
                 "turma_disciplina": turma,
                 "horario_sigaa_bruto": horario_sigaa,
                 "vagas_disciplina": 30,  # Default
-                "professores_disciplina": "Não Designado",
+                "professores_disciplina": "",  # Empty for now
                 "nivel_disciplina": "Graduação",
             }
 
@@ -235,14 +202,8 @@ class CSVAllocator:
                 self.stats["demandas_created"] += 1
                 return demanda.id
             else:
-                print(
-                    f"    [DRY RUN] Would create demanda: {codigo} with horario: {horario_sigaa}"
-                )
+                print(f"    [DRY RUN] Would create demanda: {codigo} (T{turma})")
                 return None  # In dry run, can't return real ID
-        else:
-            print(
-                f"  ⚠️ Demanda not found for {codigo} (no horario provided for creation)"
-            )
 
         return None
 
@@ -403,14 +364,12 @@ class CSVAllocator:
                 horario_bruto = " ".join(
                     [f"{dia_sigaa}{bloco}" for bloco in atomic_blocks]
                 )
-                # Since demandas are pre-populated with complete aggregated schedules,
-                # just match by code only (no partial horario needed)
                 demanda_id = self.find_demanda(
                     semestre_id,
                     allocation.codigo_disciplina,
                     allocation.turma_disciplina,
-                    # No horario parameter - match by code only since demands are pre-aggregated
-                    nome_disciplina=allocation.nome_disciplina,
+                    horario_bruto,  # Like "5T2 5T3" for time slot "5T23"
+                    allocation.nome_disciplina,
                 )
                 if not demanda_id:
                     print(
@@ -435,131 +394,8 @@ class CSVAllocator:
                         semestre_id, sala.id, dia_obj.id_sigaa, bloco, allocation
                     )
 
-    def discover_and_aggregate_demandas(self, csv_path: str, semestre_id: int):
-        """
-        PHASE 1: Discovery and aggregation.
-
-        Scans entire CSV to discover all unique (codigo_disciplina + turma_disciplina)
-        combinations and aggregates their complete horario blocks.
-
-        Pre-populates all demandas with complete horario_sigaa_bruto values.
-        """
-        print("🔍 PHASE 1: Discovering and aggregating course demands...")
-
-        csv_file = Path(csv_path)
-        if not csv_file.exists():
-            print(f"❌ CSV file not found: {csv_path}")
-            return False
-
-        # Structure: {(codigo, turma): {'nome': str, 'horarios': set()}}
-        disciplina_map = defaultdict(lambda: {"nome": None, "horarios": set()})
-
-        with open(csv_file, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f, delimiter=";")
-
-            # Skip header and empty row
-            next(reader)  # header
-            next(reader)  # empty
-
-            for row in reader:
-                if not row or not row[0].strip():
-                    continue
-
-                # Parse time slot
-                time_slot = row[0].strip()
-                match = re.match(r"^(\d+)([MTN])(\d+)$", time_slot)
-                if not match:
-                    continue
-
-                dia_sigaa = int(match.group(1))
-                turno = match.group(2)
-                slots_str = match.group(3)
-
-                # Create atomic blocks
-                atomic_blocks = [f"{turno}{slot}" for slot in slots_str]
-
-                # Process each allocation cell
-                for allocation_cell in row[1:]:
-                    cell_value = allocation_cell.strip()
-                    if not cell_value:
-                        continue
-
-                    # Parse allocation
-                    allocation = self.parse_allocation_cell(cell_value)
-                    if allocation.is_reservation or not allocation.codigo_disciplina:
-                        continue
-
-                    # Create unique key and build horario blocks
-                    key = (allocation.codigo_disciplina, allocation.turma_disciplina)
-                    horario_blocks = [f"{dia_sigaa}{bloco}" for bloco in atomic_blocks]
-
-                    # Update the map
-                    if not disciplina_map[key]["nome"]:
-                        disciplina_map[key]["nome"] = allocation.nome_disciplina
-                    disciplina_map[key]["horarios"].update(horario_blocks)
-
-        # PHASE 2: Check existing DB records and create/update demandas with complete aggregated horarios
-        print(
-            f"📝 PHASE 2: Processing {len(disciplina_map)} aggregated course demands..."
-        )
-
-        # Map to store demanda_id for each (codigo, turma) combination
-        demanda_id_map = {}
-
-        for (codigo, turma), data in disciplina_map.items():
-            # Create complete aggregated horario_sigaa_bruto
-            horario_sorted = sorted(data["horarios"])  # Sort for consistency
-            horario_agg = " ".join(horario_sorted)
-
-            # Check if demanda with exact same complete horario already exists
-            existing_demanda = None
-            existing_demandas = self.demanda_repo.get_by_semestre(semestre_id)
-            for demanda in existing_demandas:
-                if (
-                    demanda.codigo_disciplina == codigo
-                    and demanda.horario_sigaa_bruto == horario_agg
-                ):
-                    existing_demanda = demanda
-                    break
-
-            if existing_demanda:
-                print(
-                    f"    ✅ Found existing demanda (ID: {existing_demanda.id}) with exact horario match: '{horario_agg}'"
-                )
-                demanda_id_map[(codigo, turma)] = existing_demanda.id
-            else:
-                print(
-                    f"    📚 Creating new demanda: {codigo} T{turma} -> '{horario_agg}'"
-                )
-
-                demanda_data = {
-                    "semestre_id": semestre_id,
-                    "codigo_disciplina": codigo,
-                    "nome_disciplina": data["nome"] or f"Disciplina {codigo}",
-                    "turma_disciplina": turma,
-                    "horario_sigaa_bruto": horario_agg,
-                    "vagas_disciplina": 30,  # Default
-                    "professores_disciplina": "Não Designado",
-                    "nivel_disciplina": "Graduação",
-                }
-
-                if not self.dry_run:
-                    try:
-                        demanda = self.demanda_repo.create(demanda_data)
-                        self.stats["demandas_created"] += 1
-                        demanda_id_map[(codigo, turma)] = demanda.id
-                    except Exception as e:
-                        print(f"  ❌ Error creating demanda {codigo} T{turma}: {e}")
-                        self.stats["errors"] += 1
-                else:
-                    print(f"    [DRY RUN] Would create demanda: {codigo} T{turma}")
-                    # In dry run, we can't assign a real ID, so use a placeholder
-                    demanda_id_map[(codigo, turma)] = -1
-
-        return True
-
     def load_csv(self, csv_path: str):
-        """Load allocations from CSV file in two phases."""
+        """Load allocations from CSV file."""
 
         semestre = self.get_semestre()
         if not semestre:
@@ -577,13 +413,6 @@ class CSVAllocator:
             print(f"❌ CSV file not found: {csv_path}")
             return False
 
-        # PHASE 1: Discover and pre-populate all demandas with aggregated schedules
-        if not self.discover_and_aggregate_demandas(csv_path, semestre.id):
-            return False
-
-        # PHASE 3: Process allocations (demandas are now pre-populated)
-        print("🏗️ PHASE 3: Processing room allocations...")
-
         with open(csv_file, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f, delimiter=";")
 
@@ -596,7 +425,7 @@ class CSVAllocator:
             # Skip the empty row after header
             next(reader)
 
-            # Process each data row for allocations
+            # Process each data row
             for row in reader:
                 if not row or not row[0].strip():
                     continue  # Skip empty rows

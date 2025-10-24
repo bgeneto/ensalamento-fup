@@ -27,7 +27,9 @@ def _extract_professores_string(prof_list: Any) -> str:
     return ", ".join(names)
 
 
-def sync_semester_from_api(cod_semestre: str) -> Dict[str, int]:
+def sync_semester_from_api(
+    cod_semestre: str, cursos_ignorados: List[str] = None
+) -> Dict[str, int]:
     """
     Sync ofertas for cod_semestre.
     Returns summary: {'created_semestre':0/1,'demandas':N,'professores':M,'skipped':K}
@@ -66,6 +68,23 @@ def sync_semester_from_api(cod_semestre: str) -> Dict[str, int]:
         prof_names_to_provision: Set[str] = set()
 
         for oferta_key, oferta in ofertas.items():
+            # Check if course should be ignored (filtering at sync time)
+            codigo_curso = oferta.get("cod_curso", "")
+            if cursos_ignorados and codigo_curso in cursos_ignorados:
+                summary["skipped"] += 1
+                detail = {
+                    "oferta_key": str(oferta_key),
+                    "codigo_curso": codigo_curso,
+                    "codigo": oferta.get("cod_disciplina"),
+                    "turma": oferta.get("cod_turma")
+                    or oferta.get("turma_disciplina")
+                    or "",
+                    "reason": "curso_ignorado",
+                }
+                summary["skipped_details"].append(detail)
+                logger.debug("Skipped oferta (curso ignorado): %s", detail)
+                continue
+
             # idempotency: use oferta_key as id_oferta_externo (string)
             id_oferta_externo = str(oferta_key)
 

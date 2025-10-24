@@ -54,7 +54,7 @@ tab1, tab2 = st.tabs(["📋 Lista de Professores", "📥 Importar"])
 # =============================================================================
 
 with tab1:
-    st.subheader("Professores Cadastrados")
+    st.subheader("📝 Professores Cadastrados")
 
     st.info(
         """
@@ -329,7 +329,7 @@ with tab1:
 # =============================================================================
 
 with tab2:
-    st.subheader("Importar Professores")
+    st.subheader("📥 Importar Professores")
 
     import_method = st.radio(
         "Escolha o método de importação:",

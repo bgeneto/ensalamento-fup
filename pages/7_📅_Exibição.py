@@ -328,7 +328,7 @@ try:
 
         with col1:
             selected_semestre = st.selectbox(
-                "Semestre:",
+                "📅 Semestre:",
                 options=list(semestres_options.keys()),
                 format_func=lambda x: semestres_options.get(x, f"ID {x}"),
                 index=0,  # Select first (most recent) by default
@@ -465,7 +465,7 @@ try:
                         if room_grid is not None and not room_grid.empty:
                             rooms_displayed += 1
                             st.subheader(f"🏢 {room_name}")
-                            st.dataframe(room_grid)
+                            st.table(room_grid)
 
                     if rooms_displayed == 0:
                         st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")

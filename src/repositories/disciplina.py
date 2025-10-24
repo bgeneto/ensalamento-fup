@@ -367,3 +367,26 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             List of DemandaRead DTOs
         """
         return self.get_by_semestre(semestre_id)
+
+    def get_unique_course_codes(self) -> List[str]:
+        """Get unique course codes from all demandas.
+
+        Returns a list of unique codigo_curso values, sorted alphabetically.
+        Used to populate course filtering options.
+
+        Returns:
+            List of unique course codes (codigo_curso)
+        """
+        from sqlalchemy import distinct
+        from src.models.academic import Demanda
+
+        result = (
+            self.session.query(distinct(Demanda.codigo_curso))
+            .filter(Demanda.codigo_curso != "")  # Exclude empty codes
+            .filter(Demanda.codigo_curso.isnot(None))  # Exclude null codes
+            .order_by(Demanda.codigo_curso)
+            .all()
+        )
+
+        # Flatten the result (distinct returns tuples)
+        return [row[0] for row in result]

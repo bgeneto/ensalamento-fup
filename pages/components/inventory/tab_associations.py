@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
 def render_associations_tab():
-    st.subheader("Associação de Características com Salas")
+    st.subheader("🔗 Associação de Características com Salas")
 
     st.info(
         """

@@ -169,7 +169,7 @@ with tab1:
                     sala.id: f"{sala.predio.nome}: {sala.nome}" for sala in salas_orm
                 }
 
-                st.subheader("Preferências dos Professores")
+                st.subheader("✏️ Editar Preferências dos Professores")
 
                 # Sort professors by name for the selectbox
                 professores_sorted = sorted(professores, key=lambda x: x.nome_completo)
@@ -344,7 +344,7 @@ with tab1:
 # =============================================================================
 
 with tab2:
-    st.subheader("Regras e Preferências de Disciplinas")
+    st.subheader("📜 Regras e Preferências de Disciplinas")
     st.markdown(
         "Configure regras e preferências de alocação focadas em disciplinas.As regras podems ser estáticas/rígidas e/ou regras dinâmicas/preferências."
     )

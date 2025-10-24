@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
 def render_campus_tab():
-    st.subheader("Gerenciamento de Campi")
+    st.subheader("🏫 Gerenciamento de Campi")
 
     st.info(
         """

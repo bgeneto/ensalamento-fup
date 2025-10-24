@@ -43,9 +43,10 @@ st.info(
     """
     ℹ️ INFORMAÇÃO
 
-    Esta página permite importar e visualizar as demandas de disciplinas de um semestre por meio da integração com Sistema de Oferta FUP/UnB.
-
-    Basta selecionar o semestre desejado e clicar em "🔄 Sincronizar Demanda" para importar os dados mais recentes do sistema de oferta.
+    - Esta página permite importar, visualizar, editar e remover as demandas de disciplinas de um determinado semestre.
+    - A importação de demandas é realizada por meio da integração com Sistema de Oferta FUP/UnB.
+    - Para importar, basta selecionar o semestre desejado e clicar em "🔄 Sincronizar Demanda" para buscar os dados mais recentes do sistema de oferta.
+    - A importação é uma etapa necessária antes de realizar o ensalamento, garantindo que as demandas sejam atendidas.
     """,
 )
 
@@ -121,13 +122,48 @@ semester_names = [name for _, name in semester_options]
 semester_id_map = {name: sem_id for sem_id, name in semester_options}
 
 semestre_selecionado = st.selectbox(
-    "Semestre:",
+    "📅 Semestre:",
     options=semester_names,
     width=150,
 )
 
-# Get selected semester ID
 selected_semester_id = semester_id_map[semestre_selecionado]
+
+# Allow ignoring some courses by default
+# Get list of unique course codes from demandas table or use predefined list if empty
+with get_db_session() as session:
+    dem_repo = DisciplinaRepository(session)
+    cursos_from_db = dem_repo.get_unique_course_codes()
+
+# Use course codes from DB or fallback to predefined list if DB is empty
+if cursos_from_db:
+    options_cursos = cursos_from_db
+else:
+    options_cursos = [
+        "PPGCIMA",
+        "PPGCA-M",
+        "PPGCA-D",
+        "CND",
+        "CNN",
+        "LEDOC",
+        "PPGEC",
+        "GAM",
+        "GEAGRO",
+        "PROFAGUA",
+        "PPGP",
+        "PPG-MADER",
+        "OUTROS",
+    ]
+
+# Determine default ignored courses (LEDOC if available)
+default_ignored = [c for c in ("LEDOC", "OUTROS") if c in options_cursos]
+
+cursos_ignorados = st.multiselect(
+    "Cursos Ignorados:",
+    options=options_cursos,
+    default=default_ignored,  # LEDOC by default is ignored (if available)
+    width=400,
+)
 
 with get_db_session() as session:
     dem_repo = DisciplinaRepository(session)
@@ -183,12 +219,17 @@ with get_db_session() as session:
         )
 
     # --- Filtros e Tabela de Demandas ---
-    st.subheader("Detalhes da Demanda Selecionada")
+    st.subheader("🔍 Filtrar Demanda")
 
     filtro_disciplina = st.text_input("Buscar por Nome ou Código da Disciplina")
 
-    # Collect unique course codes for filter
-    cursos_unicos = sorted(df["codigo_curso"].fillna("").unique())
+    # Collect unique course codes for filter (excluding ignored courses)
+    df_para_filtros = df.copy()
+    if cursos_ignorados:
+        df_para_filtros = df_para_filtros[
+            ~df_para_filtros["codigo_curso"].isin(cursos_ignorados)
+        ]
+    cursos_unicos = sorted(df_para_filtros["codigo_curso"].fillna("").unique())
     cursos_unicos = [c for c in cursos_unicos if c.strip()]  # Remove empty entries
     filtro_curso = st.multiselect("Filtrar por Curso", options=cursos_unicos)
 
@@ -197,8 +238,14 @@ with get_db_session() as session:
         "Filtrar por Professor", options=lista_professores
     )
 
+    # Apply all filters step by step
     df_filtrado = df.copy()
 
+    # 1. Filter ignored courses first (this one affects what gets saved, others are just display filters)
+    if cursos_ignorados:
+        df_filtrado = df_filtrado[~df_filtrado["codigo_curso"].isin(cursos_ignorados)]
+
+    # 2. Apply display filters
     if filtro_disciplina:
         term = filtro_disciplina.lower()
         df_filtrado = df_filtrado[
@@ -220,40 +267,294 @@ with get_db_session() as session:
         )
         df_filtrado = df_filtrado[mask]
 
-    # Select and order columns for display
-    display_cols = [
-        "codigo_curso",
-        "codigo_disciplina",
-        "nome_disciplina",
-        "turma_disciplina",
-        "vagas_disciplina",
-        "professores_disciplina",
-        "horario_legivel",
-        "num_slots",
-    ]
+    # Editable table instructions
+    st.info(
+        """
+        Edite os dados diretamente na tabela abaixo.
+        - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
+        - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
+        - Não é possível **adicionar** demandas diretamente por aqui. Nem todos os dados são editáveis.
+        """
+    )
 
-    # If dataframe empty show a friendly message
+    # Show total demandes found after ALL filters are applied
+    st.markdown(
+        f"**Total de demandas encontradas: {len(df_filtrado)}**"
+    )  # DON'T use metric here, this is the layout in other pages!
+
+    # Display editable table if there are demandes
     if df_filtrado.empty:
         st.warning(
             "Nenhuma demanda encontrada para o semestre/filtragem selecionada. Use outro semestre ou sincronize os dados novamente clicando no botão abaixo.",
             icon="⚠️",
         )
+        # Clear any cached editor state when empty by using a different key
+        # This forces Streamlit to create a fresh empty editor on next data load
+        if f"demanda_table_editor_empty_{selected_semester_id}" not in st.session_state:
+            st.session_state[f"demanda_table_editor_empty_{selected_semester_id}"] = (
+                True
+            )
     else:
-        st.dataframe(
-            df_filtrado[display_cols].rename(
-                columns={
-                    "codigo_curso": "Curso",
-                    "codigo_disciplina": "Código",
-                    "nome_disciplina": "Disciplina",
-                    "turma_disciplina": "Turma",
-                    "vagas_disciplina": "Vagas",
-                    "professores_disciplina": "Professores",
-                    "horario_legivel": "Horário",
-                    "num_slots": "Slots",
+        # Prepare data for editing
+        edit_data = []
+        for idx, row in df_filtrado.iterrows():
+            edit_data.append(
+                {
+                    "ID": row["id"],  # Keep internal ID for updates
+                    "Curso": row["codigo_curso"],
+                    "Código": row["codigo_disciplina"],
+                    "Disciplina": row["nome_disciplina"],
+                    "Turma": row["turma_disciplina"],
+                    "Vagas": row["vagas_disciplina"],
+                    "Professores": row["professores_disciplina"],
+                    "Horário": row["horario_legivel"],
+                    "Slots": row["num_slots"],
                 }
-            ),
-            width="stretch",
+            )
+
+        edit_df = pd.DataFrame(edit_data)
+
+        # Handle widget state management for cache issues
+        # Detect when data has been emptied and force widget recreation
+        current_data_size = len(edit_df)
+        prev_data_size_key = f"demanda_prev_data_size_{selected_semester_id}"
+
+        # Check if data was emptied (previous size was > 0 and now is 0)
+        force_recreation = False
+        if prev_data_size_key in st.session_state:
+            prev_size = st.session_state[prev_data_size_key]
+            if prev_size > 0 and current_data_size == 0:
+                force_recreation = True
+                # Clean up old widget state if it exists
+                editor_keys_to_clean = [
+                    k
+                    for k in st.session_state.keys()
+                    if k.startswith("demanda_table_editor")
+                ]
+                for key in editor_keys_to_clean:
+                    del st.session_state[key]
+
+        # Update stored data size
+        st.session_state[prev_data_size_key] = current_data_size
+
+        # Use different key when forcing recreation due to emptied data
+        editor_key = (
+            "demanda_table_editor_fresh" if force_recreation else "demanda_table_editor"
         )
+
+        # Create edited_df with data_editor
+        edited_df = st.data_editor(
+            edit_df,
+            width="stretch",
+            hide_index=True,
+            num_rows="dynamic",  # Allow deletions for imported data
+            column_config={
+                "ID": None,  # Hide ID column
+                "Curso": st.column_config.TextColumn(
+                    "Curso",
+                    required=True,
+                    help="Código do curso (ex: ENM, ENGENHARIA MECÂNICA)",
+                ),
+                "Código": st.column_config.TextColumn(
+                    "Código",
+                    required=True,
+                    help="Código da disciplina (ex: ENM0011)",
+                ),
+                "Disciplina": st.column_config.TextColumn(
+                    "Disciplina",
+                    required=True,
+                    help="Nome da disciplina",
+                ),
+                "Turma": st.column_config.TextColumn(
+                    "Turma",
+                    required=True,
+                    help="Código da turma (ex: A, B)",
+                ),
+                "Vagas": st.column_config.NumberColumn(
+                    "Vagas",
+                    min_value=1,
+                    help="Número de vagas disponíveis",
+                ),
+                "Professores": st.column_config.TextColumn(
+                    "Professores",
+                    help="Lista de professores separados por vírgula",
+                ),
+                "Horário": st.column_config.TextColumn(
+                    "Horário",
+                    disabled=True,  # Read-only, calculated from raw schedule
+                    help="Horário legível (calculado automaticamente)",
+                ),
+                "Slots": st.column_config.NumberColumn(
+                    "Slots",
+                    disabled=True,  # Read-only, calculated from raw schedule
+                    help="Número de slots de horário",
+                ),
+            },
+            key=editor_key,
+        )
+
+        # Detect and process changes
+        changes_made = False
+        errors_occurred = False
+
+        # Detect additions or deletions
+        original_ids = set(edit_df["ID"].astype(int))
+        edited_ids = set(edited_df[edited_df["ID"].notna()]["ID"].astype(int))
+
+        # Handle deletions (rows removed from edited_df)
+        deleted_ids = original_ids - edited_ids
+        if deleted_ids:
+            try:
+                with get_db_session() as session:
+                    demanda_repo_delete = DisciplinaRepository(session)
+                    deleted_list = []
+                    for demanda_id in deleted_ids:
+                        demanda = demanda_repo_delete.get_by_id(int(demanda_id))
+                        if demanda:
+                            deleted_list.append(
+                                f"{demanda.codigo_disciplina}-{demanda.turma_disciplina}"
+                            )
+                        demanda_repo_delete.delete(int(demanda_id))
+                    set_session_feedback(
+                        "demanda_crud_result",
+                        True,
+                        f"{len(deleted_ids)} demanda(s) removida(s) com sucesso: {', '.join(deleted_list)}",
+                        action="delete",
+                    )
+                    changes_made = True
+            except Exception as e:
+                set_session_feedback(
+                    "demanda_crud_result",
+                    False,
+                    f"Erro ao deletar demanda(s): {str(e)}",
+                    action="delete",
+                )
+                errors_occurred = True
+
+        # Compare each row for changes (only for rows that still exist)
+        for idx, row in edited_df.iterrows():
+            if idx < len(edit_df):
+                original_row = edit_df.iloc[idx]
+
+                # Check which fields changed
+                curso_changed = row["Curso"] != original_row["Curso"]
+                codigo_changed = row["Código"] != original_row["Código"]
+                disciplina_changed = row["Disciplina"] != original_row["Disciplina"]
+                turma_changed = row["Turma"] != original_row["Turma"]
+                vagas_changed = row["Vagas"] != original_row["Vagas"]
+                professores_changed = row["Professores"] != original_row["Professores"]
+
+                # If any field changed, validate and update
+                if any(
+                    [
+                        curso_changed,
+                        codigo_changed,
+                        disciplina_changed,
+                        turma_changed,
+                        vagas_changed,
+                        professores_changed,
+                    ]
+                ):
+
+                    demanda_id = int(row["ID"])
+
+                    # Validate required fields
+                    curso = str(row["Curso"]).strip()
+                    codigo = str(row["Código"]).strip()
+                    disciplina = str(row["Disciplina"]).strip()
+                    turma = str(row["Turma"]).strip()
+                    vagas = row["Vagas"]
+                    professores = str(row["Professores"]).strip()
+
+                    validation_errors = []
+
+                    if not curso:
+                        validation_errors.append("Curso é obrigatório")
+                    if not codigo:
+                        validation_errors.append("Código da disciplina é obrigatório")
+                    if not disciplina:
+                        validation_errors.append("Nome da disciplina é obrigatório")
+                    if not turma:
+                        validation_errors.append("Turma é obrigatória")
+
+                    if pd.isna(vagas) or vagas < 1:
+                        validation_errors.append("Vagas deve ser um número maior que 0")
+                    else:
+                        vagas = int(vagas)
+
+                    if validation_errors:
+                        for error in validation_errors:
+                            set_session_feedback(
+                                "demanda_crud_result",
+                                False,
+                                f"Erro na demanda {codigo}-{turma}: {error}",
+                                action="update",
+                            )
+                        errors_occurred = True
+                        continue
+
+                    # Attempt update
+                    try:
+                        with get_db_session() as session:
+                            demanda_repo_update = DisciplinaRepository(session)
+                            current = demanda_repo_update.get_by_id(demanda_id)
+
+                            if current:
+                                # Create update DTO with changed fields
+                                update_data = {}
+                                if curso_changed:
+                                    update_data["codigo_curso"] = curso
+                                if codigo_changed:
+                                    update_data["codigo_disciplina"] = codigo
+                                if disciplina_changed:
+                                    update_data["nome_disciplina"] = disciplina
+                                if turma_changed:
+                                    update_data["turma_disciplina"] = turma
+                                if vagas_changed:
+                                    update_data["vagas_disciplina"] = vagas
+                                if professores_changed:
+                                    update_data["professores_disciplina"] = professores
+
+                                from src.schemas.academic import DemandaUpdate
+
+                                demanda_update_dto = DemandaUpdate(**update_data)
+
+                                demanda_repo_update.update(
+                                    demanda_id, demanda_update_dto
+                                )
+
+                                set_session_feedback(
+                                    "demanda_crud_result",
+                                    True,
+                                    f"Demanda {codigo}-{turma} atualizada com sucesso!",
+                                    action="update",
+                                )
+                                changes_made = True
+                            else:
+                                set_session_feedback(
+                                    "demanda_crud_result",
+                                    False,
+                                    f"Demanda ID {demanda_id} não encontrada",
+                                    action="update",
+                                )
+                                errors_occurred = True
+
+                    except Exception as e:
+                        set_session_feedback(
+                            "demanda_crud_result",
+                            False,
+                            f"Erro ao atualizar demanda {codigo}-{turma}: {str(e)}",
+                            action="update",
+                        )
+                        errors_occurred = True
+
+        # Rerun only if changes were successful, avoid rerun if only errors occurred
+        if changes_made:
+            st.rerun()
+        # If only errors occurred, don't rerun so user can fix values
+
+        # Display CRUD feedback
+        display_session_feedback("demanda_crud_result")
 
 # Track sync processing state in session state
 if "sync_semestre_processing" not in st.session_state:
@@ -266,7 +567,7 @@ if st.session_state.sync_semestre_processing:
     ):
         # Complete the sync operation
         try:
-            summary = sync_semester_from_api(semestre_selecionado)
+            summary = sync_semester_from_api(semestre_selecionado, cursos_ignorados)
             # success
             set_session_feedback(
                 "sync_semestre_result",
