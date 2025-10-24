@@ -11,6 +11,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Tuple
+from st_aggrid import AgGrid, GridOptionsBuilder
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -46,7 +47,60 @@ from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
 from pages.components.ui import page_footer
 
 # ============================================================================
+# CONFIGURATION OPTIONS
+# ============================================================================
+
+# Control advanced grid features (enterprise modules, sidebar, export)
+# Set to False for faster loading, True for full feature set
+USE_ADVANCED_GRID_FEATURES = False
+
+# ============================================================================
 # UTILITY FUNCTIONS
+# ============================================================================
+
+
+def create_grid_options(dataframe: pd.DataFrame) -> dict:
+    """
+    Create AgGrid configuration for room schedule display.
+
+    Args:
+        dataframe: DataFrame containing room schedule data
+
+    Returns:
+        Grid options dictionary for AgGrid
+    """
+    gb = GridOptionsBuilder.from_dataframe(dataframe)
+
+    # Configure grid options
+    gb.configure_default_column(
+        resizable=True,
+        filterable=True,
+        sortable=True,
+        wrapText=True,
+        autoHeight=True,
+        cellStyle={"borderRight": "1px solid #e0e0e0"},
+        headerCellStyle={"borderRight": "1px solid #e0e0e0"},
+    )
+
+    # Set column widths - make time column narrower, content columns wider
+    gb.configure_column("Horário", width=120, pinned="left")
+    for col in dataframe.columns:
+        if col != "Horário":
+            gb.configure_column(col, width=200)
+
+    # Enable sidebar filtering only if advanced features are enabled
+    if USE_ADVANCED_GRID_FEATURES:
+        gb.configure_side_bar()
+
+    # Grid options
+    grid_options = gb.build()
+    grid_options["domLayout"] = "autoHeight"
+
+    return grid_options
+
+
+# ============================================================================
+# UTILITY FUNCTIONS (continued)
 # ============================================================================
 
 
@@ -279,6 +333,7 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
         )
 
     df.index = formatted_index
+    df.index.name = "Horário"
 
     return df
 
@@ -415,8 +470,44 @@ try:
                 room_grid = create_room_schedule_grid(allocations, room_name)
                 if room_grid is not None and not room_grid.empty:
                     rooms_displayed += 1
-                    st.subheader(f"🏢 {room_name}")
-                    st.table(room_grid)
+                    st.write(f"🏢 **{room_name}**")
+
+                    # Configure and display interactive grid
+                    grid_options = create_grid_options(room_grid)
+                    aggrid_kwargs = {
+                        "gridOptions": grid_options,
+                        "height": 400,
+                        "width": "100%",
+                        "fit_columns_on_grid_load": True,
+                        "theme": "streamlit",  # Use streamlit theme for consistency
+                        "key": f"room_grid_{room_id}",
+                        "allow_unsafe_jscode": True,
+                    }
+
+                    # Enable enterprise modules only for advanced features
+                    if USE_ADVANCED_GRID_FEATURES:
+                        aggrid_kwargs["enable_enterprise_modules"] = True
+                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
+
+                        # Add CSV export button for this room
+                        col1, col2 = st.columns([1, 5])  # Small column for button
+                        with col1:
+                            if st.button(
+                                "📥 CSV",
+                                key=f"export_csv_{room_id}",
+                                help=f"Exportar planilha de {room_name} para CSV",
+                            ):
+                                csv_data = room_grid.to_csv(index=True)
+                                st.download_button(
+                                    label="⬇️ Baixar CSV",
+                                    data=csv_data,
+                                    file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
+                                    mime="text/csv",
+                                    key=f"download_csv_{room_id}",
+                                )
+                    else:
+                        # Simple mode without enterprise features
+                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
 
             if rooms_displayed == 0:
                 st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")

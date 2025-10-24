@@ -466,12 +466,12 @@ class CSVAllocator:
         with open(csv_file, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f, delimiter=";")
 
-            # Skip header and empty row
+            # Skip header row only - no empty row exists in CSV
             next(reader)  # header
-            next(reader)  # empty
 
             for row in reader:
-                if not row or not row[0].strip():
+                # Skip rows where all cells are empty (e.g., ;; becomes ['', ''])
+                if not any(cell.strip() for cell in row):
                     continue
 
                 # Parse time slot
@@ -601,9 +601,6 @@ class CSVAllocator:
             room_mapping = [col.strip() for col in header_row if col.strip()]
 
             print(f"Found {len(room_mapping)} rooms: {room_mapping[:3]}...")
-
-            # Skip the empty row after header
-            next(reader)
 
             # Process each data row for allocations
             for row in reader:
