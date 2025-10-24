@@ -276,8 +276,10 @@ class CSVAllocator:
                 "codigo_bloco": bloco,
             }
 
-            # Check for conflicts
-            if self.aloc_repo.check_conflict(sala_id, dia_id, bloco):
+            # Check for conflicts within the same semester only
+            if self.aloc_repo.check_conflict(
+                sala_id, dia_id, bloco, semestre_id=semestre_id
+            ):
                 if not self.force:
                     print(
                         f"  ⚠️ Skipping reserva conflict: sala {sala_id}, {dia_id}, {bloco}"
@@ -318,8 +320,10 @@ class CSVAllocator:
                 "codigo_bloco": bloco,
             }
 
-            # Check for conflicts
-            if self.aloc_repo.check_conflict(sala_id, dia_id, bloco):
+            # Check for conflicts within the same semester only
+            if self.aloc_repo.check_conflict(
+                sala_id, dia_id, bloco, semestre_id=semestre_id
+            ):
                 if not self.force:
                     print(
                         f"  ⚠️ Skipping allocation conflict: sala {sala_id}, {dia_id}, {bloco}"

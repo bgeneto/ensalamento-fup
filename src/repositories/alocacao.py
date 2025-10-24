@@ -159,6 +159,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         dia_semana_id: int,
         codigo_bloco: str,
         exclude_alocacao_id: Optional[int] = None,
+        semestre_id: Optional[int] = None,
     ) -> bool:
         """Check if there's a conflict (double-booking) at a specific time slot.
 
@@ -167,17 +168,21 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             dia_semana_id: Weekday ID
             codigo_bloco: Time block code
             exclude_alocacao_id: Allocation ID to exclude (for updates)
+            semestre_id: Semester ID to check conflicts within (optional - if not provided, checks across all semesters)
 
         Returns:
             True if conflict exists, False otherwise
         """
-        query = self.session.query(AlocacaoSemestral).filter(
-            and_(
-                AlocacaoSemestral.sala_id == sala_id,
-                AlocacaoSemestral.dia_semana_id == dia_semana_id,
-                AlocacaoSemestral.codigo_bloco == codigo_bloco,
-            )
-        )
+        conditions = [
+            AlocacaoSemestral.sala_id == sala_id,
+            AlocacaoSemestral.dia_semana_id == dia_semana_id,
+            AlocacaoSemestral.codigo_bloco == codigo_bloco,
+        ]
+
+        if semestre_id is not None:
+            conditions.append(AlocacaoSemestral.semestre_id == semestre_id)
+
+        query = self.session.query(AlocacaoSemestral).filter(and_(*conditions))
 
         if exclude_alocacao_id:
             query = query.filter(AlocacaoSemestral.id != exclude_alocacao_id)
