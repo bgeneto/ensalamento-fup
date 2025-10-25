@@ -30,7 +30,7 @@ class SemestreRepository(BaseRepository[Semestre, SemestreRead]):
 
     def create(self, dto: dict):
         # Accept dict style create for convenience
-        obj = Semestre(nome=dto.get("nome"), status=dto.get("status", "Planejamento"))
+        obj = Semestre(nome=dto.get("nome"), status=dto.get("status", 1))
         self.session.add(obj)
         self.session.commit()
         return self.orm_to_dto(obj)

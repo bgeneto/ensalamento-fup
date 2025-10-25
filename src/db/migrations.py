@@ -232,11 +232,10 @@ def seed_db():
 
         # Seed semestres (academic terms)
         semestres_data = [
-            {"nome": "2024-1", "status": "Encerrado"},
-            {"nome": "2024-2", "status": "Encerrado"},
-            {"nome": "2025-1", "status": "Encerrado"},
-            {"nome": "2025-2", "status": "Ativo"},
-            {"nome": "2026-1", "status": "Planejamento"},
+            {"nome": "2024-1", "status": 0},
+            {"nome": "2024-2", "status": 0},
+            {"nome": "2025-1", "status": 0},
+            {"nome": "2025-2", "status": 0},
         ]
 
         for semestre_data in semestres_data:
@@ -317,6 +316,7 @@ def seed_db():
         tipos_sala_data = [
             {"nome": "Auditório"},
             {"nome": "Sala de Aula"},
+            {"nome": "Laboratório"},
             {"nome": "Laboratório de Física e Geologia"},
             {"nome": "Laboratório de Química"},
             {"nome": "Laboratório de Biologia"},
@@ -668,6 +668,24 @@ def seed_db():
                 "tipo_sala": "Auditório",
                 "predio_id": 1,
                 "caracteristicas": ["Computadores", "Projetor", "Ventilador"],
+            },
+            {
+                "nome": "AT-78/46",
+                "descricao": "Laboratório de Geoestatística e Geodésia",
+                "capacidade": 1,  # Capacidade simbólica para evitar uso em aulas
+                "andar": 0,
+                "tipo_sala": "Laboratório",
+                "predio_id": 2,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-78/46",
+                "descricao": "Laboratório de Apoio e Pesquisa em Ensino de Ciências 2",
+                "capacidade": 1,  # Capacidade simbólica para evitar uso em aulas
+                "andar": 0,
+                "tipo_sala": "Laboratório",
+                "predio_id": 2,
+                "caracteristicas": [],
             },
         ]
 

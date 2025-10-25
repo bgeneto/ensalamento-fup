@@ -18,7 +18,7 @@ class SemestreBase(BaseModel):
     """Base schema for Semestre."""
 
     nome: str = Field(..., min_length=5, max_length=50)  # e.g., "2025.1"
-    status: str = Field(default="Planejamento", max_length=50)
+    status: bool = Field(default=False)
 
 
 class SemestreCreate(SemestreBase):
@@ -31,7 +31,7 @@ class SemestreUpdate(BaseModel):
     """Schema for updating a Semestre."""
 
     nome: Optional[str] = Field(None, min_length=5, max_length=50)
-    status: Optional[str] = Field(None, max_length=50)
+    status: Optional[bool] = Field(default=False)
 
 
 class SemestreRead(SemestreBase):

@@ -157,7 +157,7 @@ def sample_semestre(db_session):
     """
     from src.models.academic import Semestre
 
-    semestre = Semestre(nome="2024.1", status="Planejamento")
+    semestre = Semestre(nome="2024.1", status=0)
     db_session.add(semestre)
     db_session.commit()
     db_session.refresh(semestre)

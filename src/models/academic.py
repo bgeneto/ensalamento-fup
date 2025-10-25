@@ -55,9 +55,7 @@ class Semestre(BaseModel):
     __tablename__ = "semestres"
 
     nome = Column(String(50), nullable=False, unique=True)
-    status = Column(
-        String(50), default="Planejamento"
-    )  # Planejamento, Alocando, Finalizado, Ativo, Encerrado
+    status = Column(Boolean, default=False)  # False = Past, True = Active/Current
 
     # Relationships - use lazy='select' to defer loading and avoid circular dependencies
     demandas = relationship(

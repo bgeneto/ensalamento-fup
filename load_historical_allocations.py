@@ -75,12 +75,14 @@ class CSVAllocator:
         force: bool = False,
         semester_name: str = "2025-2",
         enable_reservations: bool = False,
+        debug: bool = False,
     ):
         self.session = session
         self.dry_run = dry_run
         self.force = force
         self.semestre_name = semester_name
         self.enable_reservations = enable_reservations
+        self.debug = debug
 
         # Initialize repositories
         self.sem_repo = SemestreRepository(session)
@@ -117,20 +119,40 @@ class CSVAllocator:
 
         cell_value = cell_value.strip()
 
+        # Debug logging for all cells
+        if self.debug:
+            print(f"DEBUG parse_allocation_cell: Processing '{cell_value}'")
+
         # First check if it's a known reservation type (Ledoc, EducAção, etc.)
         if RESERVATION_PATTERN.match(cell_value):
+            if self.debug:
+                print(
+                    f"DEBUG parse_allocation_cell: '{cell_value}' matches RESERVATION_PATTERN"
+                )
             return ParsedAllocation(None, None, None, True, cell_value)
 
         # Try to parse as course by splitting on " - "
         parts = cell_value.split(" - ")
+        if self.debug:
+            print(
+                f"DEBUG parse_allocation_cell: '{cell_value}' split into {len(parts)} parts: {parts}"
+            )
+
         if len(parts) >= 2:
             # Get potential code from first part
             codigo_raw = parts[0].strip()
             # Remove trailing dash from code if present (codes should never end with -)
             codigo = codigo_raw.rstrip("-")
 
+            if self.debug:
+                print(f"DEBUG parse_allocation_cell: Extracted codigo: '{codigo}'")
+
             # Verify the code looks valid (3-5 letters + 4 digits, no trailing dash)
             if re.match(r"^[A-Z]{3,5}\d{4}$", codigo):
+                if self.debug:
+                    print(
+                        f"DEBUG parse_allocation_cell: '{codigo}' matches course pattern"
+                    )
                 # Valid code, parse the rest
                 remaining_parts = parts[1:]
 
@@ -158,10 +180,18 @@ class CSVAllocator:
                     # Ensure turma is numeric only
                     turma = turma_raw if turma_raw.isdigit() else "1"
 
+                if self.debug:
+                    print(
+                        f"DEBUG parse_allocation_cell: Final result - codigo='{codigo}', nome='{nome}', turma='{turma}'"
+                    )
                 return ParsedAllocation(codigo, nome, turma, False, None)
 
         # If no course pattern matches AND not a known reservation type,
         # treat the whole string as a reservation title
+        if self.debug:
+            print(
+                f"DEBUG parse_allocation_cell: '{cell_value}' - no course pattern matched, treating as reservation"
+            )
         return ParsedAllocation(None, None, None, True, cell_value)
 
     def find_demanda(
@@ -173,19 +203,42 @@ class CSVAllocator:
         nome_disciplina: Optional[str] = None,
     ) -> Optional[int]:
         """
-        Find existing demanda ID by semester and code.
+        Find existing demanda ID by semester, code, and turma.
 
         If horario_sigaa provided, uses it as additional matching criterion.
-        Removes turma comparison from search logic.
 
         If not found and horario_sigaa provided, create new demanda.
         """
         demandas = self.demanda_repo.get_by_semestre(semestre_id)
-        print(f"    🔍 Searching for demanda: {codigo}, horario: {horario_sigaa}")
+        if self.debug:
+            print(
+                f"DEBUG find_demanda: Searching for {codigo} T{turma}, found {len(demandas)} total demandas in semester"
+            )
+
+            # NEW: Debug log all demandas in the semester to check if FUP0007 T4 exists
+            print(
+                f"DEBUG find_demanda: All demandas in semester {semestre_id}: {[f'{d.id}: {d.codigo_disciplina} T{d.turma_disciplina} (horario: {d.horario_sigaa_bruto})' for d in demandas]}"
+            )
+
+        print(
+            f"    🔍 Searching for demanda: {codigo} T{turma}, horario: {horario_sigaa}"
+        )
 
         # Search through existing demandas
         for demanda in demandas:
-            if demanda.codigo_disciplina == codigo:
+            if self.debug:
+                print(
+                    f"DEBUG find_demanda: Checking demanda ID {demanda.id}: {demanda.codigo_disciplina} T{demanda.turma_disciplina}"
+                )
+
+            if (
+                demanda.codigo_disciplina == codigo
+                and demanda.turma_disciplina == turma
+            ):
+                if self.debug:
+                    print(
+                        f"DEBUG find_demanda: Found matching demanda ID {demanda.id} for {codigo} T{turma}"
+                    )
                 # Check horario match if provided
                 if horario_sigaa:
                     if (
@@ -209,7 +262,7 @@ class CSVAllocator:
                         )
                         continue
                 else:
-                    # No horario provided for matching, take first match by code only
+                    # No horario provided for matching, take first match by code and turma
                     horario_completo = demanda.horario_sigaa_bruto or "no horario"
                     print(
                         f"      ✅ Found demanda (ID: {demanda.id}) with complete horario: '{horario_completo}'"
@@ -219,7 +272,7 @@ class CSVAllocator:
         # Not found, create new if horario provided
         if horario_sigaa:
             print(
-                f"  ⚠️ Demanda not found for {codigo} with horario '{horario_sigaa}', creating..."
+                f"  ⚠️ Demanda not found for {codigo} T{turma} with horario '{horario_sigaa}', creating..."
             )
             demanda_data = {
                 "semestre_id": semestre_id,
@@ -238,12 +291,16 @@ class CSVAllocator:
                 return demanda.id
             else:
                 print(
-                    f"    [DRY RUN] Would create demanda: {codigo} with horario: {horario_sigaa}"
+                    f"    [DRY RUN] Would create demanda: {codigo} T{turma} with horario: {horario_sigaa}"
                 )
                 return None  # In dry run, can't return real ID
         else:
+            if self.debug:
+                print(
+                    f"DEBUG find_demanda: No match found for {codigo} T{turma}, no horario provided for creation"
+                )
             print(
-                f"  ⚠️ Demanda not found for {codigo} (no horario provided for creation)"
+                f"  ⚠️ Demanda not found for {codigo} T{turma} (no horario provided for creation)"
             )
 
         return None
@@ -409,6 +466,31 @@ class CSVAllocator:
             # Parse the allocation
             allocation = self.parse_allocation_cell(cell_value)
 
+            # Debug logging for all allocations
+            if self.debug:
+                if allocation.is_reservation:
+                    print(
+                        f"DEBUG: Cell '{cell_value}' parsed as reservation: {allocation.titulo_evento}"
+                    )
+                elif allocation.codigo_disciplina:
+                    print(
+                        f"DEBUG: Cell '{cell_value}' parsed as course: {allocation.codigo_disciplina} T{allocation.turma_disciplina}"
+                    )
+                else:
+                    print(f"DEBUG: Cell '{cell_value}' parsed as unknown reservation")
+
+            if allocation.is_reservation or not allocation.codigo_disciplina:
+                if self.debug:
+                    if allocation.is_reservation:
+                        print(
+                            f"DEBUG: Skipping reservation allocation: {allocation.titulo_evento}"
+                        )
+                    else:
+                        print(
+                            f"DEBUG: Skipping invalid course allocation: '{cell_value}'"
+                        )
+                continue
+
             if not allocation.is_reservation:
                 # For courses, ensure demanda exists before creating allocations
                 # Use space-separated atomic blocks as horario_sigaa_bruto
@@ -417,6 +499,11 @@ class CSVAllocator:
                 )
                 # Since demandas are pre-populated with complete aggregated schedules,
                 # just match by code only (no partial horario needed)
+                if self.debug:
+                    print(
+                        f"DEBUG: About to call find_demanda for {allocation.codigo_disciplina} T{allocation.turma_disciplina}"
+                    )
+
                 demanda_id = self.find_demanda(
                     semestre_id,
                     allocation.codigo_disciplina,
@@ -424,14 +511,25 @@ class CSVAllocator:
                     # No horario parameter - match by code only since demands are pre-aggregated
                     nome_disciplina=allocation.nome_disciplina,
                 )
-                if not demanda_id:
+
+                if self.debug:
                     print(
-                        f"  ⚠️ Could not find/create demanda for {allocation.codigo_disciplina} (T{allocation.turma_disciplina})"
+                        f"DEBUG: find_demanda for {allocation.codigo_disciplina} T{allocation.turma_disciplina} returned: {demanda_id}"
                     )
+
+                if not demanda_id:
+                    if self.debug:
+                        print(
+                            f"DEBUG: ❌ Could not find/create demanda for {allocation.codigo_disciplina} T{allocation.turma_disciplina}"
+                        )
                     continue
 
                 # Now create allocations for each atomic block
                 for bloco in atomic_blocks:
+                    if self.debug:
+                        print(
+                            f"DEBUG: Processing allocation for {allocation.codigo_disciplina} T{allocation.turma_disciplina} in {sala.nome} at {dia_obj.id_sigaa}{bloco}"
+                        )
                     self.process_allocation(
                         semestre_id,
                         sala.id,
@@ -498,7 +596,17 @@ class CSVAllocator:
 
                     # Parse allocation
                     allocation = self.parse_allocation_cell(cell_value)
+
+                    # Debug logging for FUP0007
+                    if self.debug and "FUP0007" in cell_value:
+                        print(f"DEBUG FUP0007: Cell value: '{cell_value}'")
+                        print(f"DEBUG FUP0007: Parsed allocation: {allocation}")
+
                     if allocation.is_reservation or not allocation.codigo_disciplina:
+                        if self.debug and "FUP0007" in cell_value:
+                            print(
+                                f"DEBUG FUP0007: Skipping - is_reservation: {allocation.is_reservation}, has_codigo: {bool(allocation.codigo_disciplina)}"
+                            )
                         continue
 
                     # Create unique key and build horario blocks
@@ -510,6 +618,12 @@ class CSVAllocator:
                         disciplina_map[key]["nome"] = allocation.nome_disciplina
                     disciplina_map[key]["horarios"].update(horario_blocks)
 
+                    # Debug logging for all courses added to map
+                    if self.debug:
+                        print(
+                            f"DEBUG: Added {allocation.codigo_disciplina} T{allocation.turma_disciplina} to disciplina_map (horario_blocks: {horario_blocks})"
+                        )
+
         # PHASE 2: Check existing DB records and create/update demandas with complete aggregated horarios
         print(
             f"📝 PHASE 2: Processing {len(disciplina_map)} aggregated course demands..."
@@ -519,25 +633,39 @@ class CSVAllocator:
         demanda_id_map = {}
 
         for (codigo, turma), data in disciplina_map.items():
+            # Debug logging for FUP0007
+            if self.debug:
+                print(
+                    f"DEBUG: Processing {codigo} T{turma} in Phase 2 - nome: '{data['nome']}', horarios: {sorted(data['horarios'])}"
+                )
+
             # Create complete aggregated horario_sigaa_bruto
             horario_sorted = sorted(data["horarios"])  # Sort for consistency
             horario_agg = " ".join(horario_sorted)
 
-            # Check if demanda with exact same complete horario already exists
+            # FIXED: Check if demanda with exact (codigo, turma) already exists (not just codigo + horario)
             existing_demanda = None
             existing_demandas = self.demanda_repo.get_by_semestre(semestre_id)
             for demanda in existing_demandas:
                 if (
                     demanda.codigo_disciplina == codigo
-                    and demanda.horario_sigaa_bruto == horario_agg
+                    and demanda.turma_disciplina == turma
                 ):
                     existing_demanda = demanda
                     break
 
             if existing_demanda:
                 print(
-                    f"    ✅ Found existing demanda (ID: {existing_demanda.id}) with exact horario match: '{horario_agg}'"
+                    f"    ✅ Found existing demanda (ID: {existing_demanda.id}) for {codigo} T{turma}"
                 )
+                # Optionally update horario if it differs (though it shouldn't in aggregated data)
+                if existing_demanda.horario_sigaa_bruto != horario_agg:
+                    print(
+                        f"    🔄 Updating horario for demanda ID {existing_demanda.id}: '{existing_demanda.horario_sigaa_bruto}' -> '{horario_agg}'"
+                    )
+                    if not self.dry_run:
+                        existing_demanda.horario_sigaa_bruto = horario_agg
+                        self.session.commit()  # Or flush, depending on repo behavior
                 demanda_id_map[(codigo, turma)] = existing_demanda.id
             else:
                 print(
@@ -567,6 +695,10 @@ class CSVAllocator:
                     # In dry run, we can't assign a real ID, so use a placeholder
                     demanda_id_map[(codigo, turma)] = -1
 
+        if self.debug:
+            print(
+                f"DEBUG: Phase 2 completed - processed {len(demanda_id_map)} demandas, created {self.stats['demandas_created']} new ones"
+            )
         return True
 
     def load_csv(self, csv_path: str):
@@ -620,6 +752,39 @@ class CSVAllocator:
         print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
         print(f"Errors: {self.stats['errors']}")
 
+        # After processing all rows, log unallocated demandas
+        print("\n🔍 Checking for unallocated demandas...")
+        all_demandas = self.demanda_repo.get_by_semestre(semestre.id)
+        unallocated = []
+        for demanda in all_demandas:
+            # Check if this demanda has any AlocacaoSemestral records
+            allocations = (
+                self.session.query(AlocacaoSemestral)
+                .filter(AlocacaoSemestral.demanda_id == demanda.id)
+                .all()
+            )
+            if not allocations:
+                unallocated.append(demanda)
+                print(
+                    f"  ⚠️ Unallocated demanda: {demanda.codigo_disciplina} T{demanda.turma_disciplina} (ID: {demanda.id}, Horario: '{demanda.horario_sigaa_bruto}')"
+                )
+
+        if unallocated:
+            print(
+                f"📊 Total unallocated demandas: {len(unallocated)} out of {len(all_demandas)}"
+            )
+            # Optional: Write to a log file for further analysis
+            log_path = Path(csv_path).parent / "unallocated_demandas.log"
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write("Unallocated Demandas:\n")
+                for d in unallocated:
+                    f.write(
+                        f"- {d.codigo_disciplina} T{d.turma_disciplina} (ID: {d.id}, Horario: '{d.horario_sigaa_bruto}')\n"
+                    )
+            print(f"📝 Detailed log saved to: {log_path}")
+        else:
+            print("✅ All demandas have allocations.")
+
         if not self.dry_run and self.stats["errors"] == 0:
             self.session.commit()
             print("✅ All changes committed to database")
@@ -668,6 +833,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable verbose debug logging (default: disabled)",
+    )
+
+    parser.add_argument(
         "--semester",
         default="2025-2",
         help="Semester name (e.g., '2025-2') (default: 2025-2)",
@@ -686,6 +857,7 @@ Examples:
             force=args.force,
             semester_name=args.semester,
             enable_reservations=args.enable_reservations,
+            debug=args.debug,
         )
         success = allocator.load_csv(args.csv_file)
 
