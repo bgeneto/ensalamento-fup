@@ -10,7 +10,7 @@ def _get_semester_badge_html(semester_name: str) -> str:
     """Generate the semester badge HTML string (cached)."""
     return f"""
     <div style="background: linear-gradient(135deg, #c67b5c 0%, #a0563f 100%); color: white; padding: 0.5rem; border-radius: 0.375rem; text-align: center; margin: 0.5rem 0; font-size: 0.875rem; font-weight: 600;">
-        📅 Semestre: {semester_name}
+        📅 Semestre {semester_name}
     </div>
     """
 

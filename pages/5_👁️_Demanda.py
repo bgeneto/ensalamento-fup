@@ -32,6 +32,7 @@ from src.config.database import get_db_session
 from src.repositories.semestre import SemestreRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
+from src.schemas.academic import DemandaCreate
 from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
 from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
@@ -362,12 +363,12 @@ with get_db_session() as session:
                 "Curso": st.column_config.TextColumn(
                     "Curso",
                     required=True,
-                    help="Código do curso (ex: ENM, ENGENHARIA MECÂNICA)",
+                    help="Código do curso (ex: CND, GEAGRO)",
                 ),
                 "Código": st.column_config.TextColumn(
                     "Código",
                     required=True,
-                    help="Código da disciplina (ex: ENM0011)",
+                    help="Código da disciplina (ex: FUP0011)",
                 ),
                 "Disciplina": st.column_config.TextColumn(
                     "Disciplina",
@@ -377,7 +378,7 @@ with get_db_session() as session:
                 "Turma": st.column_config.TextColumn(
                     "Turma",
                     required=True,
-                    help="Código da turma (ex: A, B)",
+                    help="Código da turma (ex: 1, 12)",
                 ),
                 "Vagas": st.column_config.NumberColumn(
                     "Vagas",
@@ -595,7 +596,7 @@ if st.session_state.sync_semestre_processing:
             set_session_feedback(
                 "sync_semestre_result",
                 False,
-                f"❌ Erro na sincronização: {type(e).__name__}: {e}",
+                f"Erro na sincronização: {type(e).__name__}: {e}",
                 ttl=12,
             )
 
@@ -635,8 +636,170 @@ if st.button(
 
 st.markdown("---")
 
-# TODO: Create a form to add new demandas manually with all fields required (like those in the above data editor )
+# Manual Demanda Addition Form
+st.subheader("➕ Adicionar Demanda Manualmente")
 
+st.info(
+    """
+Adicione uma nova demanda manualmente preenchendo os campos obrigatórios abaixo.
+Isso permite criar demandas que não estão disponíveis via API de sincronização.
+"""
+)
+
+# Form for manual demanda creation
+with st.form("form_demanda_manual"):
+    col1, col2 = st.columns(2)
+
+    with col1:
+        codigo_curso = st.text_input(
+            "Código do Curso *",
+            placeholder="ex: CND",
+            help="Código do curso (ex: CND, PPGCA-M). Obrigatório.",
+        )
+        codigo_disciplina = st.text_input(
+            "Código da Disciplina *",
+            placeholder="ex: FUP0011",
+            help="Código da disciplina. Obrigatório.",
+        )
+        nome_disciplina = st.text_input(
+            "Nome da Disciplina *",
+            placeholder="ex: CALCULO DIFERENCIAL E INTEGRAL I",
+            help="Nome completo da disciplina. Obrigatório.",
+        )
+        turma_disciplina = st.text_input(
+            "Turma", placeholder="ex: 1", help="Código da turma (ex: 1, 12). Opcional."
+        )
+
+    with col2:
+        professores_disciplina = st.text_input(
+            "Professores",
+            placeholder="ex: João Silva, Maria Santos",
+            help="Lista de professores separados por vírgula. Opcional.",
+        )
+        vagas_disciplina = st.number_input(
+            "Vagas",
+            min_value=1,
+            value=30,
+            step=1,
+            help="Número de vagas disponíveis. Deve ser maior que 0.",
+        )
+        horario_sigaa_bruto = st.text_input(
+            "Horário SIGAA *",
+            placeholder="ex: 24M12 6T34",
+            help="Horário bruto no formato SIGAA (ex: 24M12 6T34). Obrigatório. Use espaços entre blocos.",
+        )
+        # Add a preview of the parsed schedule
+        if horario_sigaa_bruto.strip():
+            try:
+                parser = get_sigaa_parser()
+                horario_legivel = parser.parse_to_human_readable(
+                    horario_sigaa_bruto.strip()
+                )
+                num_slots = len(
+                    parser.split_to_atomic_array(horario_sigaa_bruto.strip())
+                )
+            except Exception as e:
+                st.warning(f"⚠️ Erro ao analisar horário: {str(e)}")
+
+    if st.form_submit_button("➕ Adicionar Demanda", width="content"):
+        # Validation
+        errors = []
+
+        # Check required fields
+        if not codigo_curso.strip():
+            errors.append("Código do curso é obrigatório")
+        if not codigo_disciplina.strip():
+            errors.append("Código da disciplina é obrigatório")
+        else:
+            # Validate codigo_disciplina format: only [A-Z] and [0-9], 7-11 chars
+            codigo_clean = codigo_disciplina.strip()
+            if len(codigo_clean) < 7:
+                errors.append("Código da disciplina deve ter pelo menos 7 caracteres")
+            elif len(codigo_clean) > 11:
+                errors.append("Código da disciplina deve ter no máximo 11 caracteres")
+            elif not codigo_clean.isupper() or not all(
+                c.isalnum() for c in codigo_clean
+            ):
+                errors.append(
+                    "Código da disciplina deve conter apenas letras maiúsculas [A-Z] e números [0-9]"
+                )
+        if not nome_disciplina.strip():
+            errors.append("Nome da disciplina é obrigatório")
+        if not horario_sigaa_bruto.strip():
+            errors.append("Horário SIGAA é obrigatório")
+
+        # Validate schedule format
+        if horario_sigaa_bruto.strip():
+            try:
+                parser = get_sigaa_parser()
+                # Validate that we can parse and split the schedule
+                atomic_array = parser.split_to_atomic_array(horario_sigaa_bruto.strip())
+                if not atomic_array:
+                    errors.append("Horário SIGAA não produziu blocos atômicos válidos")
+            except Exception as e:
+                errors.append(f"Formato de horário inválido: {str(e)}")
+
+        if errors:
+            for error in errors:
+                set_session_feedback("demanda_manual_form_result", False, error)
+        else:
+            try:
+                with get_db_session() as session:
+                    dem_repo = DisciplinaRepository(session)
+
+                    # Clean input data
+                    cleaned_codigo_curso = codigo_curso.strip().upper()
+                    cleaned_codigo_disciplina = codigo_disciplina.strip().upper()
+                    cleaned_nome_disciplina = nome_disciplina.strip().upper()
+                    cleaned_turma = (
+                        turma_disciplina.strip().upper()
+                        if turma_disciplina.strip()
+                        else ""
+                    )
+                    cleaned_professores = (
+                        professores_disciplina.strip()
+                        if professores_disciplina.strip()
+                        else ""
+                    )
+
+                    # Convert the user input schedule to atomic format for database storage
+                    horario_atomic = " ".join(
+                        atomic_array
+                    )  # Join atomic blocks with spaces
+
+                    # Create DemandaCreate DTO
+                    demanda_dto = DemandaCreate(
+                        semestre_id=selected_semester_id,
+                        codigo_disciplina=cleaned_codigo_disciplina,
+                        nome_disciplina=cleaned_nome_disciplina,
+                        professores_disciplina=cleaned_professores,
+                        turma_disciplina=cleaned_turma,
+                        vagas_disciplina=int(vagas_disciplina),
+                        horario_sigaa_bruto=horario_atomic,  # Store atomic format
+                        codigo_curso=cleaned_codigo_curso,
+                        id_oferta_externo=None,  # Manual entries don't have external ID
+                    )
+
+                    # Create the demanda
+                    dem_repo.create(demanda_dto)
+
+                    set_session_feedback(
+                        "demanda_manual_form_result",
+                        True,
+                        f"Demanda {cleaned_codigo_disciplina}-{cleaned_turma or 'única'} adicionada com sucesso!",
+                    )
+                    st.rerun()
+
+            except Exception as e:
+                set_session_feedback(
+                    "demanda_manual_form_result",
+                    False,
+                    f"Erro ao criar demanda: {str(e)}",
+                )
+                st.rerun()
+
+# Display form result feedback
+display_session_feedback("demanda_manual_form_result")
 
 # Page Footer
 page_footer.show()
