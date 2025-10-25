@@ -43,7 +43,7 @@ st.markdown(
 
     .header-section {
         padding: 1rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #c67b5c 0%, #a0563f 100%);
         color: white;
         border-radius: 0.5rem;
         margin-bottom: 2rem;
@@ -126,10 +126,10 @@ def render_login(authenticator):
 
     with col2:
         st.markdown(
-            """
+            f"""
         ## Sistema de Alocação de Salas
 
-        Bem-vindo ao sistema de gerenciamento de alocação de salas da Faculdade UnB Planaltina.
+        Bem-vindo ao {settings.APP_NAME}.
         """
         )
 
@@ -179,10 +179,10 @@ def render_admin_menu(authenticator):
 def render_home():
     """Render admin home page."""
     st.markdown(
-        """
+        f"""
     <div class="header-section">
         <h1>🎓 Ensalamento FUP - Painel Administrativo</h1>
-        <p>Sistema de Gerenciamento de Alocação de Salas</p>
+        <p>{settings.APP_NAME}</p>
     </div>
     """,
         unsafe_allow_html=True,
@@ -427,10 +427,10 @@ def main():
         # This main.py becomes the home page (accessed via "Home" in sidebar)
 
         st.markdown(
-            """
+            f"""
         <div class="header-section">
             <h1>🎓 Ensalamento FUP - Painel Administrativo</h1>
-            <p>Sistema de Gerenciamento de Alocação de Salas</p>
+            <p>{settings.APP_NAME}</p>
         </div>
         """,
             unsafe_allow_html=True,

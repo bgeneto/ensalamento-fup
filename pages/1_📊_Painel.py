@@ -4,8 +4,8 @@ Admin Dashboard Page - Home Overview
 Displays system status, key metrics, recent activities, and quick actions.
 Entry point for authenticated admins.
 
-Route: /pages/1_🏠_Home.py
-URL: /Home
+Route: /pages/1_📊_Painel.py
+URL: /Painel
 """
 
 import streamlit as st
@@ -16,10 +16,10 @@ from pages.components.ui import page_footer
 
 # Initialize page with authentication and configuration
 if not initialize_page(
-    page_title="Home - Ensalamento",
-    page_icon="🏠",
+    page_title="Painel - Ensalamento",
+    page_icon="📊",
     layout="wide",
-    key_suffix="home",
+    key_suffix="painel",
 ):
     st.stop()
 
@@ -32,17 +32,35 @@ from src.repositories.professor import ProfessorRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.alocacao import AlocacaoRepository
 from src.config.database import get_db_session
+from src.config import settings
+from src.utils.cache_helpers import get_semester_options
+from src.services.semester_service import create_and_activate_semester
 
 # ============================================================================
 # PAGE CONTENT
 # ============================================================================
 
-# Header
 st.markdown(
     """
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 0.5rem; margin-bottom: 2rem; color: white;">
-    <h1>🏠 Painel Administrativo</h1>
-    <p style="font-size: 1.1rem; margin: 0.5rem 0;">Sistema de Gerenciamento de Alocação de Salas</p>
+<style>
+    .header-section {
+        padding: 1rem;
+        background: linear-gradient(135deg, #c67b5c 0%, #a0563f 100%);
+        color: white;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# Header
+st.markdown(
+    f"""
+<div class="header-section"">
+    <h1>📊 Painel Administrativo</h1>
+    <p style="font-size: 1.1rem; margin: 0.5rem 0;">{settings.APP_NAME}</p>
 </div>
 """,
     unsafe_allow_html=True,
@@ -60,13 +78,101 @@ with col2:
 with col3:
     st.metric("Hora", datetime.now().strftime("%H:%M:%S"))
 
+# Get available semesters
+semester_options = get_semester_options()
+
+if not semester_options:
+    st.error("❌ Nenhum semestre encontrado. Importe dados primeiro.")
+    st.stop()
+
+# Create semester options dict for selectbox
+semester_options_dict = {sem_id: sem_name for sem_id, sem_name in semester_options}
+
+# Get current global semester, initialize to most recent if not set
+current_semester_id = st.session_state.get("global_semester_id")
+if current_semester_id is None or current_semester_id not in semester_options_dict:
+    # Auto-default to most recent semester
+    current_semester_id = semester_options[0][0]
+    st.session_state.global_semester_id = current_semester_id
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Global semester selector and creation
+    st.markdown("### 📅 Seleção Global do Semestre")
+
+    st.markdown("Selecione o semestre apropriado:")
+    selected_semester = st.selectbox(
+        "Selecione o semestre apropriado:",
+        options=list(semester_options_dict.keys()),
+        format_func=lambda x: semester_options_dict.get(x, f"Semestre {x}"),
+        index=list(semester_options_dict.keys()).index(current_semester_id),
+        key="global_semester_selector",
+        label_visibility="collapsed",
+        width=400,
+    )
+
+    # Update global semester if changed
+    if selected_semester != current_semester_id:
+        st.session_state.global_semester_id = selected_semester
+        st.success(
+            f"✅ Semestre alterado para: {semester_options_dict[selected_semester]}"
+        )
+        st.rerun()
+
+# Global semester selector and creation
+# st.markdown("### ➕ Criar Novo Semestre")
+
+with col2:
+
+    # Create new semester form
+    # st.markdown("Ou crie um novo semestre:")
+    with st.form("create_semester_form", width=400):
+        new_semester_name = st.text_input(
+            "**Criar novo semestre:**",
+            placeholder="2026-2",
+            help="Formato esperado: ANO-SEM (ex: 2026-1 para primeiro semestre de 2026)",
+        )
+
+        submitted = st.form_submit_button("➕ Criar Semestre")
+
+        if submitted:
+            try:
+                result = create_and_activate_semester(new_semester_name)
+
+                if result["success"]:
+                    # Clear cache to refresh options
+                    from src.utils.cache_helpers import clear_reference_data_cache
+
+                    clear_reference_data_cache()
+
+                    # Set new semester as global semester
+                    import time
+
+                    time.sleep(0.5)  # Brief delay for cache refresh
+
+                    fresh_options = get_semester_options()
+                    if fresh_options:
+                        for sem_id, sem_name in fresh_options:
+                            if sem_name == new_semester_name.strip():
+                                st.session_state.global_semester_id = sem_id
+                                break
+
+                    st.success(result["message"])
+                    st.rerun()
+
+            except ValueError as e:
+                st.error(f"❌ {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Erro inesperado: {str(e)}")
+
 st.markdown("---")
 
 # ============================================================================
 # KEY METRICS
 # ============================================================================
 
-st.markdown("## 📊 Indicadores Principais")
+st.markdown("## 📈 Indicadores Principais")
 
 # Initialize variables with defaults
 total_rooms = 0
@@ -108,7 +214,7 @@ except Exception as e:
     st.error(f"❌ Erro ao carregar dados: {str(e)}")
 
 # Display metrics in columns
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, _ = st.columns(5)
 
 with col1:
     st.metric(
@@ -139,14 +245,6 @@ with col4:
         "✅ Alocações",
         total_allocations,
         delta="Confirmadas",
-        delta_color="off",
-    )
-
-with col5:
-    st.metric(
-        "📈 Taxa",
-        f"{allocation_pct:.1f}%",
-        delta="Alocadas",
         delta_color="off",
     )
 

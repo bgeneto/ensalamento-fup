@@ -65,6 +65,13 @@ def initialize_page(
     auth_status = st.session_state.get("authentication_status")
 
     if auth_status:
+        # Show semester badge in sidebar
+        from pages.components.ui.semester_badge import show as show_semester_badge
+
+        show_semester_badge()
+
+        st.sidebar.markdown("---")
+
         # Show logout button in sidebar
         authenticator.logout(location="sidebar", key=logout_key)
     elif auth_status is False:

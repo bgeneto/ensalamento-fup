@@ -48,15 +48,20 @@ display_session_feedback("allocation_result")
 # FILTERS SECTION
 # ============================================================================
 
-# Get available semesters using cached helper
+# Validate current global semester exists - semester_badge component handles initialization
 semester_options_list = get_semester_options()
-
 if not semester_options_list:
     st.error("❌ Nenhum semestre encontrado. Importe dados primeiro.")
     st.stop()
 
-# Create options dict for selectbox
 semester_options = {sem_id: sem_name for sem_id, sem_name in semester_options_list}
+current_semester_id = st.session_state.get("global_semester_id")
+
+# Fallback to most recent if current semester is invalid (shouldn't happen due to badge initialization)
+if current_semester_id not in semester_options:
+    current_semester_id = semester_options_list[0][0]
+    st.session_state.global_semester_id = current_semester_id
+
 demandas_options = {
     "all": "Todas as demandas",
     "allocated": "Demandas alocadas",
@@ -66,13 +71,17 @@ demandas_options = {
 col1, col2 = st.columns(2)
 
 with col1:
-    selected_semester = st.selectbox(
-        "📅 Semestre:",
-        options=list(semester_options.keys()),
+    # Display readonly semester selector with help text
+    st.selectbox(
+        "📅 Semestre (Global):",
+        options=[current_semester_id],
         format_func=lambda x: semester_options.get(x, f"ID {x}"),
-        index=0,  # Select first (most recent) by default
-        key="semester_select_manual_alloc",
+        disabled=True,
+        help="Para alterar o semestre, acesse a página Painel",
+        key="readonly_semester_display_ensalamento",
     )
+
+selected_semester = current_semester_id
 
 
 with col2:

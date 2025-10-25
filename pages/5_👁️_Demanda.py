@@ -109,7 +109,7 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
     return df
 
 
-# Load semesters using cached helper
+# Validate current global semester exists - semester_badge component handles initialization
 semester_options = get_semester_options()
 if not semester_options:
     st.info(
@@ -117,17 +117,26 @@ if not semester_options:
     )
     st.stop()
 
-# Create selectbox with semester names
-semester_names = [name for _, name in semester_options]
-semester_id_map = {name: sem_id for sem_id, name in semester_options}
+semester_options_dict = {sem_id: sem_name for sem_id, sem_name in semester_options}
+current_semester_id = st.session_state.get("global_semester_id")
 
-semestre_selecionado = st.selectbox(
-    "📅 Semestre:",
-    options=semester_names,
-    width=150,
+# Fallback to most recent if current semester is invalid (shouldn't happen due to badge initialization)
+if current_semester_id not in semester_options_dict:
+    current_semester_id = semester_options[0][0]
+    st.session_state.global_semester_id = current_semester_id
+
+# Display readonly semester selector with help text
+st.selectbox(
+    "📅 Semestre (Global):",
+    options=[current_semester_id],
+    format_func=lambda x: semester_options_dict.get(x, f"Semestre {x}"),
+    disabled=True,
+    help="Para alterar o semestre, acesse a página Painel",
+    key="readonly_semester_display_demanda",
+    width=400,
 )
 
-selected_semester_id = semester_id_map[semestre_selecionado]
+selected_semester_id = current_semester_id
 
 # Allow ignoring some courses by default
 # Get list of unique course codes from demandas table or use predefined list if empty
@@ -560,6 +569,11 @@ with get_db_session() as session:
 if "sync_semestre_processing" not in st.session_state:
     st.session_state.sync_semestre_processing = False
 
+# Get current semester name for sync operations
+current_semester_name = semester_options_dict.get(
+    current_semester_id, f"Semestre {current_semester_id}"
+)
+
 # Show spinner if processing is active from a previous rerun
 if st.session_state.sync_semestre_processing:
     with st.spinner(
@@ -567,7 +581,7 @@ if st.session_state.sync_semestre_processing:
     ):
         # Complete the sync operation
         try:
-            summary = sync_semester_from_api(semestre_selecionado, cursos_ignorados)
+            summary = sync_semester_from_api(current_semester_name, cursos_ignorados)
             # success
             set_session_feedback(
                 "sync_semestre_result",
@@ -591,15 +605,38 @@ if st.session_state.sync_semestre_processing:
         # Rerun to refresh the page and show results
         st.rerun()
 
+# Check semester status before allowing sync
+semestre_status_active = False
+with get_db_session() as session:
+    semestre_repo = SemestreRepository(session)
+    semestre = semestre_repo.get_by_name(current_semester_name)
+    if semestre:
+        semestre_status_active = semestre.status
+
 # Sync button (disabled during processing)
 if st.button(
-    f"🔄 Sincronizar Demanda {semestre_selecionado}",
+    f"🔄 Sincronizar Demanda {current_semester_name}",
     help="Importar demanda por salas do Sistema de Oferta",
     disabled=st.session_state.sync_semestre_processing,
 ):
-    # Set processing state and rerun to start spinner
-    st.session_state.sync_semestre_processing = True
-    st.rerun()
+    # Check if selected semester is active
+    if not semestre_status_active:
+        set_session_feedback(
+            "sync_semestre_result",
+            False,
+            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo para importar a demanda.",
+            ttl=6,
+        )
+        st.rerun()
+    else:
+        # Set processing state and rerun to start spinner
+        st.session_state.sync_semestre_processing = True
+        st.rerun()
+
+st.markdown("---")
+
+# TODO: Create a form to add new demandas manually with all fields required (like those in the above data editor )
+
 
 # Page Footer
 page_footer.show()

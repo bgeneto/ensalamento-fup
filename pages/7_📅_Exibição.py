@@ -366,29 +366,40 @@ try:
         dia_repo = DiaSemanaRepository(session)
         horario_repo = HorarioBlocoRepository(session)
 
-        # Get semester options using cached helper
+        # Validate current global semester exists - semester_badge component handles initialization
         semester_options = get_semester_options()
         if not semester_options:
             st.warning("Nenhum semestre encontrado.")
             st.stop()
 
+        semestres_options = {sem_id: sem_name for sem_id, sem_name in semester_options}
+        current_semester_id = st.session_state.get("global_semester_id")
+
+        # Fallback to most recent if current semester is invalid (shouldn't happen due to badge initialization)
+        if current_semester_id not in semestres_options:
+            current_semester_id = semester_options[0][0]
+            st.session_state.global_semester_id = current_semester_id
+
         # Get rooms data
         salas_orm = session.query(Sala).join(Predio).all()
 
         # Create filter options
-        semestres_options = {sem_id: sem_name for sem_id, sem_name in semester_options}
         salas_options = {s.id: f"{s.predio.nome}: {s.nome}" for s in salas_orm}
 
         col1, col2 = st.columns(2)
 
         with col1:
-            selected_semestre = st.selectbox(
-                "📅 Semestre:",
-                options=list(semestres_options.keys()),
+            # Display readonly semester selector with help text
+            st.selectbox(
+                "📅 Semestre (Global):",
+                options=[current_semester_id],
                 format_func=lambda x: semestres_options.get(x, f"ID {x}"),
-                index=0,  # Select first (most recent) by default
-                key="semester_filter",
+                disabled=True,
+                help="Para alterar o semestre, acesse a página Painel",
+                key="readonly_semester_display_exibicao",
             )
+
+        selected_semestre = current_semester_id
 
         with col2:
             selected_entity = st.selectbox(
