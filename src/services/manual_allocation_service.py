@@ -218,6 +218,64 @@ class ManualAllocationService:
         demandas = self.demanda_repo.get_by_semestre(semester_id)
         return [self.demanda_repo.orm_to_dto(d) for d in demandas]
 
+    def deallocate_demand(self, demanda_id: int) -> AllocationResult:
+        """
+        Deallocate a demand by removing all its allocations.
+
+        This method:
+        1. Finds all allocations for the demand
+        2. Deletes them atomically
+        3. Returns success/failure with details
+
+        Args:
+            demanda_id: The demand ID to deallocate
+
+        Returns:
+            AllocationResult with deallocation details
+        """
+        # Check if demand exists
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                error_message="Demanda não encontrada",
+            )
+
+        # Get all allocations for this demand
+        allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        if not allocations:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                error_message="Demanda não possui alocações para remover",
+            )
+
+        try:
+            # Delete all allocations for this demand
+            deleted_count = 0
+            deleted_allocation_ids = []
+
+            for alloc in allocations:
+                self.alocacao_repo.delete(alloc.id)
+                deleted_allocation_ids.append(alloc.id)
+                deleted_count += 1
+
+            return AllocationResult(
+                success=True,
+                demanda_id=demanda_id,
+                sala_id=None,  # Deallocation doesn't target a specific room
+                error_message=f"Removidas {deleted_count} alocação{'ões' if deleted_count > 1 else ''}",
+            )
+
+        except Exception as e:
+            self.session.rollback()
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                error_message=f"Erro ao remover alocações: {str(e)}",
+            )
+
     def get_suggestions_for_demand(self, demanda_id: int, semester_id: int):
         """Get room suggestions for a specific demand."""
         return self.suggestions_service.calculate_suggestions(demanda_id, semester_id)

@@ -7,6 +7,8 @@ import pandas as pd
 from src.config.database import get_db_session
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
+from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.sala import SalaRepository
 from src.services.manual_allocation_service import ManualAllocationService
 from src.utils.cache_helpers import get_sigaa_parser
 
@@ -34,9 +36,14 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
     course_filter = filters.get("course_filter", "")
     allocation_status_filter = filters.get("allocation_status", "unallocated")
 
+    # Unique context identifier to avoid duplicate keys
+    context_id = filters.get("context_id", f"queue_{allocation_status_filter}")
+
     with get_db_session() as session:
         alloc_service = ManualAllocationService(session)
         prof_repo = ProfessorRepository(session)
+        sala_repo = SalaRepository(session)
+        alocacao_repo = AlocacaoRepository(session)
 
         # Get allocation progress
         progress = alloc_service.get_allocation_progress(semester_id)
@@ -75,13 +82,22 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
             st.warning("Nenhuma demanda encontrada com os filtros aplicados.", icon="⚠️")
             return False
 
+        # Create allocation info mapping for all visible demands
+        allocation_info_map = _get_allocation_info(
+            filtered_demands, alocacao_repo, sala_repo
+        )
+
         # Show count with appropriate title
         st.subheader(header_title)
 
         # Display as cards
         action_triggered = False
         for demanda in filtered_demands:
-            action_taken = _render_demand_card(demanda, prof_repo)
+            demanda_id = getattr(demanda, "id")
+            allocation_info = allocation_info_map.get(demanda_id)
+            action_taken = _render_demand_card(
+                demanda, prof_repo, allocation_info, context_id
+            )
             if action_taken:
                 action_triggered = True
 
@@ -123,11 +139,64 @@ def _apply_filters(
     return filtered
 
 
-def _render_demand_card(demanda, prof_repo: ProfessorRepository) -> bool:
+def _get_allocation_info(
+    demandas, alocacao_repo: AlocacaoRepository, sala_repo: SalaRepository
+) -> Dict[int, Dict]:
+    """
+    Get allocation information for a list of demands.
+
+    Returns a dict mapping demanda_id to allocation info:
+    {
+        demanda_id: {
+            'is_allocated': bool,
+            'room_name': str or None,
+            'allocations': [allocation_dto, ...]
+        }
+    }
+    """
+    allocation_info_map = {}
+
+    for demanda in demandas:
+        demanda_id = getattr(demanda, "id")
+        allocations = alocacao_repo.get_by_demanda(demanda_id)
+
+        if allocations:
+            # Get room name from first allocation (assuming single room allocation)
+            room_id = allocations[0].sala_id
+            room_info = sala_repo.get_by_id(room_id)
+            room_name = room_info.nome if room_info else f"Sala {room_id}"
+
+            allocation_info_map[demanda_id] = {
+                "is_allocated": True,
+                "room_name": room_name,
+                "allocations": allocations,
+            }
+        else:
+            allocation_info_map[demanda_id] = {
+                "is_allocated": False,
+                "room_name": None,
+                "allocations": [],
+            }
+
+    return allocation_info_map
+
+
+def _render_demand_card(
+    demanda,
+    prof_repo: ProfessorRepository,
+    allocation_info: Optional[Dict] = None,
+    context_id: str = "",
+) -> bool:
     """
     Render a single demand card.
 
-    Returns True if allocation action was triggered.
+    Args:
+        demanda: Demand object
+        prof_repo: Professor repository for professor info
+        allocation_info: Allocation info dict (from _get_allocation_info)
+
+    Returns:
+        bool: True if allocation action was triggered.
     """
     with st.container(border=True):
         col_info, col_action = st.columns([3, 1])
@@ -147,6 +216,11 @@ def _render_demand_card(demanda, prof_repo: ProfessorRepository) -> bool:
             st.caption(f"👨‍🏫 **Professores:** {professors}")
             st.caption(f"👥 **Vagas:** {capacity}")
 
+            # Room allocation info for allocated demands
+            if allocation_info and allocation_info.get("is_allocated"):
+                room_name = allocation_info.get("room_name", "N/A")
+                st.caption(f"🏢 **Sala Alocada:** {room_name}")
+
             # Schedule info
             horario_bruto = getattr(demanda, "horario_sigaa_bruto", "")
             if horario_bruto:
@@ -161,20 +235,37 @@ def _render_demand_card(demanda, prof_repo: ProfessorRepository) -> bool:
                 st.warning("⚠️ " + "; ".join(rule_warnings))
 
         with col_action:
-            # Allocation button - this sets session state for the main page
             demanda_id = getattr(demanda, "id")
-            button_key = f"alloc_demand_{demanda_id}"
+            is_allocated = allocation_info and allocation_info.get(
+                "is_allocated", False
+            )
 
-            if st.button(
-                "Alocar Sala",
-                icon="🎯",
-                key=button_key,
-                help=f"Iniciar alocação para {discipline_code}",
-                use_container_width=True,
-            ):
-                # Set session state to show allocation assistant
-                st.session_state.allocation_selected_demand = demanda_id
-                return True
+            if is_allocated:
+                # Show deallocation button for allocated demands
+                button_key = f"dealloc_demand_{demanda_id}_{context_id}"
+                if st.button(
+                    "Remover",
+                    icon="❌",
+                    key=button_key,
+                    help=f"Remover alocação de {discipline_code}",
+                    use_container_width=True,
+                ):
+                    # Set session state for deallocation
+                    st.session_state.deallocation_selected_demand = demanda_id
+                    return True
+            else:
+                # Show allocation button for unallocated demands
+                button_key = f"alloc_demand_{demanda_id}_{context_id}"
+                if st.button(
+                    "Alocar Sala",
+                    icon="🎯",
+                    key=button_key,
+                    help=f"Iniciar alocação para {discipline_code}",
+                    use_container_width=True,
+                ):
+                    # Set session state to show allocation assistant
+                    st.session_state.allocation_selected_demand = demanda_id
+                    return True
 
     return False
 
