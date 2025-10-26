@@ -10,6 +10,7 @@ from src.schemas.manual_allocation import (
     RoomSuggestion,
     AllocationSuggestions,
     ConflictDetail,
+    CompatibilityScore,
 )
 from src.repositories.sala import SalaRepository
 from src.repositories.regra import RegraRepository
@@ -21,21 +22,6 @@ from src.models.inventory import Sala
 from src.models.academic import Professor
 from src.models.allocation import Regra
 from src.utils.sigaa_parser import SigaaScheduleParser
-
-
-@dataclass
-class CompatibilityScore:
-    """Internal scoring structure for room compatibility."""
-
-    total_score: int = 0
-    hard_rules_compliant: bool = False
-    soft_preferences_compliant: bool = False
-    meets_capacity: bool = False
-    rule_violations: List[str] = None
-
-    def __post_init__(self):
-        if self.rule_violations is None:
-            self.rule_violations = []
 
 
 class AllocationSuggestionsService:

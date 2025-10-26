@@ -3,6 +3,27 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
+from dataclasses import dataclass
+
+
+# ============================================================================
+# COMPATIBILITY SCORING
+# ============================================================================
+
+
+@dataclass
+class CompatibilityScore:
+    """Internal scoring structure for room compatibility."""
+
+    total_score: int = 0
+    hard_rules_compliant: bool = False
+    soft_preferences_compliant: bool = False
+    meets_capacity: bool = False
+    rule_violations: List[str] = None
+
+    def __post_init__(self):
+        if self.rule_violations is None:
+            self.rule_violations = []
 
 
 # ============================================================================
@@ -35,6 +56,11 @@ class RoomSuggestion(BaseModel):
     # Metadata
     rule_violations: List[str] = Field(default_factory=list)
     motivation_reason: str = Field("", description="Why this room was suggested")
+
+    # Detailed scoring breakdown (for advanced UI)
+    scoring_breakdown: Optional[Dict[str, Any]] = Field(
+        None, description="Detailed breakdown of how this room was scored"
+    )
 
     class Config:
         from_attributes = True

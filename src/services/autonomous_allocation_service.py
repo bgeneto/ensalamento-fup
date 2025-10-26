@@ -31,6 +31,7 @@ from src.repositories.semestre import SemestreRepository
 from src.utils.sigaa_parser import SigaaScheduleParser
 from src.services.allocation_suggestions import AllocationSuggestionsService
 from src.services.manual_allocation_service import ManualAllocationService
+from src.services.room_scoring_service import RoomScoringService
 from src.schemas.allocation import AlocacaoSemestralCreate
 from src.models.inventory import Sala
 from src.models.academic import Professor
@@ -99,6 +100,7 @@ class AutonomousAllocationService:
         self.parser = SigaaScheduleParser()
         self.suggestions_service = AllocationSuggestionsService(session)
         self.manual_service = ManualAllocationService(session)
+        self.scoring_service = RoomScoringService(session)
 
         # Core repositories
         self.alocacao_repo = AlocacaoRepository(session)
@@ -404,27 +406,44 @@ class AutonomousAllocationService:
         for demanda in demands:
             demanda_id = demanda.id
 
-            # Get candidates with scoring (pass Pydantic object directly)
-            candidates = self._score_room_candidates_for_demand(
-                demanda, professor_map.get(demanda_id), semester_id
+            # Use the shared scoring service
+            candidates = self.scoring_service.score_room_candidates_for_demand(
+                demanda_id,
+                semester_id,
+                professor_override=professor_map.get(demanda_id),
             )
 
-            # Filter out candidates with conflicts
-            valid_candidates = []
-            for candidate in candidates:
-                conflicts = self._check_allocation_conflicts(candidate, semester_id)
-                if not conflicts:
-                    valid_candidates.append(candidate)
-                else:
-                    result.conflicts_found += 1
+            # Filter out candidates with conflicts (already done by service, but keep for compatibility)
+            valid_candidates = [c for c in candidates if not c.has_conflicts]
+
+            # Count conflicts detected during scoring
+            result.conflicts_found += len(candidates) - len(valid_candidates)
 
             if valid_candidates:
-                # Sort by score and store all valid candidates for Phase 3 use
-                valid_candidates.sort(key=lambda c: c.score, reverse=True)
-                phase2_candidates[demanda_id] = valid_candidates
+                # Convert RoomCandidates to AllocationCandidates for compatibility
+                allocation_candidates = []
+                for candidate in valid_candidates:
+                    alloc_candidate = AllocationCandidate(
+                        sala=candidate.sala,
+                        demanda_id=demanda_id,
+                        score=candidate.score,
+                        professor_name=demanda.professores_disciplina,
+                        professor_id=(
+                            professor_map.get(demanda_id).id
+                            if professor_map.get(demanda_id)
+                            else None
+                        ),
+                    )
+                    # Add atomic blocks (parse from schedule)
+                    alloc_candidate.atomic_blocks = self.parser.split_to_atomic_tuples(
+                        demanda.horario_sigaa_bruto
+                    )
+                    allocation_candidates.append(alloc_candidate)
+
+                phase2_candidates[demanda_id] = allocation_candidates
 
                 # Log top candidate for debugging
-                top_candidate = valid_candidates[0]
+                top_candidate = allocation_candidates[0]
                 result.details.append(
                     f"Demand {demanda_id}: Top score {top_candidate.score} for room {top_candidate.sala.nome}"
                 )

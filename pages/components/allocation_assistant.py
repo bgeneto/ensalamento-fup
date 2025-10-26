@@ -174,9 +174,73 @@ def _render_room_suggestion_card(
             # Show compatibility score and reasons
             if suggestion.compatibility_score > 0:
                 score_color = "🟢" if suggestion.compatibility_score >= 5 else "🟡"
-                st.caption(
-                    f"{score_color} Pontuação: {suggestion.compatibility_score} - {suggestion.motivation_reason}"
-                )
+                st.caption(f"{score_color} Pontuação: {suggestion.compatibility_score}")
+
+                # Show detailed breakdown if available
+                if suggestion.scoring_breakdown:
+                    with st.expander(
+                        "📊 Detalhes da Pontuação", expanded=False, width="stretch"
+                    ):
+                        breakdown = suggestion.scoring_breakdown
+
+                        # Display scoring categories with points
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.markdown("**Capacidade:**")
+                            if breakdown.get("capacity_satisfied", False):
+                                st.success(
+                                    f"✅ Adequada (+{breakdown.get('capacity_points', 0)})"
+                                )
+                            else:
+                                st.error(
+                                    f"❌ Insuficiente (+{breakdown.get('capacity_points', 0)})"
+                                )
+
+                            st.markdown("**Regras Obrigatórias:**")
+                            hard_rules = breakdown.get("hard_rules_satisfied", [])
+                            if hard_rules:
+                                rules_details = "<br>• ".join(hard_rules)
+                                st.success(
+                                    f"✅ Atendidas (+{breakdown.get('hard_rules_points', 0)})<br>• {rules_details}"
+                                )
+                            else:
+                                st.error(
+                                    f"❌ Não atendidas (+{breakdown.get('hard_rules_points', 0)})"
+                                )
+
+                        with col2:
+                            st.markdown("**Preferências Professor:**")
+                            soft_prefs = breakdown.get("soft_preferences_satisfied", [])
+                            if soft_prefs:
+                                prefs_details = "<br>• ".join(soft_prefs)
+                                st.success(
+                                    f"✅ Atendidas (+{breakdown.get('soft_preference_points', 0)})<br>• {prefs_details}"
+                                )
+                            else:
+                                st.info(
+                                    f"⏸️ Não verificadas (+{breakdown.get('soft_preference_points', 0)})"
+                                )
+
+                            st.markdown("**Frequência Histórica:**")
+                            hist_count = breakdown.get("historical_allocations", 0)
+                            if hist_count > 0:
+                                st.info(
+                                    f"📈 Alocada {hist_count}x aqui (+{breakdown.get('historical_frequency_points', 0)})"
+                                )
+                            else:
+                                st.info(
+                                    f"📉 Nunca alocada (+{breakdown.get('historical_frequency_points', 0)})"
+                                )
+
+                        # Total summary
+                        st.markdown("---")
+                        st.markdown(
+                            f"**Total: {suggestion.compatibility_score} pontos**"
+                        )
+                else:
+                    # Fallback to simple motivation display
+                    st.caption(suggestion.motivation_reason)
 
             # Show rule violations
             if suggestion.rule_violations:
@@ -248,9 +312,8 @@ def _render_conflicting_rooms_section(conflicting_rooms):
 
             # Show conflicts
             if room.conflict_details:
-                st.error("Conflitos:")
                 for conflict in room.conflict_details[:3]:
-                    st.caption(f"• {conflict}")
+                    st.caption(f":red[• {conflict}]")
 
 
 def _render_manual_selection(
