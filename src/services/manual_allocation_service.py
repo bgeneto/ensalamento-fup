@@ -138,9 +138,9 @@ class ManualAllocationService:
         conflicts = []
 
         for bloco_codigo, dia_sigaa in atomic_blocks:
-            # Check if there's already an allocation for this time slot
+            # Check if there's already an allocation for this time slot in CURRENT semester
             has_conflict = self.alocacao_repo.check_conflict(
-                sala_id, dia_sigaa, bloco_codigo
+                sala_id, dia_sigaa, bloco_codigo, semestre_id=semester_id
             )
 
             if has_conflict:

@@ -8,6 +8,7 @@ from src.services.oferta_api import fetch_ofertas, OfertaAPIError
 from src.repositories.semestre import SemestreRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
+from src.models.academic import Semestre
 from src.schemas.academic import (
     DemandaCreate,
     ProfessorCreate,
@@ -221,7 +222,8 @@ def sync_semester_from_api(
 
 def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
     """
-    Create a new semester and set it as active, deactivating all others.
+    Create a new semester and set it as active (it will have the highest ID),
+    deactivating all others.
 
     Args:
         semester_name: Name of the semester in format "YEAR-SEMI" (e.g., "2025-2", "2025.1")
@@ -247,16 +249,15 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
             raise ValueError(f"Semestre '{clean_name}' já existe")
 
         try:
-            # CRITICAL: Deactivate ALL existing active semesters FIRST
-            # Use direct session query to be absolutely sure
-            active_count = (
+            # Deactivate ALL existing semesters first
+            deactivated_count = (
                 session.query(Semestre)
                 .filter(Semestre.status == True)
                 .update({"status": False})
             )
-            logger.info(f"Deactivated {active_count} existing active semesters")
+            logger.info(f"Deactivated {deactivated_count} existing active semesters")
 
-            # Now create the new semester as the ONLY active one
+            # Create the new semester as active (it will have the highest ID)
             new_semester_orm = Semestre(
                 nome=clean_name, status=True  # Explicitly set to True
             )
@@ -264,11 +265,8 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
             session.commit()  # Force commit
             session.refresh(new_semester_orm)  # Ensure we have the ID
 
-            # Return the DTO manually to match expected format
-            from src.repositories.semestre import SemestreRepository
-
-            temp_repo = SemestreRepository(session)
-            new_semester = temp_repo.orm_to_dto(new_semester_orm)
+            # Convert to DTO
+            new_semester = repo.orm_to_dto(new_semester_orm)
 
             logger.info(
                 f"Created and activated new semester: {clean_name} (ID: {new_semester.id}, Status: {new_semester.status})"

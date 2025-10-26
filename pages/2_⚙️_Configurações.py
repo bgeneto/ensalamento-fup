@@ -60,6 +60,11 @@ st.info(
     - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
     - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
     - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
+
+    **⚠️ IMPORTANTE:** O sistema mantém automaticamente apenas um semestre ativo por vez:
+    - Ao **adicionar** um novo semestre, ele será automaticamente ativado (pois terá o ID mais alto) e todos os outros serão desativados.
+    - Ao **remover** um semestre, o semestre com o ID mais alto restante será automaticamente ativado.
+    - A coluna "Ativo" é **somente leitura** e gerenciada automaticamente pelo sistema.
     """
 )
 
@@ -108,7 +113,8 @@ try:
                     ),
                     "Ativo": st.column_config.CheckboxColumn(
                         "Ativo",
-                        help="Marque se este é o semestre corrente",
+                        help="Gerenciado automaticamente: semestre com maior ID é sempre ativo",
+                        disabled=True,  # Make read-only
                     ),
                 },
                 key="semester_table_editor",
@@ -130,12 +136,23 @@ try:
                         semester_repo_delete = SemestreRepository(session)
                         for semester_id in deleted_ids:
                             semester_repo_delete.delete(int(semester_id))
-                    set_session_feedback(
-                        "crud_result",
-                        True,
-                        f"{len(deleted_ids)} semestre(s) removido(s) com sucesso!",
-                        action="delete",
-                    )
+
+                        # CRITICAL: After deletion, activate the semester with highest ID
+                        activated = semester_repo_delete.activate_highest_id_semester()
+                        if activated:
+                            set_session_feedback(
+                                "crud_result",
+                                True,
+                                f"{len(deleted_ids)} semestre(s) removido(s). Semestre '{activated.nome}' (ID: {activated.id}) foi automaticamente ativado.",
+                                action="delete",
+                            )
+                        else:
+                            set_session_feedback(
+                                "crud_result",
+                                True,
+                                f"{len(deleted_ids)} semestre(s) removido(s). Nenhum semestre restante para ativar.",
+                                action="delete",
+                            )
                     changes_made = True
                 except Exception as e:
                     set_session_feedback(
@@ -170,43 +187,37 @@ try:
                         # Validate semester name format first (for both active and inactive)
                         validated_name = validate_semester_name(nome)
 
-                        if ativo:
-                            # Use service method for active semesters (handles deactivation of others)
-                            result = create_and_activate_semester(validated_name)
-                            if result["success"]:
+                        # Check if already exists
+                        with get_db_session() as session:
+                            semester_repo_create = SemestreRepository(session)
+                            existing = semester_repo_create.get_by_name(validated_name)
+                            if existing:
                                 set_session_feedback(
                                     "crud_result",
-                                    True,
-                                    result["message"],
+                                    False,
+                                    f"Nome '{validated_name}' já existe no banco de dados",
                                     action="create",
                                 )
-                                created += 1
-                        else:
-                            # Check if already exists
-                            with get_db_session() as session:
-                                semester_repo_create = SemestreRepository(session)
-                                existing = semester_repo_create.get_by_name(
-                                    validated_name
-                                )
-                                if existing:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Nome '{validated_name}' já existe no banco de dados",
-                                        action="create",
-                                    )
-                                    errors_occurred = True
-                                    continue
+                                errors_occurred = True
+                                continue
 
-                                # Create inactive semester normally - use dict as expected by repository
-                                semester_repo_create.create(
-                                    {"nome": validated_name, "status": ativo}
-                                )
+                            # Create the new semester
+                            # CRITICAL: New semester will have the highest ID, so we always activate it
+                            # and deactivate all others to follow the "highest ID is active" rule
+                            new_semester = semester_repo_create.create(
+                                {"nome": validated_name, "status": False}
+                            )
+
+                            # Now activate the highest ID semester (which is the one just created)
+                            activated = (
+                                semester_repo_create.activate_highest_id_semester()
+                            )
+
                             created += 1
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"Semestre '{validated_name}' criado com sucesso!",
+                                f"Semestre '{validated_name}' criado e automaticamente ativado (ID: {activated.id}).",
                                 action="create",
                             )
 
@@ -231,18 +242,17 @@ try:
                     changes_made = True
 
             # Handle updates (rows with changes in existing records)
+            # Note: Only name changes are allowed; status is auto-managed
             for idx, row in edited_df.iterrows():
                 if idx < len(df):
                     original_row = df.iloc[idx]
                     semester_id = int(row["ID"])
 
-                    # Check if any field changed
+                    # Check if name changed (status is read-only)
                     nome_changed = row["Nome"] != original_row["Nome"]
-                    ativo_changed = row["Ativo"] != original_row["Ativo"]
 
-                    if nome_changed or ativo_changed:
+                    if nome_changed:
                         nome = str(row["Nome"]).strip()
-                        ativo = bool(row["Ativo"])
 
                         if not nome:
                             set_session_feedback(
@@ -255,10 +265,8 @@ try:
                             continue
 
                         try:
-                            # Validate semester name format if it's being changed
-                            validated_name = nome
-                            if nome_changed:
-                                validated_name = validate_semester_name(nome)
+                            # Validate semester name format
+                            validated_name = validate_semester_name(nome)
 
                             with get_db_session() as session:
                                 semester_repo_update = SemestreRepository(session)
@@ -267,48 +275,38 @@ try:
 
                                 if current:
                                     # Check if new name already exists (excluding current)
-                                    if nome_changed:
-                                        existing = semester_repo_update.get_by_name(
-                                            validated_name
+                                    existing = semester_repo_update.get_by_name(
+                                        validated_name
+                                    )
+                                    if existing and existing.id != semester_id:
+                                        set_session_feedback(
+                                            "crud_result",
+                                            False,
+                                            f"Nome '{validated_name}' já existe",
+                                            action="update",
                                         )
-                                        if existing and existing.id != semester_id:
-                                            set_session_feedback(
-                                                "crud_result",
-                                                False,
-                                                f"Nome '{validated_name}' já existe",
-                                                action="update",
-                                            )
-                                            errors_occurred = True
-                                            continue
+                                        errors_occurred = True
+                                        continue
 
-                                    # Update fields
+                                    # Update name only (status remains unchanged)
                                     current.nome = validated_name
-
-                                    # If activating this semester, ensure it's the only active one
-                                    if ativo and not current.status:
-                                        # First, deactivate ALL active semesters
-                                        session.query(Semestre).filter(
-                                            Semestre.status == True
-                                        ).update({"status": False})
-
-                                        # Then activate the current one
-                                        current.status = True
-                                    elif not ativo and current.status:
-                                        # Just deactivate this one (no need to activate another)
-                                        current.status = ativo
-                                    else:
-                                        # No change to active status, just update fields
-                                        current.status = ativo
-
                                     session.commit()
 
                                     set_session_feedback(
                                         "crud_result",
                                         True,
-                                        f"Semestre {validated_name} atualizado com sucesso!",
+                                        f"Semestre renomeado para '{validated_name}' com sucesso!",
                                         action="update",
                                     )
                                     changes_made = True
+                        except ValueError as ve:
+                            set_session_feedback(
+                                "crud_result",
+                                False,
+                                f"Erro de validação: {str(ve)}",
+                                action="update",
+                            )
+                            errors_occurred = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",

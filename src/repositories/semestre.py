@@ -34,3 +34,26 @@ class SemestreRepository(BaseRepository[Semestre, SemestreRead]):
         self.session.add(obj)
         self.session.commit()
         return self.orm_to_dto(obj)
+
+    def activate_highest_id_semester(self) -> Optional[SemestreRead]:
+        """
+        Activate the semester with the highest ID and deactivate all others.
+        This ensures only one semester is active at a time.
+
+        Returns:
+            SemestreRead: The activated semester DTO, or None if no semesters exist
+        """
+        # First, deactivate ALL semesters
+        self.session.query(Semestre).update({"status": False})
+
+        # Get semester with highest ID
+        highest = self.session.query(Semestre).order_by(Semestre.id.desc()).first()
+
+        if highest:
+            # Activate it
+            highest.status = True
+            self.session.commit()
+            return self.orm_to_dto(highest)
+
+        self.session.commit()
+        return None

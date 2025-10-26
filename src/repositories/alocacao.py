@@ -189,17 +189,26 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
 
         return query.first() is not None
 
-    def get_conflicts_in_room(self, sala_id: int) -> List[Tuple[int, str]]:
+    def get_conflicts_in_room(
+        self, sala_id: int, semestre_id: Optional[int] = None
+    ) -> List[Tuple[int, str]]:
         """Get all conflicting time slots in a room (multiple courses at same time).
 
         Args:
             sala_id: Room ID
+            semestre_id: Optional semester ID to filter conflicts within a specific semester.
+                        If None, checks ALL semesters (for historical analysis).
 
         Returns:
             List of (dia_semana_id, codigo_bloco) tuples with conflicts
         """
-        # Get all allocations in room
-        allocations = self.get_by_sala(sala_id)
+        # Get all allocations in room (optionally filtered by semester)
+        if semestre_id is not None:
+            # Get allocations only for the specified semester
+            allocations = self.get_by_semestre_filtered(sala_id, semestre_id)
+        else:
+            # Get all allocations (backward compatibility)
+            allocations = self.get_by_sala(sala_id)
 
         # Find time slots with multiple allocations
         time_slots = {}
@@ -227,8 +236,36 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
 
-    def get_allocation_summary(self) -> dict:
-        """Get allocation statistics and summary.
+    def get_by_semestre_filtered(
+        self, sala_id: int, semestre_id: int
+    ) -> List[AlocacaoSemestralRead]:
+        """Get all allocations in a specific room for a specific semester.
+
+        Args:
+            sala_id: Room ID
+            semestre_id: Semester ID
+
+        Returns:
+            List of AlocacaoSemestralRead DTOs sorted by day and time
+        """
+        orm_objs = (
+            self.session.query(AlocacaoSemestral)
+            .filter(
+                and_(
+                    AlocacaoSemestral.sala_id == sala_id,
+                    AlocacaoSemestral.semestre_id == semestre_id,
+                )
+            )
+            .order_by(AlocacaoSemestral.dia_semana_id, AlocacaoSemestral.codigo_bloco)
+            .all()
+        )
+        return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def get_allocation_summary(self, semester_id: Optional[int] = None) -> dict:
+        """Get allocation statistics and summary for a specific semester.
+
+        Args:
+            semester_id: Optional semester ID to filter statistics. If None, gets stats for ALL semesters.
 
         Returns:
             Dictionary with statistics:
@@ -238,7 +275,11 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             - total_conflicts: Total number of conflicting time slots
             - rooms_with_conflicts: List of room IDs with conflicts
         """
-        all_allocs = self.get_all()
+        all_allocs = (
+            self.get_by_semestre(semester_id)
+            if semester_id is not None
+            else self.get_all()
+        )
 
         # Get unique values
         demands = set(a.demanda_id for a in all_allocs)
@@ -287,3 +328,44 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             schedule[dia][bloco].append(alloc.id)
 
         return schedule
+
+    def get_discipline_room_frequency(
+        self,
+        disciplina_codigo: str,
+        sala_id: int,
+        exclude_semester_id: Optional[int] = None,
+    ) -> int:
+        """Get historical frequency count of discipline-room allocations.
+
+        RF-006.6: Count how many times a discipline code has been allocated
+        to a specific room across all semesters except the current one.
+
+        Args:
+            disciplina_codigo: Discipline code to count
+            sala_id: Room ID to count allocations for
+            exclude_semester_id: Semester ID to exclude from count (current semester)
+
+        Returns:
+            int: Number of historical allocations of this discipline to this room
+        """
+        from src.models.academic import Demanda
+
+        # Build query to join alocacao_semestral with disciplina
+        query = (
+            self.session.query(AlocacaoSemestral)
+            .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
+            .filter(
+                and_(
+                    Demanda.codigo_disciplina == disciplina_codigo,
+                    AlocacaoSemestral.sala_id == sala_id,
+                )
+            )
+        )
+
+        # Exclude current semester if provided
+        if exclude_semester_id is not None:
+            query = query.filter(AlocacaoSemestral.semestre_id != exclude_semester_id)
+
+        # Count the results
+        count = query.count()
+        return count

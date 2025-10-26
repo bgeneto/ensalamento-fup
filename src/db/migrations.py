@@ -827,9 +827,9 @@ def seed_db():
         # Seed rule for FUP0246 to use room AT-22/7
         regra_data = {
             "id": 1,
-            "descricao": "🔒 Obrigatório: Disciplina FUP0246 deve usar sala UAC: AT-22/7",
-            "tipo_regra": "DISCIPLINA_SALA",
-            "config_json": '{"codigo_disciplina": "FUP0246", "sala_id": 27}',
+            "descricao": "🔒 Obrigatório: Disciplina FUP0246 deve usar Laboratório de Química",
+            "tipo_regra": "DISCIPLINA_TIPO_SALA",
+            "config_json": '{"codigo_disciplina": "FUP0246", "tipo_sala_id": 5}',
             "prioridade": 0,
         }
         existing_regra = (

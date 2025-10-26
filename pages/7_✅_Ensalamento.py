@@ -34,15 +34,17 @@ st.info(
     """
     ℹ️ INSTRUÇÕES
 
-    - Selecione o semestre desejado no menu abaixo.
+    - Selecione o semestre desejado no menu ao lado.
+    - Use "🚀 Executar Alocação Autônoma" para rodar o motor de alocação automática inteligente baseado em regras e histórico.
     - A lista de demandas pendentes será exibida. Se a lista estiver vazia (nenhuma demanda encontrada), verifique se os dados foram importados do Sistema de Oferta corretamente na página "👁️ Demanda" no menu ao lado.
-    - Clique em "🎯 Alocar Sala" em qualquer demanda para abrir o assistente de alocação à direita.
-    - Escolha uma sala sugerida ou use a seleção manual para alocar a demanda.
+    - Clique em "🎯 Alocar Sala" em qualquer demanda para alocar manualmente uma sala à demanda. O assistente de alocação abrirá automaticamente à direita.
+    - Escolha uma sala sugerida por pontuação ou use a seleção manual (no final da página) para alocar a demanda selecionada.
     """,
 )
 
 # Display any persisted feedback from allocation actions
 display_session_feedback("allocation_result")
+display_session_feedback("autonomous_allocation_result")
 
 # ============================================================================
 # FILTERS SECTION
@@ -68,6 +70,9 @@ demandas_options = {
     "unallocated": "Demandas pendentes",
 }
 
+# Default selected semester is the current global semester
+selected_semester = current_semester_id
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -81,7 +86,64 @@ with col1:
         key="readonly_semester_display_ensalamento",
     )
 
-selected_semester = current_semester_id
+    # ============================================================================
+    # AUTONOMOUS ALLOCATION CONTROLS
+    # ============================================================================
+
+    # Autonomous Allocation Button
+    if st.button(
+        "🚀 **Executar Alocação Autônoma**",
+        type="primary",
+        use_container_width=True,
+        help="Executa o motor de alocação automática inteligente baseado em regras obrigatórias, preferências e histórico de alocações",
+    ):
+        # Execute autonomous allocation
+        with st.spinner(
+            "🧠 Executando alocação autônoma... Isso pode levar alguns minutos"
+        ):
+            with get_db_session() as session:
+                from src.services.autonomous_allocation_service import (
+                    AutonomousAllocationService,
+                )
+
+                autonomous_service = AutonomousAllocationService(session)
+                result = autonomous_service.execute_autonomous_allocation(
+                    selected_semester
+                )
+
+                if result["success"]:
+                    # Use only toast-style feedback system (no st.success/st.info/st.metric)
+
+                    from src.utils.ui_feedback import set_session_feedback
+
+                    # Check if this is the "no demands" case or full results
+                    if "message" in result:
+                        # No unallocated demands to process
+                        set_session_feedback(
+                            "autonomous_allocation_result",
+                            True,
+                            f"Alocação autônoma: {result['message']}",
+                            ttl=8,
+                        )
+                    else:
+                        # Full allocation results
+                        allocations_done = result["allocations_completed"]
+                        total_real_conflicts = (
+                            result["phase1_hard_rules"]["conflicts"]
+                            + result["phase3_atomic_allocation"]["conflicts"]
+                        )
+                        set_session_feedback(
+                            "autonomous_allocation_result",
+                            True,
+                            f"Alocação autônoma concluída: {allocations_done} alocações realizadas",
+                            ttl=10,
+                        )
+
+                    st.rerun()
+                else:
+                    st.error(
+                        f"❌ **Erro na alocação autônoma**: {result.get('error', 'Erro desconhecido')}"
+                    )
 
 
 with col2:
