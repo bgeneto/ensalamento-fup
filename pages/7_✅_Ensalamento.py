@@ -15,6 +15,97 @@ from src.utils.ui_feedback import display_session_feedback
 from src.utils.cache_helpers import get_semester_options
 from pages.components.ui import page_footer
 
+
+def clear_deallocation_selection():
+    """Clear the deallocation selection from session state."""
+    st.session_state.pop("deallocation_selected_demand", None)
+    st.rerun()
+
+
+@st.dialog(
+    "❓Remover Alocação",
+    width="large",
+    on_dismiss=clear_deallocation_selection,
+)
+def show_deallocation_dialog(selected_dealloc_demand_id):
+    """
+    Show a modal dialog for deallocation confirmation.
+    """
+    with get_db_session() as session:
+        from src.repositories.disciplina import DisciplinaRepository
+        from src.repositories.alocacao import AlocacaoRepository
+        from src.repositories.sala import SalaRepository
+        from src.services.manual_allocation_service import ManualAllocationService
+
+        demanda_repo = DisciplinaRepository(session)
+        alocacao_repo = AlocacaoRepository(session)
+        sala_repo = SalaRepository(session)
+        alloc_service = ManualAllocationService(session)
+
+        demanda = demanda_repo.get_by_id(selected_dealloc_demand_id)
+        if not demanda:
+            st.error("Demanda não encontrada.")
+            if st.button("Fechar", key="close_missing_demand"):
+                st.rerun()
+            return
+
+        st.markdown("### ⚠️ **Confirmação de Desalocação**")
+
+        st.markdown(
+            f"**Disciplina:** {demanda.codigo_disciplina} - {demanda.nome_disciplina}"
+        )
+        st.markdown(f"**Turma:** {demanda.turma_disciplina}")
+
+        # Get current allocation info
+        allocations = alocacao_repo.get_by_demanda(selected_dealloc_demand_id)
+        if not allocations:
+            st.error("Esta demanda já não possui alocações.")
+            if st.button("Fechar", key="close_no_allocations"):
+                st.rerun()
+            return
+
+        room_id = allocations[0].sala_id
+        room_info = sala_repo.get_by_id(room_id)
+        room_name = room_info.nome if room_info else f"Sala {room_id}"
+        st.markdown(f"**Sala atual:** {room_name}")
+        st.markdown(f"**Número de alocações:** {len(allocations)}")
+
+        st.warning("ℹ️ Esta ação irá remover a alocação da disciplina permanentemente.")
+
+        col_cancel, col_confirm = st.columns(2)
+        with col_cancel:
+            if st.button(
+                "❌ Cancelar", use_container_width=True, key="cancel_dealloc_dialog"
+            ):
+                # Clear the session state to close the dialog
+                st.session_state.pop("deallocation_selected_demand", None)
+                st.rerun()
+
+        with col_confirm:
+            if st.button(
+                "✅ Confirmar Desalocação",
+                type="primary",
+                use_container_width=True,
+                key="confirm_dealloc_dialog",
+            ):
+                # Execute deallocation first
+                result = alloc_service.deallocate_demand(selected_dealloc_demand_id)
+
+                # Set feedback based on deallocation result
+                success = result.success
+                message = result.error_message or "Desalocação realizada com sucesso"
+
+                from src.utils.ui_feedback import set_session_feedback
+
+                set_session_feedback("deallocation_result", success, message, ttl=6)
+
+                # Clear the session state to dismiss the dialog BEFORE rerun
+                st.session_state.pop("deallocation_selected_demand", None)
+
+                # Force page refresh to show feedback and close dialog
+                st.rerun()
+
+
 # Initialize page with authentication and configuration
 if not initialize_page(
     page_title="Alocação - Ensalamento",
@@ -45,6 +136,7 @@ st.info(
 # Display any persisted feedback from allocation actions
 display_session_feedback("allocation_result")
 display_session_feedback("autonomous_allocation_result")
+display_session_feedback("deallocation_result")
 
 # ============================================================================
 # FILTERS SECTION
@@ -164,28 +256,6 @@ with col2:
 selected_demand_id = st.session_state.get("allocation_selected_demand", None)
 selected_dealloc_demand_id = st.session_state.get("deallocation_selected_demand", None)
 
-# Auto-scroll to top when switching to assistant/confirmation mode
-if selected_demand_id or selected_dealloc_demand_id:
-    import streamlit.components.v1 as components
-
-    # Execute JavaScript to scroll to top when assistant/confirmation loads
-    components.html(
-        """
-        <script>
-            // Wait for page to load, then scroll to top
-            window.addEventListener('load', function() {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
-
-            // Also try immediately in case load event already fired
-            setTimeout(function() {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 300);
-        </script>
-        """,
-        height=0,
-    )
-
 if selected_demand_id:
     # Two-column layout with allocation assistant visible
     col_queue, col_assistant = st.columns([1, 1])
@@ -227,98 +297,18 @@ if selected_demand_id:
                 st.rerun()
 
 elif selected_dealloc_demand_id:
-    # Two-column layout with deallocation confirmation visible
-    col_queue, col_confirm = st.columns([1, 1])
+    # Show the deallocation confirmation dialog
+    show_deallocation_dialog(selected_dealloc_demand_id)
 
-    with col_queue:
-        # Show compact demand queue
-        with st.expander("📋 Fila de Demandas", expanded=True):
-            filters = {
-                "allocation_status": selected_demandas,
-                "context_id": "deallocation_confirmation",
-            }
-            action_taken = render_demand_queue(selected_semester, filters)
+    # Show the demand queue below the dialog
+    with st.expander("📋 Fila de Demandas", expanded=True):
+        filters = {
+            "allocation_status": selected_demandas,
+            "context_id": "deallocation_dialog",
+        }
+        action_taken = render_demand_queue(selected_semester, filters)
 
-    with col_confirm:
-        # Show deallocation confirmation
-        st.markdown("### ⚠️ **Confirmação de Desalocação**")
-
-        # Get demand details for confirmation
-        with get_db_session() as session:
-            from src.repositories.disciplina import DisciplinaRepository
-            from src.repositories.alocacao import AlocacaoRepository
-            from src.repositories.sala import SalaRepository
-            from src.services.manual_allocation_service import ManualAllocationService
-
-            demanda_repo = DisciplinaRepository(session)
-            alocacao_repo = AlocacaoRepository(session)
-            sala_repo = SalaRepository(session)
-            alloc_service = ManualAllocationService(session)
-
-            demanda = demanda_repo.get_by_id(selected_dealloc_demand_id)
-            if demanda:
-                st.markdown(
-                    f"**Disciplina:** {demanda.codigo_disciplina} - {demanda.nome_disciplina}"
-                )
-                st.markdown(f"**Turma:** {demanda.turma_disciplina}")
-
-                # Get current allocation info
-                allocations = alocacao_repo.get_by_demanda(selected_dealloc_demand_id)
-                if allocations:
-                    room_id = allocations[0].sala_id
-                    room_info = sala_repo.get_by_id(room_id)
-                    room_name = room_info.nome if room_info else f"Sala {room_id}"
-                    st.markdown(f"**Sala atual:** {room_name}")
-                    st.markdown(f"**Número de alocações:** {len(allocations)}")
-
-                    st.warning(
-                        "ℹ️ Esta ação irá remover a alocação da disciplina permanentemente."
-                    )
-
-                    col_cancel, col_confirm = st.columns(2)
-                    with col_cancel:
-                        if st.button("❌ Cancelar", key="cancel_dealloc"):
-                            del st.session_state["deallocation_selected_demand"]
-                            st.rerun()
-
-                    with col_confirm:
-                        if st.button("✅ Confirmar Desalocação", key="confirm_dealloc"):
-                            # Execute deallocation
-                            result = alloc_service.deallocate_demand(
-                                selected_dealloc_demand_id
-                            )
-
-                            # Set feedback based on deallocation result
-                            success = result.success
-                            message = result.error_message or "Erro desconhecido"
-
-                            from src.utils.ui_feedback import set_session_feedback
-
-                            set_session_feedback(
-                                "deallocation_result", success, message, ttl=6
-                            )
-
-                            # Don't clear session state yet - do it after feedback is shown
-                            st.rerun()
-                else:
-                    st.error("Esta demanda já não possui alocações.")
-                    if st.button("Voltar"):
-                        del st.session_state["deallocation_selected_demand"]
-                        st.rerun()
-            else:
-                st.error("Demanda não encontrada.")
-                if st.button("Voltar"):
-                    del st.session_state["deallocation_selected_demand"]
-                    st.rerun()
-
-# Display and clear deallocation feedback after rerun
-if "deallocation_result" in st.session_state:
-    feedback_result = display_session_feedback("deallocation_result")
-    if feedback_result:
-        # Clear the deallocation session state once feedback is displayed
-        st.session_state.pop("deallocation_selected_demand", None)
-        # Keep feedback in session state until it expires naturally via TTL
-elif not selected_demand_id and not selected_dealloc_demand_id:
+else:
     # Single column layout showing full demand queue (only when neither allocation nor deallocation is active)
     filters = {
         "allocation_status": selected_demandas,

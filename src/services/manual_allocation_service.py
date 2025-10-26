@@ -275,7 +275,7 @@ class ManualAllocationService:
                 success=True,
                 demanda_id=demanda_id,
                 sala_id=None,  # Deallocation doesn't target a specific room
-                error_message=f"Removidas {deleted_count} alocação{'ões' if deleted_count > 1 else ''}",
+                error_message=f"Removida(s) {deleted_count} alocação(ões)",
             )
 
         except Exception as e:
