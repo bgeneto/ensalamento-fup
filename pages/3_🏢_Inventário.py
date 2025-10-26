@@ -4,9 +4,6 @@ Inventory Management Page - Room/Building/Campus CRUD
 Comprehensive inventory management for physical space allocation infrastructure.
 Includes CRUD operations for campuses, buildings, and rooms.
 
-Route: /pages/2_🏢_Inventário.py
-URL: /Inventário
-
 Refactored with modular components for better maintainability.
 """
 

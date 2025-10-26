@@ -5,9 +5,6 @@ Página para que o administrador inspecione as demandas importadas do
 Sistema de Oferta: seleção de semestre, métricas de resumo, avisos
 acionáveis (professores não cadastrados) e tabela filtrável com colunas
 amigáveis geradas pelo parser Sigaa.
-
-Route: pages/5_👁️_Demanda.py
-URL: /Demanda
 """
 
 import streamlit as st

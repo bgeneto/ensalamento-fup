@@ -3,9 +3,6 @@ Professor Management Page - Faculty Import & CRUD
 
 Manage faculty members with import capabilities from CSV and API integration.
 Configure professor availability and preferences.
-
-Route: /pages/3_👨‍🏫_Professores.py
-URL: /Professores
 """
 
 import streamlit as st
@@ -54,7 +51,7 @@ tab1, tab2 = st.tabs(["📋 Lista de Professores", "📥 Importar"])
 # =============================================================================
 
 with tab1:
-    st.subheader("📝 Professores Cadastrados")
+    st.subheader("📝 Gerenciamento de Professores")
 
     st.info(
         """

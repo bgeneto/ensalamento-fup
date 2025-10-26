@@ -1,15 +1,55 @@
 from typing import Dict, Set, Any, List
 import logging
+import re
 from sqlalchemy.exc import IntegrityError
 
 from src.config.database import get_db_session
-import re
 from src.services.oferta_api import fetch_ofertas, OfertaAPIError
 from src.repositories.semestre import SemestreRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
-from src.schemas.academic import DemandaCreate, ProfessorCreate, SemestreCreate
+from src.schemas.academic import (
+    DemandaCreate,
+    ProfessorCreate,
+    SemestreCreate,
+    SemestreUpdate,
+)
 from src.utils.sigaa_parser import SigaaScheduleParser
+
+
+def validate_semester_name(semester_name: str) -> str:
+    """
+    Validate semester name format and constraints.
+
+    Args:
+        semester_name: Semester name to validate
+
+    Returns:
+        str: Cleaned semester name if valid
+
+    Raises:
+        ValueError: If validation fails with descriptive message
+
+    Format: YEAR-SEMI (e.g., 2026-1, 2026-2)
+    """
+    if not semester_name or not isinstance(semester_name, str):
+        raise ValueError("Nome do semestre é obrigatório")
+
+    clean_name = semester_name.strip()
+
+    # Check length constraints
+    if len(clean_name) < 5:
+        raise ValueError("Nome do semestre deve ter pelo menos 5 caracteres")
+    if len(clean_name) > 50:
+        raise ValueError("Nome do semestre deve ter no máximo 50 caracteres")
+
+    # Validate format - should be YEAR-SEMI (e.g., 2026-1, 2026-2)
+    if not re.match(r"^\d{4}-\d+$", clean_name):
+        raise ValueError(
+            "Formato inválido. Use o formato AAAA-N (ex: 2026-1 ou 2025-2)"
+        )
+
+    return clean_name
 
 
 parser = SigaaScheduleParser()
@@ -184,7 +224,7 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
     Create a new semester and set it as active, deactivating all others.
 
     Args:
-        semester_name: Name of the semester in format "YEAR-SEMI" (e.g., "2025-2")
+        semester_name: Name of the semester in format "YEAR-SEMI" (e.g., "2025-2", "2025.1")
 
     Returns:
         Dict with 'success', 'message', and 'semester' keys if successful
@@ -193,16 +233,8 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
         ValueError: If validation fails
         RuntimeError: If operation fails
     """
-    # Validate seminar format - should be YEAR-SEMI (e.g., 2026-1, 2026-2)
-    if not re.match(r"^\d{4}-\d+$", semester_name.strip()):
-        raise ValueError("Formato inválido. Use o formato ANO-SEM (ex: 2026-2)")
-
-    # Check length constraints
-    clean_name = semester_name.strip()
-    if len(clean_name) < 5:
-        raise ValueError("Nome do semestre deve ter pelo menos 5 caracteres")
-    if len(clean_name) > 50:
-        raise ValueError("Nome do semestre deve ter no máximo 50 caracteres")
+    # Use shared validation function
+    clean_name = validate_semester_name(semester_name)
 
     logger = logging.getLogger(__name__)
 
@@ -215,20 +247,32 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
             raise ValueError(f"Semestre '{clean_name}' já existe")
 
         try:
-            # Create new semester with active status
-            new_semester = repo.create({"nome": clean_name, "status": True})
-            logger.info(f"Created new semester: {clean_name} (ID: {new_semester.id})")
+            # CRITICAL: Deactivate ALL existing active semesters FIRST
+            # Use direct session query to be absolutely sure
+            active_count = (
+                session.query(Semestre)
+                .filter(Semestre.status == True)
+                .update({"status": False})
+            )
+            logger.info(f"Deactivated {active_count} existing active semesters")
 
-            # Deactivate all existing semesters
-            all_semesters = repo.get_all()
-            deactivated_count = 0
+            # Now create the new semester as the ONLY active one
+            new_semester_orm = Semestre(
+                nome=clean_name, status=True  # Explicitly set to True
+            )
+            session.add(new_semester_orm)
+            session.commit()  # Force commit
+            session.refresh(new_semester_orm)  # Ensure we have the ID
 
-            for sem in all_semesters:
-                if sem.nome != clean_name and sem.status == True:
-                    update_dto = SemestreUpdate(status=False)
-                    repo.update(sem.id, update_dto)
-                    deactivated_count += 1
-                    logger.info(f"Deactivated semester: {sem.nome} (ID: {sem.id})")
+            # Return the DTO manually to match expected format
+            from src.repositories.semestre import SemestreRepository
+
+            temp_repo = SemestreRepository(session)
+            new_semester = temp_repo.orm_to_dto(new_semester_orm)
+
+            logger.info(
+                f"Created and activated new semester: {clean_name} (ID: {new_semester.id}, Status: {new_semester.status})"
+            )
 
             return {
                 "success": True,

@@ -2,9 +2,6 @@
 Room Allocation Visualization Page
 
 Display and manage semester allocations and reservations.
-
-Route: /pages/6_📅_Ensalamento.py
-URL: /Ensalamento
 """
 
 import streamlit as st
@@ -390,16 +387,14 @@ try:
 
         with col1:
             # Display readonly semester selector with help text
-            st.selectbox(
-                "📅 Semestre (Global):",
-                options=[current_semester_id],
-                format_func=lambda x: semestres_options.get(x, f"ID {x}"),
-                disabled=True,
-                help="Para alterar o semestre, acesse a página Painel",
-                key="readonly_semester_display_exibicao",
+            selected_semestre = st.selectbox(
+                "📅 Semestre:",
+                options=semestres_options.keys(),
+                format_func=lambda x: semestres_options.get(x, f"Semestre {x}"),
+                index=list(semestres_options.keys()).index(current_semester_id),
+                disabled=False,
+                key="semester_display_exibicao",
             )
-
-        selected_semestre = current_semester_id
 
         with col2:
             selected_entity = st.selectbox(

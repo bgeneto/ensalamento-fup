@@ -205,12 +205,12 @@ O sistema será uma aplicação *standalone*, porém dependente do **Sistema de 
 * **RF-006.4 (Alocação de Regras Duras):** O motor deve primeiro alocar as demandas que se enquadram em **Restrições Duras**. A ordem de alocação deve priorizar as demandas mais restritas. As restrições rígidas/duras incluem:
     * Regras de Disciplina (`RF-005.1`).
     * Restrições de Professor (ex: `tem_baixa_mobilidade = true` $\rightarrow$ deve filtrar apenas salas no Térreo ou com `caracteristica` "Acesso para Cadeirantes").
-    * Se houver conflito (duas regras duras competindo pelo mesmo bloco/sala), o sistema deve parar e reportar o conflito.
+    * Se houver conflito (duas regras rígidas competindo pelo mesmo bloco/sala), o sistema deve parar e reportar o conflito.
 * **RF-006.5 (Alocação de Regras Suaves):** Após alocar as regras duras, o motor deve processar as demais demandas, respeitando as **Prioridades (Suaves)**. O motor deve usar um sistema de pontuação para encontrar a "melhor" sala, onde uma sala ganha pontos se:
     * Atende a uma regra suave de disciplina (`RF-005.2`).
     * Atende a uma preferência suave de professor (`RF-003.A.3`, ex: sala preferida, característica preferida).
     * Atende à capacidade (`RF-005.2.4`, capacidade $\ge$ vagas).
-* **RF-006.6 (Regras de Frequência):** O motor deve utilizar o resultado de ensalamento de semestres anteriores na tabela `alocacoes_semestrais` para dar prioridade ao par disciplina<=>sala, isto é, quanto mais vezes uma disciplina tiver sido previamente alocada para uma mesma sala, maior é a sua prioridade. Este é uma regra que deve ser construída dinamicamente, ao ler as alocações (existentes) para dos semestres anteriores. 
+* **RF-006.6 (Regras de Frequência):** O motor deve utilizar o resultado de ensalamento de semestres anteriores (outros semestre diferentes do atualmente selecionado) na tabela `alocacoes_semestrais` para dar prioridade ao par disciplina-sala, isto é, quanto mais vezes uma disciplina tiver sido previamente alocada para uma mesma sala, maior é a sua prioridade (1 ponto para cada par disciplina-sala encontrado em outra alocação semestral). Este é uma regra que deve ser construída dinamicamente, ao ler as alocações (existentes) para os demais semestres existentes na base de dados. 
 * **RF-006.7 (Salvar):** O motor deve salvar o resultado na tabela `alocacoes_semestrais`. Cada *bloco atômico* alocado será uma **linha separada** nesta tabela.
 
 #### RF-007: Visualização do Ensalamento

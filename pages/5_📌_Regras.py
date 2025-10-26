@@ -2,9 +2,6 @@
 Preferences Management Page
 
 Configure professor and courses preferences.
-
-Route: /pages/4_📌_Regras.py
-URL: /Regras
 """
 
 import streamlit as st
@@ -530,8 +527,9 @@ with tab2:
             if "rule_type_reactive" not in st.session_state:
                 st.session_state.rule_type_reactive = "DISCIPLINA_TIPO_SALA"
 
+            # Initialize form selectbox value if not present
             if "rule_type_form" not in st.session_state:
-                st.session_state.rule_type_form = "DISCIPLINA_TIPO_SALA"
+                st.session_state.rule_type_form = st.session_state.rule_type_reactive
 
             # Reactive rule type selection (outside form for immediate reactivity)
             rule_type_reactive = st.selectbox(

@@ -818,6 +818,28 @@ def seed_db():
         # Seed professors from CSV file
         load_professors_from_csv(session)
 
+        # Update professor id=20 (Profa. Donária) to have baixa mobilidade
+        professor = session.query(Professor).filter(Professor.id == 20).first()
+        if professor:
+            professor.tem_baixa_mobilidade = True
+            print("  ✓ Updated professor id=20: tem_baixa_mobilidade = True")
+
+        # Seed rule for FUP0246 to use room AT-22/7
+        regra_data = {
+            "id": 1,
+            "descricao": "🔒 Obrigatório: Disciplina FUP0246 deve usar sala UAC: AT-22/7",
+            "tipo_regra": "DISCIPLINA_SALA",
+            "config_json": '{"codigo_disciplina": "FUP0246", "sala_id": 27}',
+            "prioridade": 0,
+        }
+        existing_regra = (
+            session.query(Regra).filter(Regra.id == regra_data["id"]).first()
+        )
+        if not existing_regra:
+            regra = Regra(**regra_data)
+            session.add(regra)
+            print(f"  ✓ Added rule: {regra_data['descricao']}")
+
         session.commit()
         print("✅ Database seeding completed successfully")
 

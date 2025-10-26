@@ -3,9 +3,6 @@ Admin Dashboard Page - Home Overview
 
 Displays system status, key metrics, recent activities, and quick actions.
 Entry point for authenticated admins.
-
-Route: /pages/1_📊_Painel.py
-URL: /Painel
 """
 
 import streamlit as st
