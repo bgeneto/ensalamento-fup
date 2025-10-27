@@ -227,6 +227,8 @@ def _render_demand_card(
                 parser = get_sigaa_parser()
                 horario_readable = parser.parse_to_human_readable(horario_bruto)
                 st.caption(f"📅 **Horário:** {horario_readable}")
+            else:
+                st.caption(f"📅 **Horário:** N/A")
 
             # Rule warnings (simplified - would need more logic in real implementation)
             # Could check for hard rules that apply to this discipline

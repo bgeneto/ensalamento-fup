@@ -140,6 +140,54 @@ def sync_semester_from_api(
 
             horario_raw = oferta.get("horario_turma", "")
             horario = _normalize_horario(horario_raw)
+
+            # Validate schedule - skip demands with empty or invalid schedules
+            if not horario.strip():
+                summary["skipped"] += 1
+                detail = {
+                    "oferta_key": str(oferta_key),
+                    "codigo": oferta.get("cod_disciplina"),
+                    "turma": oferta.get("cod_turma")
+                    or oferta.get("turma_disciplina")
+                    or "",
+                    "reason": "empty_schedule",
+                }
+                summary["skipped_details"].append(detail)
+                logger.debug("Skipped oferta (empty schedule): %s", detail)
+                continue
+
+            # Validate that schedule is parseable
+            try:
+                atomic_array = parser.split_to_atomic_array(horario.strip())
+                if not atomic_array:
+                    summary["skipped"] += 1
+                    detail = {
+                        "oferta_key": str(oferta_key),
+                        "codigo": oferta.get("cod_disciplina"),
+                        "turma": oferta.get("cod_turma")
+                        or oferta.get("turma_disciplina")
+                        or "",
+                        "reason": "invalid_schedule_format",
+                        "message": "Horário SIGAA não produziu blocos atômicos válidos",
+                    }
+                    summary["skipped_details"].append(detail)
+                    logger.debug("Skipped oferta (invalid schedule format): %s", detail)
+                    continue
+            except Exception as e:
+                summary["skipped"] += 1
+                detail = {
+                    "oferta_key": str(oferta_key),
+                    "codigo": oferta.get("cod_disciplina"),
+                    "turma": oferta.get("cod_turma")
+                    or oferta.get("turma_disciplina")
+                    or "",
+                    "reason": "schedule_parse_error",
+                    "message": f"Erro ao analisar horário: {str(e)}",
+                }
+                summary["skipped_details"].append(detail)
+                logger.debug("Skipped oferta (schedule parse error): %s", detail)
+                continue
+
             professores_list = oferta.get("professores", [])
             professores_disciplina = _extract_professores_string(professores_list)
             for p in professores_list:
