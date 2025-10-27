@@ -39,6 +39,7 @@ src/
     database_service.py   # High-level CRUD operations
     setup_service.py      # DB init & data seeding
     mock_api_service.py   # Simulates external "Sistema de Oferta" API
+    pdf_report_service.py # PDF report generation (ReportLab)
 
   config/
     database.py           # SQLAlchemy engine, session factory
@@ -287,8 +288,10 @@ with get_db_session() as session:
 | `src/repositories/base.py` | Generic CRUD + ORM↔DTO conversion |
 | `src/services/setup_service.py` | DB init workflow + data seeding |
 | `src/services/auth_service.py` | Auth decorators, password hashing |
+| `src/services/pdf_report_service.py` | PDF report generation (ReportLab) |
 | `docs/SRS.md` | **MASTER requirements** (read first for ambiguity) |
 | `docs/ARCHITECTURE.md` | Tech decisions rationale |
+| `docs/PDF_REPORT_IMPLEMENTATION.md` | PDF generation documentation |
 
 ## Common Tasks
 

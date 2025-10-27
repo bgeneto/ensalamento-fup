@@ -41,6 +41,7 @@ from src.models.inventory import Sala, Predio
 from src.models.academic import Professor
 from src.models.allocation import AlocacaoSemestral
 from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
+from src.services.pdf_report_service import PDFReportService
 from pages.components.ui import page_footer
 
 # ============================================================================
@@ -222,8 +223,9 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
     """
     parser = get_sigaa_parser()
 
-    # Get all unique time slots used in this room's allocations
-    time_slots = set()
+    # Get all time slots from MAP_SCHEDULE_TIMES to ensure consistent grid height
+    # This includes M1-M5, T1-T6, N1-N4
+    time_slots = set(parser.MAP_SCHEDULE_TIMES.keys())
     schedule_data = {}
 
     # Weekdays mapping
@@ -233,7 +235,7 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
     for dia_id, dia_name in weekdays.items():
         schedule_data[dia_name] = {}
 
-    # Populate schedule data
+    # Populate schedule data with allocations
     for alloc in allocations:
         # Check if this is a reservation (dict) or allocation (object)
         if isinstance(alloc, dict) and alloc.get("type") == "reservation":
@@ -249,7 +251,6 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
                 schedule_data[dia_name] = {}
 
             schedule_data[dia_name][bloco] = f"🎯 {titulo} ({solicitante})"
-            time_slots.add(bloco)
         else:
             # Handle regular allocation
             dia_id = alloc.dia_semana_id
@@ -278,15 +279,13 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
             professor = (
                 alloc.demanda.professores_disciplina
                 if alloc.demanda is not None
-                else "N/A"
+                else ""
             )
 
-            schedule_data[dia_name][bloco] = f"{disciplina}\n{professor}"
+            if professor:
+                professor = f" | Prof(a). {professor}"
 
-            time_slots.add(bloco)
-
-    if not time_slots:
-        return pd.DataFrame()
+            schedule_data[dia_name][bloco] = f"{disciplina}{professor}"
 
     # Sort time slots chronologically using parser
     def sort_key(block_code):
@@ -345,7 +344,7 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
 
 st.title("📅 Visualização do Ensalamento")
 st.markdown(
-    "Visualize e gerencie o ensalamento semestral consolidado com reservas esporádicas."
+    "Visualize o ensalamento semestral consolidado para o semestre selecionado abaixo."
 )
 
 # ============================================================================
@@ -407,14 +406,16 @@ try:
             )
 
         # Show reservations only if checkbox is checked
-        show_reservations = st.checkbox(
-            "Mostrar Reservas",
-            value=False,
-            help="Incluir reservas esporádicas na visualização",
-            key="show_reservations",
-        )
+        # show_reservations = st.checkbox(
+        #    "Mostrar Reservas",
+        #    value=False,
+        #    help="Incluir reservas esporádicas na visualização",
+        #    key="show_reservations",
+        # )
 
-        # Get data based on filters and display by default
+        show_reservations = False  # disable reservations display in this page
+
+        # Get data based on filters - LOAD DATA BEFORE BUTTONS
         with st.spinner("Carregando dados..."):
             # Get allocations for selected semester
             allocacoes = (
@@ -463,8 +464,105 @@ try:
                 }
                 room_allocations[room_id]["allocations"].append(reservation_alloc)
 
-            # Display schedule grids for each room
-            rooms_displayed = 0
+        # Count rooms with allocations for display
+        rooms_displayed = sum(
+            1 for room_data in room_allocations.values() if room_data["allocations"]
+        )
+
+        # Export options
+        st.markdown("---")
+        st.subheader("📊 Relatórios e Exportação")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # PDF Report Generation
+            if st.button(
+                "📊 Gerar Relatório PDF",
+                help="Gera relatório completo em PDF (uma sala por página)",
+                key="generate_pdf_report",
+            ):
+                try:
+                    with st.spinner("Gerando relatório PDF..."):
+                        # Initialize PDF service
+                        pdf_service = PDFReportService()
+
+                        # Determine which rooms to include
+                        room_id_for_pdf = (
+                            None if selected_entity == "all" else selected_entity
+                        )
+
+                        # Generate PDF
+                        pdf_content = pdf_service.generate_allocation_report(
+                            room_allocations=room_allocations,
+                            semester_name=semestres_options.get(
+                                selected_semestre, f"Semestre {selected_semestre}"
+                            ),
+                            selected_room_id=room_id_for_pdf,
+                        )
+
+                        # Create download button
+                        if pdf_content:
+                            from datetime import datetime
+
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                            if selected_entity == "all":
+                                filename = f"ensalamento_{semestres_options.get(selected_semestre, 'sem')}_{timestamp}.pdf"
+                                success_msg = f"✅ Relatório gerado com sucesso! ({rooms_displayed} salas)"
+                            else:
+                                room_name_clean = salas_options.get(
+                                    selected_entity, f"sala_{selected_entity}"
+                                )
+                                room_name_clean = (
+                                    room_name_clean.replace(":", "_")
+                                    .replace(" ", "_")
+                                    .replace("/", "-")
+                                )
+                                filename = (
+                                    f"ensalamento_{room_name_clean}_{timestamp}.pdf"
+                                )
+                                success_msg = (
+                                    f"✅ Relatório gerado com sucesso! (1 sala)"
+                                )
+
+                            st.download_button(
+                                label="⬇️ Baixar Relatório PDF",
+                                data=pdf_content,
+                                file_name=filename,
+                                mime="application/pdf",
+                                key="download_pdf_report",
+                            )
+                            st.success(success_msg)
+                        else:
+                            st.error("❌ Erro: Nenhum conteúdo gerado para o PDF")
+
+                except ImportError as e:
+                    st.error(
+                        "❌ Biblioteca reportlab não instalada. Execute: pip install reportlab>=4.0.0"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar relatório PDF: {str(e)}")
+                    import traceback
+
+                    with st.expander("🔍 Detalhes do erro"):
+                        st.code(traceback.format_exc())
+
+        with col2:
+            if st.button(
+                "📈 Gerar Estatísticas", help="Gera estatísticas de utilização"
+            ):
+                st.warning(
+                    "⚠️ Funcionalidade de estatísticas será implementada próxima versão"
+                )
+
+        # Display schedule grids for each room
+        st.markdown("---")
+        st.subheader("📋 Ensalamento por Sala")
+
+        if rooms_displayed == 0:
+            st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
+        else:
             for room_id, room_data in room_allocations.items():
                 room_name = room_data["room_name"]
                 allocations = room_data["allocations"]
@@ -475,7 +573,6 @@ try:
                 # Create room schedule grid
                 room_grid = create_room_schedule_grid(allocations, room_name)
                 if room_grid is not None and not room_grid.empty:
-                    rooms_displayed += 1
                     st.write(f"🏢 **{room_name}**")
 
                     # Configure and display interactive grid
@@ -514,27 +611,6 @@ try:
                     else:
                         # Simple mode without enterprise features
                         grid_response = AgGrid(room_grid, **aggrid_kwargs)
-
-            if rooms_displayed == 0:
-                st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
-
-        # Export options
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button(
-                "📊 Gerar Relatório PDF", help="Gera relatório completo em PDF"
-            ):
-                st.warning("⚠️ Funcionalidade de PDF será implementada próxima versão")
-
-        with col2:
-            if st.button(
-                "📈 Gerar Estatísticas", help="Gera estatísticas de utilização"
-            ):
-                st.warning(
-                    "⚠️ Funcionalidade de estatísticas será implementada próxima versão"
-                )
 
         # Display feedback
         display_session_feedback("allocation_view")

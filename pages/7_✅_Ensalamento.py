@@ -125,7 +125,7 @@ st.info(
 
     - Selecione o semestre desejado no menu ao lado.
     - Use "🚀 Executar Alocação Autônoma" para rodar o motor de alocação automática inteligente baseado em regras e histórico.
-    - A lista de demandas pendentes será exibida. Se a lista estiver vazia (nenhuma demanda encontrada), verifique se os dados foram importados do Sistema de Oferta corretamente na página "👁️ Demanda" no menu ao lado.
+    - A lista de demandas pendentes será exibida. Se a lista estiver vazia (nenhuma demanda encontrada), verifique se os dados foram importados do Sistema de Oferta corretamente na página "👁️ Demanda".
     - Clique em "🎯 Alocar Sala" em qualquer demanda para alocar manualmente uma sala à demanda. O assistente de alocação abrirá automaticamente à direita.
     - Escolha uma sala sugerida por pontuação ou use a seleção manual (no final da página) para alocar a demanda selecionada.
     """,

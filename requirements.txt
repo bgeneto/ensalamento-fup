@@ -11,6 +11,7 @@ aiosqlite
 bcrypt
 requests
 pyyaml
+reportlab>=4.4.4
 
 # Documentation
 mkdocs-material
