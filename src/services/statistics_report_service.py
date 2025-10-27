@@ -155,7 +155,8 @@ class StatisticsReportService:
         story.extend(self._build_room_utilization(stats))
         story.append(Spacer(1, 10))
 
-        # 3. Time Slot Heatmap
+        # 3. Time Slot Heatmap (new page)
+        story.append(PageBreak())
         story.extend(self._build_time_slot_heatmap(stats))
         story.append(Spacer(1, 10))
 
@@ -312,7 +313,7 @@ class StatisticsReportService:
         elements = []
 
         # Section heading
-        heading = Paragraph("📊 Resumo Executivo", self.styles["SectionHeading"])
+        heading = Paragraph("Resumo Executivo", self.styles["SectionHeading"])
         elements.append(heading)
 
         # Summary data
@@ -370,7 +371,7 @@ class StatisticsReportService:
         elements = []
 
         # Section heading
-        heading = Paragraph("🏆 Utilização de Salas", self.styles["SectionHeading"])
+        heading = Paragraph("Utilização de Salas", self.styles["SectionHeading"])
         elements.append(heading)
 
         room_stats = stats["room_stats"]
@@ -427,7 +428,7 @@ class StatisticsReportService:
         if underutilized:
             elements.append(
                 Paragraph(
-                    "<b>⚠️ Salas Subutilizadas (< 30%)</b>", self.styles["StatsText"]
+                    "<b>Salas Subutilizadas (< 30%)</b>", self.styles["StatsText"]
                 )
             )
             elements.append(Spacer(1, 3))
@@ -477,7 +478,7 @@ class StatisticsReportService:
 
         # Section heading
         heading = Paragraph(
-            "📅 Mapa de Ocupação por Horário", self.styles["SectionHeading"]
+            "Mapa de Ocupação por Horário", self.styles["SectionHeading"]
         )
         elements.append(heading)
 
@@ -561,7 +562,7 @@ class StatisticsReportService:
 
         # Legend
         elements.append(Spacer(1, 5))
-        legend_text = "🔴 >70% Alta  |  🟡 40-69% Média  |  🟢 <40% Baixa"
+        legend_text = "vermelho >70% Alta  |  amarelo 40-69% Média  |  verde <40% Baixa"
         elements.append(
             Paragraph(
                 f"<i>{legend_text}</i>",
@@ -581,7 +582,7 @@ class StatisticsReportService:
         elements = []
 
         # Section heading
-        heading = Paragraph("🏢 Utilização por Prédio", self.styles["SectionHeading"])
+        heading = Paragraph("Utilização por Prédio", self.styles["SectionHeading"])
         elements.append(heading)
 
         building_stats = stats["building_stats"]
@@ -638,7 +639,7 @@ class StatisticsReportService:
         elements = []
 
         # Section heading
-        heading = Paragraph("❌ Demandas Não Alocadas", self.styles["SectionHeading"])
+        heading = Paragraph("Demandas Não Alocadas", self.styles["SectionHeading"])
         elements.append(heading)
 
         unallocated = stats["unallocated_demands"]
