@@ -11,7 +11,7 @@ Implements RF-006 requirements:
 - RF-006.3: Professor lookup
 - RF-006.4: Hard rules allocation
 - RF-006.5: Soft rules scoring
-- RF-006.6: Historical frequency bonus (NEW)
+- RF-006.6: Historical frequency bonus
 - RF-006.7: Atomic block allocation to database
 """
 
@@ -29,7 +29,6 @@ from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.semestre import SemestreRepository
 from src.utils.sigaa_parser import SigaaScheduleParser
-from src.services.allocation_suggestions import AllocationSuggestionsService
 from src.services.manual_allocation_service import ManualAllocationService
 from src.services.room_scoring_service import RoomScoringService
 from src.schemas.allocation import AlocacaoSemestralCreate
@@ -98,7 +97,6 @@ class AutonomousAllocationService:
         """Initialize with required repositories and services."""
         self.session = session
         self.parser = SigaaScheduleParser()
-        self.suggestions_service = AllocationSuggestionsService(session)
         self.manual_service = ManualAllocationService(session)
         self.scoring_service = RoomScoringService(session)
 
@@ -521,7 +519,7 @@ class AutonomousAllocationService:
                     # Get demand object
                     demanda_obj = remaining_ids[demanda_id]
 
-                    # Calculate candidates directly (similar to Phase 2) with semester isolation
+                    # Calculate candidates using the centralized scoring service
                     professor = self._lookup_professors_for_demands_from_objects(
                         [demanda_obj]
                     ).get(demanda_id)
@@ -637,9 +635,7 @@ class AutonomousAllocationService:
             # Check if room satisfies ALL hard rules
             all_satisfied = True
             for rule in hard_rules:
-                if not self.suggestions_service._check_rule_compliance(
-                    room, demanda, rule
-                ):
+                if not self.scoring_service._check_rule_compliance(room, demanda, rule):
                     all_satisfied = False
                     break
 
@@ -741,12 +737,19 @@ class AutonomousAllocationService:
                 demanda.horario_sigaa_bruto
             )
 
-            # Calculate base score using existing suggestion service
-            score_calc = self.suggestions_service._calculate_compatibility_score(
-                room, demanda, [], professor_prefs  # No hard rules, pass prefs dict
+            # Use the shared scoring service to get room candidates
+            room_candidates = self.scoring_service.score_room_candidates_for_demand(
+                demanda_id, semester_id, professor_override=professor
             )
 
-            candidate.score = score_calc.total_score
+            # Find the score for this specific room (should be in the results)
+            room_score = 0
+            for room_cand in room_candidates:
+                if room_cand.sala.id == room.id:
+                    room_score = room_cand.score
+                    break
+
+            candidate.score = room_score
 
             # Add historical frequency bonus (RF-006.6)
             frequency_bonus = self._calculate_historical_frequency_bonus(

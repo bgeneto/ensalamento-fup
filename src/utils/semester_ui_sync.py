@@ -91,8 +91,8 @@ def _on_semester_change_callback():
                     f"Semestre alterado para: {semester_name}",
                 )
 
-            # CRITICAL: Explicitly trigger rerun to sync all UI components
-            st.rerun()
+            # Update completed - UI will refresh on next interaction
+            # (Streamlit callbacks don't auto-rerun, which is normal)
 
 
 def render_semester_selector(

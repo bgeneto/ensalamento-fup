@@ -41,7 +41,7 @@ st.info(
     """
     ℹ️ Use esta página para visualizar, importar, editar, remover ou adicionar demandas de oferta de disciplinas.
     - A importação de demandas é realizada por meio da integração com Sistema de Oferta FUP/UnB.
-    - Antes de importar, você pode ignorar cursos específicos que não devem ser considerados na alocação de salas.
+    - Antes de importar, você pode **ignorar** cursos específicos que não devem ser considerados na alocação de salas.
     - Para importar, basta garantir que o semestre correto esteja pré-selecionado e então clicar em **🔄 Sincronizar Demanda**.
     - Só é possível importar demandas para semestres que estejam ativos (veja página **⚙️ Configurações**).
     - A importação é uma etapa necessária **antes** de realizar o ensalamento, garantindo que as demandas sejam atendidas.
@@ -230,13 +230,8 @@ with get_db_session() as session:
 
     filtro_disciplina = st.text_input("Buscar por Nome ou Código da Disciplina")
 
-    # Collect unique course codes for filter (excluding ignored courses)
-    df_para_filtros = df.copy()
-    if cursos_ignorados:
-        df_para_filtros = df_para_filtros[
-            ~df_para_filtros["codigo_curso"].isin(cursos_ignorados)
-        ]
-    cursos_unicos = sorted(df_para_filtros["codigo_curso"].fillna("").unique())
+    # Collect unique course codes for filter (include all courses for display filtering)
+    cursos_unicos = sorted(df["codigo_curso"].fillna("").unique())
     cursos_unicos = [c for c in cursos_unicos if c.strip()]  # Remove empty entries
     filtro_curso = st.multiselect("Filtrar por Curso", options=cursos_unicos)
 
@@ -245,14 +240,8 @@ with get_db_session() as session:
         "Filtrar por Professor", options=lista_professores
     )
 
-    # Apply all filters step by step
+    # Apply display filters (work independently on all database data)
     df_filtrado = df.copy()
-
-    # 1. Filter ignored courses first (this one affects what gets saved, others are just display filters)
-    if cursos_ignorados:
-        df_filtrado = df_filtrado[~df_filtrado["codigo_curso"].isin(cursos_ignorados)]
-
-    # 2. Apply display filters
     if filtro_disciplina:
         term = filtro_disciplina.lower()
         df_filtrado = df_filtrado[
@@ -622,7 +611,7 @@ if st.button(
         set_session_feedback(
             "sync_semestre_result",
             False,
-            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo.",
+            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página **Configurações**.",
             ttl=6,
         )
         st.rerun()

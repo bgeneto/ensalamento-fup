@@ -189,7 +189,7 @@ with col1:
     ):
         # Execute autonomous allocation
         with st.spinner(
-            "🧠 Executando alocação autônoma... Isso pode levar alguns minutos"
+            "🧠 Executando alocação autônoma. Isso pode levar alguns minutos..."
         ):
             with get_db_session() as session:
                 from src.services.autonomous_allocation_service import (
