@@ -248,7 +248,7 @@ def _render_demand_card(
                     icon="❌",
                     key=button_key,
                     help=f"Remover alocação de {discipline_code}",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     # Set session state for deallocation
                     st.session_state.deallocation_selected_demand = demanda_id
@@ -261,7 +261,7 @@ def _render_demand_card(
                     icon="🎯",
                     key=button_key,
                     help=f"Iniciar alocação para {discipline_code}",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     # Set session state to show allocation assistant
                     st.session_state.allocation_selected_demand = demanda_id

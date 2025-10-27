@@ -55,7 +55,7 @@ with tab1:
 
     st.info(
         """
-        Edite os dados diretamente na tabela abaixo.
+        ℹ️ Edite os dados diretamente na tabela abaixo.
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
@@ -326,7 +326,7 @@ with tab1:
 # =============================================================================
 
 with tab2:
-    st.subheader("📥 Importar Professores")
+    st.subheader("📥 Importar/Adicionar Professores")
 
     import_method = st.radio(
         "Escolha o método de importação:",

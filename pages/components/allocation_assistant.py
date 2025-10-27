@@ -258,7 +258,7 @@ def _render_room_suggestion_card(
                     button_label,
                     disabled=True,
                     key=button_key,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
                 # Show conflict details
@@ -270,7 +270,7 @@ def _render_room_suggestion_card(
                 if st.button(
                     button_label,
                     key=button_key,
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                     help=f"Alocar demanda nesta sala",
                 ):

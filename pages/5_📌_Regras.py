@@ -75,6 +75,62 @@ def _generate_rule_description(
         return f"Tipo de regra: {rule_type}"
 
 
+@st.dialog("Confirmar Exclusão de Regra")
+def confirm_delete_rule(regra: RegraRead, regra_repo: RegraRepository):
+    """Dialog to confirm deletion of an allocation rule."""
+    st.warning(f"Tem certeza que deseja excluir a regra '{regra.descricao}'?")
+
+    st.write("**Esta ação irá:**")
+    st.write("• Remover permanentemente esta regra de alocação")
+    st.write("• Esta regra não afetará mais futuras alocações")
+
+    # Show rule details
+    with st.expander("Detalhes da Regra", expanded=True):
+        st.write(f"**ID:** {regra.id}")
+        st.write(f"**Tipo:** {regra.tipo_regra}")
+        st.write(f"**Prioridade:** {regra.prioridade}")
+        if regra.config_json:
+            try:
+                config = json.loads(regra.config_json)
+                st.write("**Configuração:**")
+                st.json(config)
+            except:
+                st.write("*Não foi possível exibir configuração*")
+
+    col_cancel, col_confirm = st.columns(2)
+
+    with col_cancel:
+        if st.button("Cancelar", width="stretch"):
+            st.rerun()
+
+    with col_confirm:
+        if st.button("🗑️ Confirmar Exclusão", type="primary", width="stretch"):
+            try:
+                success = regra_repo.delete(regra.id)
+                if success:
+                    set_session_feedback(
+                        "rule_delete",
+                        True,
+                        f"Regra '{regra.descricao}' excluída com sucesso!",
+                    )
+                    st.rerun()
+                else:
+                    set_session_feedback(
+                        "rule_delete",
+                        False,
+                        f"Falha ao excluir regra '{regra.descricao}'.",
+                    )
+
+            except Exception as e:
+                set_session_feedback(
+                    "rule_delete",
+                    False,
+                    f"Erro ao excluir regra: {str(e)}",
+                )
+
+            st.rerun()
+
+
 def format_rule_display(
     regra: RegraRead,
     salas_dict: dict,
@@ -167,6 +223,17 @@ with tab1:
                 }
 
                 st.subheader("✏️ Editar Preferências dos Professores")
+
+                st.info(
+                    """
+                    ℹ️ Para editar as preferências/regras de um(a) professor(a):
+                    - Selecione o nome do(a) professor(a) abaixo.
+                    - Escolha uma ou mais salas preferidas e/ou uma ou mais características preferidas.
+                    - Clique em **💾 Salvar Preferências** para gravar as preferências do(a) professor(a).
+                    - Para remover uma ou mais preferências, simplesmente desmarque-as antes de salvar.
+                    - A tabela abaixo exibe um resumo das preferências atuais de todos os professores cadastrados.
+                    """
+                )
 
                 # Sort professors by name for the selectbox
                 professores_sorted = sorted(professores, key=lambda x: x.nome_completo)
@@ -342,9 +409,6 @@ with tab1:
 
 with tab2:
     st.subheader("📜 Regras e Preferências de Disciplinas")
-    st.markdown(
-        "Configure regras e preferências de alocação focadas em disciplinas.As regras podems ser estáticas/rígidas e/ou regras dinâmicas/preferências."
-    )
 
     try:
         with get_db_session() as session:
@@ -415,7 +479,6 @@ with tab2:
                 st.metric("Tipos Distintos", stats["tipos_distintos"])
 
             # Filter controls
-            st.markdown("---")
             col1, col2, col3 = st.columns(3)
             with col1:
                 rule_type_filter = st.selectbox(
@@ -463,6 +526,14 @@ with tab2:
             if filtered_regras:
                 st.markdown("### 📋 Regras Existentes")
 
+                st.info(
+                    """
+                    ℹ️ A lista abaixo exibe as regras de alocação de disciplinas com base nos filtros aplicados acima.
+                    - Cada regra pode ser expandida para ver detalhes completos.
+                    - Ao expandir uma regra, use o botão **🗑️ Apagar Regra** para remover uma regra indesejada.
+                    """
+                )
+
                 # Sort rules by priority ascending (hard rules first)
                 filtered_regras.sort(
                     key=lambda x: (x.prioridade, x.tipo_regra, x.descricao)
@@ -498,22 +569,13 @@ with tab2:
 
                         with col2:
                             # Delete button for this rule
-                            if st.button("🗑️ Apagar", key=f"delete_rule_{regra.id}"):
+                            if st.button(
+                                "🗑️ Apagar Regra", key=f"delete_rule_{regra.id}"
+                            ):
+                                confirm_delete_rule(regra, regra_repo)
 
-                                try:
-                                    regra_repo.delete(regra.id)
-                                    set_session_feedback(
-                                        "rule_management",
-                                        True,
-                                        f"Regra '{regra.descricao}' removida com sucesso!",
-                                    )
-                                    st.rerun()
-                                except Exception as e:
-                                    set_session_feedback(
-                                        "rule_management",
-                                        False,
-                                        f"Erro ao remover regra: {str(e)}",
-                                    )
+                        # Display rule delete feedback messages
+                        display_session_feedback("rule_delete")
 
                 st.markdown("---")
             else:
@@ -523,6 +585,18 @@ with tab2:
             # Add new rule form
             st.subheader("➕ Criar Nova Regra")
 
+            st.info(
+                """
+                ℹ️ Para adicionar regras a uma disciplina:
+                - As regras podem ser rígidas (obrigatórias) ou suaves (preferências).
+                - Selecione primeiro o tipo de regra: **Sala Específica** (rígida), **Tipo de Sala** (rígida) ou **Característica da Sala** (suave).
+                - Selecione a disciplina por código ou nome da disciplina.
+                - Selecione a sala, tipo de sala ou característica conforme o tipo de regra escolhido.
+                - Para regras suaves, você pode definir uma prioridade (número maior = prioridade mais alta).
+                - Clique em **💾 Criar Regra** para salvar a nova regra.
+                - A descrição da regra será gerada automaticamente com base nas suas seleções.
+                """
+            )
             # Use session state to store the reactive rule type selection
             if "rule_type_reactive" not in st.session_state:
                 st.session_state.rule_type_reactive = "DISCIPLINA_TIPO_SALA"

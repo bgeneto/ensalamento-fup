@@ -70,10 +70,12 @@ def initialize_page(
 
         show_semester_badge()
 
-        st.sidebar.markdown("---")
+        # st.sidebar.markdown("---")
 
         # Show logout button in sidebar
-        authenticator.logout(location="sidebar", key=logout_key)
+        authenticator.logout(
+            location="sidebar", key=logout_key, use_container_width=True
+        )
     elif auth_status is False:
         st.error("❌ Acesso negado.")
         return False

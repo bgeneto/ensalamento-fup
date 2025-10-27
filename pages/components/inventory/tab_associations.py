@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 from src.repositories.sala import SalaRepository
 from src.repositories.caracteristica import CaracteristicaRepository
+from src.repositories.predio import PredioRepository
 from src.config.database import get_db_session
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
@@ -19,15 +20,62 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
+@st.dialog("Confirmar Remoção de Características")
+def confirm_clear_characteristics(
+    sala_data, sala_repo, selected_caracteristica_ids, selected_sala_id
+):
+    """Dialog to confirm clearing all characteristics from a room."""
+    st.warning(
+        f"Tem certeza que deseja remover TODAS as características da sala '{sala_data['sala'].nome}'?"
+    )
+
+    st.write("**Esta ação irá:**")
+    st.write("• Remover todas as associações de características desta sala")
+
+    col_cancel, col_confirm = st.columns(2)
+
+    with col_cancel:
+        if st.button("Cancelar", width="stretch"):
+            st.rerun()
+
+    with col_confirm:
+        if st.button("🗑️ Confirmar Remoção", type="primary", width="stretch"):
+            try:
+                success = sala_repo.set_caracteristicas_for_sala(selected_sala_id, [])
+
+                if success:
+                    set_session_feedback(
+                        "clear_result",
+                        True,
+                        f"Todas as características removidas da sala '{sala_data['sala'].nome}' com sucesso!",
+                    )
+                    st.rerun()
+                else:
+                    set_session_feedback(
+                        "clear_result",
+                        False,
+                        f"Falha ao remover características da sala '{sala_data['sala'].nome}'.",
+                    )
+
+            except Exception as e:
+                set_session_feedback(
+                    "clear_result",
+                    False,
+                    f"Erro ao limpar características: {str(e)}",
+                )
+
+            st.rerun()
+
+
 def render_associations_tab():
     st.subheader("🔗 Associação de Características com Salas")
 
     st.info(
         """
-        Gerencie a associação entre salas e características.
-        - Use o **seletor** abaixo para escolher uma sala ou característica.
-        - Clique em **Adicionar Características** ou **Remover Características** para fazer alterações.
-        - Visualize o estado atual das associações na tabela abaixo.
+        ℹ️ Gerencie a associação entre salas e características.
+        - Use o **seletor** abaixo para escolher uma sala e uma característica.
+        - Clique em **💾 Salvar Características** ou **🗑️ Limpar Sala** para fazer alterações.
+        - Visualize o estado as associações atuais na tabela abaixo.
         """
     )
 
@@ -36,12 +84,18 @@ def render_associations_tab():
         with get_db_session() as session:
             sala_repo = SalaRepository(session)
             caracteristica_repo = CaracteristicaRepository(session)
+            predio_repo = PredioRepository(session)
 
             # Get all rooms and characteristics
             salas = sala_repo.get_all()
             caracteristicas = caracteristica_repo.get_all()
+            predios = predio_repo.get_all()
 
-            if not salas or not caracteristicas:
+            # Create predio mapping for resolution
+            predio_id_to_name = {p.id: p.nome for p in predios}
+            predio_name_to_id = {p.nome: p.id for p in predios}
+
+            if not salas or not predios or not caracteristicas:
                 st.warning(
                     "📭 Você precisa ter ao menos uma sala e uma característica cadastradas para fazer associações."
                 )
@@ -99,7 +153,7 @@ def render_associations_tab():
 
                         with col_btn1:
                             if st.button(
-                                "💾 Salvar",
+                                "💾 Salvar Características",
                                 key=f"update_{selected_sala_id}",
                                 help="Salva as características da sala",
                                 width="stretch",
@@ -139,31 +193,15 @@ def render_associations_tab():
                                 help="Remove todas as características da sala",
                                 width="stretch",
                             ):
-                                try:
-                                    success = sala_repo.set_caracteristicas_for_sala(
-                                        selected_sala_id, []
-                                    )
+                                confirm_clear_characteristics(
+                                    sala_data,
+                                    sala_repo,
+                                    selected_caracteristica_ids,
+                                    selected_sala_id,
+                                )
 
-                                    if success:
-                                        set_session_feedback(
-                                            "assoc_result",
-                                            True,
-                                            f"Todas as características removidas da sala '{sala_data['sala'].nome}'!",
-                                        )
-                                        st.rerun()
-                                    else:
-                                        set_session_feedback(
-                                            "assoc_result",
-                                            False,
-                                            "Falha ao remover características.",
-                                        )
-
-                                except Exception as e:
-                                    set_session_feedback(
-                                        "assoc_result",
-                                        False,
-                                        f"Erro ao limpar: {str(e)}",
-                                    )
+                        # Display clear feedback messages
+                        display_session_feedback("clear_result")
 
                         # Display feedback messages
                         display_session_feedback("assoc_result")
@@ -184,16 +222,15 @@ def render_associations_tab():
                         associations_data.append(
                             {
                                 "Sala": sala_with_carac["sala"].nome,
-                                "Prédio": sala_with_carac[
-                                    "sala"
-                                ].predio_id,  # We'll resolve this later
+                                "Prédio": predio_id_to_name.get(
+                                    sala_with_carac["sala"].predio_id, "N/A"
+                                ),
                                 "Capacidade": sala_with_carac["sala"].capacidade,
                                 "Características": (
                                     "; ".join(caracteristica_names)
                                     if caracteristica_names
                                     else "Nenhuma"
                                 ),
-                                "Total Características": len(caracteristica_names),
                             }
                         )
 
@@ -211,9 +248,6 @@ def render_associations_tab():
                             ),
                             "Características": st.column_config.TextColumn(
                                 "Características", width="large"
-                            ),
-                            "Total Características": st.column_config.NumberColumn(
-                                "Total", width="small"
                             ),
                         },
                         hide_index=True,

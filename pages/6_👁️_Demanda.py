@@ -39,12 +39,12 @@ st.title("👁️ Demanda Semestral")
 
 st.info(
     """
-    ℹ️ INFORMAÇÃO
-
-    - Esta página permite importar, visualizar, editar e remover as demandas de disciplinas de um determinado semestre.
+    ℹ️ Use esta página para visualizar, importar, editar, remover ou adicionar demandas de oferta de disciplinas.
     - A importação de demandas é realizada por meio da integração com Sistema de Oferta FUP/UnB.
-    - Para importar, basta selecionar o semestre desejado e clicar em "🔄 Sincronizar Demanda" para buscar os dados mais recentes do sistema de oferta.
-    - A importação é uma etapa necessária antes de realizar o ensalamento, garantindo que as demandas sejam atendidas.
+    - Antes de importar, você pode ignorar cursos específicos que não devem ser considerados na alocação de salas.
+    - Para importar, basta garantir que o semestre correto esteja pré-selecionado e então clicar em **🔄 Sincronizar Demanda**.
+    - Só é possível importar demandas para semestres que estejam ativos (veja página **⚙️ Configurações**).
+    - A importação é uma etapa necessária **antes** de realizar o ensalamento, garantindo que as demandas sejam atendidas.
     """,
 )
 
@@ -143,7 +143,7 @@ with get_db_session() as session:
     cursos_from_db = dem_repo.get_unique_course_codes()
 
 # Use course codes from DB or fallback to predefined list if DB is empty
-if cursos_from_db:
+if len(cursos_from_db) > 2:  # arbitrary threshold to consider DB data valid
     options_cursos = cursos_from_db
 else:
     options_cursos = [
@@ -166,9 +166,9 @@ else:
 default_ignored = [c for c in ("LEDOC", "OUTROS") if c in options_cursos]
 
 cursos_ignorados = st.multiselect(
-    "Cursos Ignorados:",
+    "Cursos a Ignorar:",
     options=options_cursos,
-    default=default_ignored,  # LEDOC by default is ignored (if available)
+    default=default_ignored,  # "LEDOC" and "Outros" by default are ignored (if available)
     width=400,
 )
 
@@ -622,7 +622,7 @@ if st.button(
         set_session_feedback(
             "sync_semestre_result",
             False,
-            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo para importar a demanda.",
+            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo.",
             ttl=6,
         )
         st.rerun()

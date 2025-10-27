@@ -32,10 +32,19 @@ from src.config.database import get_db_session
 from src.config import settings
 from src.utils.cache_helpers import get_semester_options
 from src.services.semester_service import create_and_activate_semester
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+from src.utils.semester_ui_sync import (
+    initialize_global_semester,
+    render_semester_selector,
+)
 
 # ============================================================================
 # PAGE CONTENT
 # ============================================================================
+
+# Display any stored feedback messages
+display_session_feedback("semester_change_feedback")
+display_session_feedback("semester_create_feedback")
 
 st.markdown(
     """
@@ -75,22 +84,15 @@ with col2:
 with col3:
     st.metric("Hora", datetime.now().strftime("%H:%M:%S"))
 
-# Get available semesters
+# Get available semesters and initialize global semester (only once per session)
 semester_options = get_semester_options()
 
 if not semester_options:
     st.error("❌ Nenhum semestre encontrado. Importe dados primeiro.")
     st.stop()
 
-# Create semester options dict for selectbox
-semester_options_dict = {sem_id: sem_name for sem_id, sem_name in semester_options}
-
-# Get current global semester, initialize to most recent if not set
-current_semester_id = st.session_state.get("global_semester_id")
-if current_semester_id is None or current_semester_id not in semester_options_dict:
-    # Auto-default to most recent semester
-    current_semester_id = semester_options[0][0]
-    st.session_state.global_semester_id = current_semester_id
+# Initialize global semester (prevents duplicate initialization across components)
+current_semester_id = initialize_global_semester()
 
 col1, col2 = st.columns(2)
 
@@ -99,23 +101,14 @@ with col1:
     st.markdown("### 📅 Seleção Global do Semestre")
 
     st.markdown("Selecione o semestre apropriado:")
-    selected_semester = st.selectbox(
-        "Selecione o semestre apropriado:",
-        options=list(semester_options_dict.keys()),
-        format_func=lambda x: semester_options_dict.get(x, f"Semestre {x}"),
-        index=list(semester_options_dict.keys()).index(current_semester_id),
-        key="global_semester_selector",
-        label_visibility="collapsed",
+    current_semester_id = render_semester_selector(
+        semester_options,
+        current_semester_id,
+        key="painel_global_semester_selector",
+        show_label=False,
+        feedback_key="semester_change_feedback",
         width=400,
     )
-
-    # Update global semester if changed
-    if selected_semester != current_semester_id:
-        st.session_state.global_semester_id = selected_semester
-        st.success(
-            f"✅ Semestre alterado para: {semester_options_dict[selected_semester]}"
-        )
-        st.rerun()
 
 # Global semester selector and creation
 # st.markdown("### ➕ Criar Novo Semestre")
@@ -155,13 +148,25 @@ with col2:
                                 st.session_state.global_semester_id = sem_id
                                 break
 
-                    st.success(result["message"])
+                    set_session_feedback(
+                        "semester_create_feedback",
+                        True,
+                        result["message"],
+                    )
                     st.rerun()
 
             except ValueError as e:
-                st.error(f"❌ {str(e)}")
+                set_session_feedback(
+                    "semester_create_feedback",
+                    False,
+                    str(e),
+                )
             except Exception as e:
-                st.error(f"❌ Erro inesperado: {str(e)}")
+                set_session_feedback(
+                    "semester_create_feedback",
+                    False,
+                    f"Erro inesperado: {str(e)}",
+                )
 
 st.markdown("---")
 

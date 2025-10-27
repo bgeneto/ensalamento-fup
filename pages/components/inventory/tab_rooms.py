@@ -39,7 +39,7 @@ def render_rooms_tab():
 
     st.info(
         """
-        Edite os dados diretamente na tabela abaixo. Para salas, é necessário selecionar um prédio e tipo de sala existentes.
+        ℹ️ Edite os dados diretamente na tabela abaixo.
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.

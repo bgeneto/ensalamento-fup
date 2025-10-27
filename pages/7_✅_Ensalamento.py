@@ -74,9 +74,7 @@ def show_deallocation_dialog(selected_dealloc_demand_id):
 
         col_cancel, col_confirm = st.columns(2)
         with col_cancel:
-            if st.button(
-                "❌ Cancelar", use_container_width=True, key="cancel_dealloc_dialog"
-            ):
+            if st.button("❌ Cancelar", width="stretch", key="cancel_dealloc_dialog"):
                 # Clear the session state to close the dialog
                 st.session_state.pop("deallocation_selected_demand", None)
                 st.rerun()
@@ -85,7 +83,7 @@ def show_deallocation_dialog(selected_dealloc_demand_id):
             if st.button(
                 "✅ Confirmar Desalocação",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 key="confirm_dealloc_dialog",
             ):
                 # Execute deallocation first
@@ -186,7 +184,7 @@ with col1:
     if st.button(
         "🚀 **Executar Alocação Autônoma**",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         help="Executa o motor de alocação automática inteligente baseado em regras obrigatórias, preferências e histórico de alocações",
     ):
         # Execute autonomous allocation
@@ -329,22 +327,25 @@ with st.expander("ℹ️ Sobre a Alocação", expanded=False):
         """
     ### Como Funciona
 
-    1. **Fila de Demandas**: Visualize todas as disciplinas não-alocadas para o semestre selecionado
-    2. **Seleção**: Clique em "Alocar" para escolher uma demanda específica
-    3. **Sugestões Automáticas**: O sistema calcula pontuações baseadas em:
-       - ✅ **Regras obrigatórias** (tipo de sala, restrições de acessibilidade)
-       - 🤔 **Preferências** (salas preferidas do professor, características)
-       - 📅 **Disponibilidade** (evitando conflitos de horário)
+    1. **Fila de Demandas**: Visualize todas as demandas/disciplinas não-alocadas para o semestre ativo
+    2. **Seleção**: Clique em **🎯 Alocar Sala** para escolher uma sala para a disciplina desejada
+    3. **Sugestões Automáticas**: O sistema calcula pontuações baseadas nos critérios abaixo e sugere as melhores salas:
+       - ✅ **Regras obrigatórias:** Salas especificadas, tipos de sala, restrições de acessibilidade
+       - 🤔 **Preferências:** Salas preferidas do professor, características preferidas
+       - 📊 **Frequência:** Quantidade de vezes que a disciplina já foi alocada em determinada sala.
+       - 👥 **Capacidade:** Adequação da capacidade da sala ao tamanho da turma (vagas)
+       - 📅 **Disponibilidade:** Evita conflitos de horário
 
-    4. **Alocação**: Clique em "✅ Alocar Aqui" nas sugestões ou use seleção manual
+    4. **Alocação**: Clique em "🎯 Alocar Sala" nas sugestões ou use seleção manual
 
     ### Algoritmo de Pontuação
-    - **4 pontos**: Cada regra obrigatória atendida
-    - **2 pontos**: Prefereências do professor atendidas
-    - **1 ponto**: Capacidade adequada para a turma
+    - **+4 pontos**: Cada regra obrigatória atendida
+    - **+2 pontos**: Preferências do professor atendidas
+    - **+1 ponto**: Capacidade adequada para a turma
+    - **+1 ponto**: Por cada alocação histórica bem-sucedida na sala
 
     ### Conflitos Detectados
-    - Salas são marcadas como indisponíveis se já têm alocações nos mesmos horários atômicos
+    - Salas são marcadas como indisponíveis se já têm alocações nos mesmos horários
     - Prioriza evitar qualquer sobreposição de horário
     """
     )
@@ -354,6 +355,7 @@ with st.expander("ℹ️ Sobre a Alocação", expanded=False):
 # ============================================================================
 
 with st.sidebar:
+    st.markdown("---")
     st.markdown("### 📊 Estatísticas Rápidas")
 
     if selected_semester:
@@ -396,7 +398,7 @@ with st.sidebar:
 col1, col2, col3 = st.columns([2, 1, 2])
 with col2:
     if st.button(
-        "🔄 Atualizar Dados", help="Recarregar dados do banco", use_container_width=True
+        "🔄 Atualizar Dados", help="Recarregar dados do banco", width="stretch"
     ):
         if "allocation_selected_demand" in st.session_state:
             del st.session_state.allocation_selected_demand
