@@ -42,6 +42,7 @@ from src.models.academic import Professor
 from src.models.allocation import AlocacaoSemestral
 from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
 from src.services.pdf_report_service import PDFReportService
+from src.services.statistics_report_service import StatisticsReportService
 from pages.components.ui import page_footer
 
 # ============================================================================
@@ -549,12 +550,63 @@ try:
                         st.code(traceback.format_exc())
 
         with col2:
+            # Statistics Report Generation
             if st.button(
-                "📈 Gerar Estatísticas", help="Gera estatísticas de utilização"
+                "📈 Gerar Estatísticas",
+                help="Gera relatório estatístico completo (Executive Summary + Utilização + Heatmap)",
+                key="generate_statistics_report",
             ):
-                st.warning(
-                    "⚠️ Funcionalidade de estatísticas será implementada próxima versão"
-                )
+                try:
+                    with st.spinner("Gerando relatório estatístico..."):
+                        # Initialize statistics service
+                        stats_service = StatisticsReportService()
+
+                        # Get all demands for the semester
+                        demands = disc_repo.get_by_semestre(selected_semestre)
+
+                        # Build buildings mapping
+                        buildings_map = {}
+                        for sala in salas_orm:
+                            if sala.predio_id not in buildings_map:
+                                buildings_map[sala.predio_id] = sala.predio.nome
+
+                        # Generate statistics PDF
+                        pdf_content = stats_service.generate_statistics_report(
+                            allocations=allocacoes,
+                            demands=demands,
+                            rooms=salas_orm,
+                            buildings=buildings_map,
+                            semester_name=semestres_options.get(
+                                selected_semestre, f"Semestre {selected_semestre}"
+                            ),
+                        )
+
+                        # Create download button
+                        if pdf_content:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            filename = f"estatisticas_{semestres_options.get(selected_semestre, 'sem')}_{timestamp}.pdf"
+
+                            st.download_button(
+                                label="⬇️ Baixar Relatório Estatístico",
+                                data=pdf_content,
+                                file_name=filename,
+                                mime="application/pdf",
+                                key="download_statistics_report",
+                            )
+                            st.success(f"✅ Relatório estatístico gerado com sucesso!")
+                        else:
+                            st.error("❌ Erro: Nenhum conteúdo gerado para o PDF")
+
+                except ImportError as e:
+                    st.error(
+                        "❌ Biblioteca reportlab não instalada. Execute: pip install reportlab>=4.0.0"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Erro ao gerar relatório estatístico: {str(e)}")
+                    import traceback
+
+                    with st.expander("🔍 Detalhes do erro"):
+                        st.code(traceback.format_exc())
 
         # Display schedule grids for each room
         st.markdown("---")

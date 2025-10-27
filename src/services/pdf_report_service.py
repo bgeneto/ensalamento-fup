@@ -153,6 +153,7 @@ class PDFReportService:
 
             if table_data:
                 # Create table with optimized column widths
+                # IMPORTANT: Check rightMargin and leftMargin in doc settings above to ensure correct calculation
                 # Landscape A4 = 297mm width - 16mm margins = 281mm available
                 # Time column: 17mm, Day columns: (281-17)/6 = 44.0 mm each
                 table = Table(
