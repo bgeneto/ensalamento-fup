@@ -18,7 +18,13 @@ from src.models.inventory import (
 )
 from src.models.horario import DiaSemana, HorarioBloco
 from src.models.academic import Semestre, Demanda, Professor, Usuario
-from src.models.allocation import Regra, AlocacaoSemestral, ReservaEsporadica
+from src.models.allocation import (
+    Regra,
+    AlocacaoSemestral,
+    ReservaEsporadica,
+    ReservaEvento,
+    ReservaOcorrencia,
+)
 
 
 def init_db():

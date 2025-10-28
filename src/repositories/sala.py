@@ -281,6 +281,35 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         """
         return self.get_all()
 
+    def get_with_predio_info(self) -> List[dict]:
+        """Get all rooms with their building information included.
+
+        Returns:
+            List of dictionaries with 'sala' and 'predio' keys
+        """
+        from src.models.inventory import Predio
+        from src.schemas.inventory import PredioRead
+
+        # Query rooms with eager loading of predio
+        orm_objs = (
+            self.session.query(Sala).join(Predio).order_by(Predio.nome, Sala.nome).all()
+        )
+
+        result = []
+        for sala in orm_objs:
+            predio_dto = PredioRead(
+                id=sala.predio.id,
+                nome=sala.predio.nome,
+                descricao=sala.predio.descricao,
+                campus_id=sala.predio.campus_id,
+                created_at=sala.predio.created_at,
+                updated_at=sala.predio.updated_at,
+            )
+
+            result.append({"sala": self.orm_to_dto(sala), "predio": predio_dto})
+
+        return result
+
     # ========================================================================
     # CHARACTERISTICS MANAGEMENT METHODS
     # ========================================================================
