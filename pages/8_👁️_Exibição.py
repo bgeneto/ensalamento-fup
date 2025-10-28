@@ -1,7 +1,7 @@
 """
 Room Allocation Visualization Page
 
-Display and manage semester allocations and reservations.
+Display and manage semester allocations.
 """
 
 import streamlit as st
@@ -13,10 +13,10 @@ from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
 if not initialize_page(
-    page_title="Ensalamento - Sistema de Ensalamento FUP/UnB",
-    page_icon="📅",
+    page_title="Exibição - Ensalamento",
+    page_icon="👁️",
     layout="wide",
-    key_suffix="ensalamento",
+    key_suffix="exibicao",
 ):
     st.stop()
 

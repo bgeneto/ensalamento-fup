@@ -15,7 +15,7 @@ from pages.components.auth import initialize_page
 # Initialize page with authentication and configuration
 if not initialize_page(
     page_title="Demanda - Ensalamento",
-    page_icon="👁️",
+    page_icon="🧭",
     layout="wide",
     key_suffix="demanda",
 ):
@@ -35,7 +35,7 @@ from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
 from pages.components.ui import page_footer
 
-st.title("👁️ Demanda Semestral")
+st.title("🧭 Demanda Semestral")
 
 st.info(
     """

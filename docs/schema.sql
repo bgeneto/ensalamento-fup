@@ -181,3 +181,81 @@ CREATE TABLE IF NOT EXISTS professor_prefere_caracteristica (
     FOREIGN KEY (professor_id) REFERENCES professores (id) ON DELETE CASCADE,
     FOREIGN KEY (caracteristica_id) REFERENCES caracteristicas (id) ON DELETE CASCADE
 );
+
+
+-- ---
+-- 6. reservas_eventos
+-- ---
+CREATE TABLE IF NOT EXISTS reservas_eventos (
+    id INTEGER PRIMARY KEY,
+
+    -- Requisito: Local/Sala reservada
+    sala_id INTEGER NOT NULL,
+
+    -- Requisito: Título (O quê?)
+    titulo_evento TEXT NOT NULL,
+
+    -- Requisito: Usuário que criou (no sistema)
+    username_criador TEXT NOT NULL, -- FK para usuarios.username
+
+    -- Requisito: Pessoa/nome de quem solicitou (pode ser um convidado externo)
+    nome_solicitante TEXT,
+
+    -- Requisito: Pessoa/nome de quem é o responsável (quem procurar)
+    nome_responsavel TEXT,
+
+    -- Requisito: É reserva recorrente?
+    -- Armazena a regra em formato JSON. Ex:
+    -- '{"tipo": "unica"}'
+    -- '{"tipo": "semanal", "dias": [2, 4], "fim": "2025-12-31"}' (Toda SEG e QUA)
+    -- '{"tipo": "diaria", "intervalo": 1, "fim": "2025-11-30"}' (Todo dia)
+    regra_recorrencia_json TEXT NOT NULL DEFAULT '{"tipo": "unica"}',
+
+    -- Status do evento (pode ser usado para RF-011.7 - Aprovação)
+    status TEXT DEFAULT 'Aprovada',
+
+    -- Requisito: Data e hora da criação / atualização
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (sala_id) REFERENCES salas (id),
+    FOREIGN KEY (username_criador) REFERENCES usuarios (username)
+);
+
+
+-- ---
+-- 7. reservas_ocorrencias
+-- ---
+CREATE TABLE IF NOT EXISTS reservas_ocorrencias (
+    id INTEGER PRIMARY KEY,
+
+    -- Link para o evento "Pai"
+    evento_id INTEGER NOT NULL,
+
+    -- Requisito: Dia e horário da reserva (expandidos)
+    data_reserva DATE NOT NULL,       -- O dia específico (ex: "2025-10-30")
+    codigo_bloco TEXT NOT NULL,    -- O bloco Sigaa (ex: "M1", "M2")
+
+    -- Opcional: permite cancelar/modificar uma única instância de uma série
+    status_excecao TEXT, -- (ex: "Cancelada")
+
+    -- Chave de verificação de conflito para reservas esporádicas
+    -- Garante que um bloco, em uma data, em uma sala, só pode ser reservado uma vez.
+    -- (Nota: A sala_id está no 'evento_pai', mas a restrição UNIQUE deve ser aqui)
+    UNIQUE (evento_id, data_reserva, codigo_bloco), -- Evita duplicatas por importação
+
+    FOREIGN KEY (evento_id) REFERENCES reservas_eventos (id) ON DELETE CASCADE,
+    FOREIGN KEY (codigo_bloco) REFERENCES horarios_bloco (codigo_bloco)
+);
+
+-- ---
+-- GATILHO (Trigger) para 'updated_at' na tabela 'reservas_eventos'
+-- ---
+CREATE TRIGGER IF NOT EXISTS trg_reservas_eventos_updated_at
+AFTER UPDATE ON reservas_eventos
+FOR EACH ROW
+BEGIN
+    UPDATE reservas_eventos
+    SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = OLD.id;
+END;
