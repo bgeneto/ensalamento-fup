@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS reservas_eventos (
     username_criador TEXT NOT NULL, -- FK para usuarios.username
 
     -- Requisito: Pessoa/nome de quem solicitou (pode ser um convidado externo)
-    nome_solicitante TEXT,
+    nome_solicitante TEXT NOT NULL,
 
     -- Requisito: Pessoa/nome de quem é o responsável (quem procurar)
     nome_responsavel TEXT,
@@ -210,9 +210,6 @@ CREATE TABLE IF NOT EXISTS reservas_eventos (
     -- '{"tipo": "semanal", "dias": [2, 4], "fim": "2025-12-31"}' (Toda SEG e QUA)
     -- '{"tipo": "diaria", "intervalo": 1, "fim": "2025-11-30"}' (Todo dia)
     regra_recorrencia_json TEXT NOT NULL DEFAULT '{"tipo": "unica"}',
-
-    -- Status do evento (pode ser usado para RF-011.7 - Aprovação)
-    status TEXT DEFAULT 'Aprovada',
 
     -- Requisito: Data e hora da criação / atualização
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

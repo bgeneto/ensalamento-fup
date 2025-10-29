@@ -256,12 +256,59 @@ class ReservaEventoBase(BaseModel):
     sala_id: int = Field(..., gt=0)
     titulo_evento: str = Field(..., min_length=1, max_length=255)
     username_criador: str = Field(..., min_length=1, max_length=100)
-    nome_solicitante: Optional[str] = Field(None, max_length=255)
-    nome_responsavel: Optional[str] = Field(None, max_length=255)
+    nome_solicitante: str = Field(
+        ...,
+        min_length=5,
+        max_length=255,
+        description="Full name of the person requesting the reservation (required)",
+    )
+    nome_responsavel: Optional[str] = Field(
+        None,
+        min_length=5,
+        max_length=255,
+        description="Full name of the person responsible for the event (optional)",
+    )
     regra_recorrencia_json: str = Field(
         ..., min_length=1, description="JSON recurrence rule"
     )
-    status: str = Field(default="Aprovada", max_length=50)
+
+    @field_validator("nome_solicitante")
+    @classmethod
+    def validate_nome_solicitante(cls, v: str) -> str:
+        """Validate that solicitante name is a full name (at least 2 words)."""
+        if not v or not v.strip():
+            raise ValueError("Solicitante name cannot be empty")
+
+        parts = v.strip().split()
+        if len(parts) < 2:
+            raise ValueError("Must provide full name (at least first and last name)")
+
+        if any(len(part) < 2 for part in parts):
+            raise ValueError("Each part of the name must have at least 2 characters")
+
+        if not all(part.replace("-", "").replace("'", "").isalpha() for part in parts):
+            raise ValueError("Name must contain only letters, hyphens, and apostrophes")
+
+        return v.strip()
+
+    @field_validator("nome_responsavel")
+    @classmethod
+    def validate_nome_responsavel(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that responsavel name is a full name if provided."""
+        if v is None or not v.strip():
+            return None
+
+        parts = v.strip().split()
+        if len(parts) < 2:
+            raise ValueError("Must provide full name (at least first and last name)")
+
+        if any(len(part) < 2 for part in parts):
+            raise ValueError("Each part of the name must have at least 2 characters")
+
+        if not all(part.replace("-", "").replace("'", "").isalpha() for part in parts):
+            raise ValueError("Name must contain only letters, hyphens, and apostrophes")
+
+        return v.strip()
 
 
 class ReservaEventoCreate(ReservaEventoBase):
@@ -289,10 +336,31 @@ class ReservaEventoUpdate(BaseModel):
     sala_id: Optional[int] = Field(None, gt=0)
     titulo_evento: Optional[str] = Field(None, min_length=1, max_length=255)
     username_criador: Optional[str] = Field(None, min_length=1, max_length=100)
-    nome_solicitante: Optional[str] = Field(None, max_length=255)
-    nome_responsavel: Optional[str] = Field(None, max_length=255)
+    nome_solicitante: Optional[str] = Field(None, min_length=5, max_length=255)
+    nome_responsavel: Optional[str] = Field(None, min_length=5, max_length=255)
     regra_recorrencia_json: Optional[str] = Field(None, min_length=1)
-    status: Optional[str] = Field(None, max_length=50)
+
+    @field_validator("nome_solicitante", "nome_responsavel")
+    @classmethod
+    def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that name is a full name if provided."""
+        if v is None:
+            return v
+
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
+
+        parts = v.strip().split()
+        if len(parts) < 2:
+            raise ValueError("Must provide full name (at least first and last name)")
+
+        if any(len(part) < 2 for part in parts):
+            raise ValueError("Each part of the name must have at least 2 characters")
+
+        if not all(part.replace("-", "").replace("'", "").isalpha() for part in parts):
+            raise ValueError("Name must contain only letters, hyphens, and apostrophes")
+
+        return v.strip()
 
 
 class ReservaEventoRead(ReservaEventoBase):

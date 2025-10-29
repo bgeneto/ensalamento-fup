@@ -97,7 +97,6 @@ class ReservaEsporadica(BaseModel):
     - titulo_evento: Event title
     - data_reserva: DATE (YYYY-MM-DD)
     - codigo_bloco: Foreign key to horarios_bloco
-    - status: Aprovada, Rejeitada, etc.
     """
 
     __tablename__ = "reservas_esporadicas"
@@ -111,7 +110,6 @@ class ReservaEsporadica(BaseModel):
     codigo_bloco = Column(
         String(10), ForeignKey("horarios_bloco.codigo_bloco"), nullable=False
     )
-    status = Column(String(50), default="Aprovada")  # Aprovada, Rejeitada, etc.
 
     # Relationships
     sala = relationship("Sala", back_populates="reservas")
@@ -139,11 +137,11 @@ class ReservaEvento(BaseModel):
     # Event details
     titulo_evento = Column(String(255), nullable=False)
     nome_solicitante = Column(
-        String(255), nullable=True
-    )  # Optional - external guest name
+        String(255), nullable=False
+    )  # Required - full name of person requesting reservation
     nome_responsavel = Column(
         String(255), nullable=True
-    )  # Optional - responsible person
+    )  # Optional - full name of person responsible for event
 
     # Recurrence rule in JSON format
     # Examples:
@@ -153,9 +151,6 @@ class ReservaEvento(BaseModel):
     # {"tipo": "mensal", "dia_mes": 15, "fim": "2025-12-31"} - 15th of each month
     # {"tipo": "mensal", "posicao": 1, "dia_semana": 2, "fim": "2025-12-31"} - first Monday of each month
     regra_recorrencia_json = Column(Text, nullable=False, default='{"tipo": "unica"}')
-
-    # Event status
-    status = Column(String(50), default="Aprovada")
 
     # Timestamps (inherited from BaseModel)
 
@@ -224,10 +219,6 @@ class ReservaOcorrencia(BaseModel):
     # Relationships
     evento = relationship("ReservaEvento", back_populates="ocorrencias")
     bloco_horario = relationship("HorarioBloco")
-
-    def is_ativa(self) -> bool:
-        """Check if this occurrence is active (not cancelled)."""
-        return self.status_excecao != "Cancelada"
 
     def __repr__(self) -> str:
         return f"<ReservaOcorrencia(id={self.id}, evento_id={self.evento_id}, data={self.data_reserva}, bloco={self.codigo_bloco})>"

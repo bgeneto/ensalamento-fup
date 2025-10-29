@@ -33,7 +33,6 @@ class ReservaEventoRepository(BaseRepository[ReservaEvento, ReservaEventoRead]):
             nome_solicitante=orm_obj.nome_solicitante,
             nome_responsavel=orm_obj.nome_responsavel,
             regra_recorrencia_json=orm_obj.regra_recorrencia_json,
-            status=orm_obj.status,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )
@@ -47,7 +46,6 @@ class ReservaEventoRepository(BaseRepository[ReservaEvento, ReservaEventoRead]):
             nome_solicitante=dto.nome_solicitante,
             nome_responsavel=dto.nome_responsavel,
             regra_recorrencia_json=dto.regra_recorrencia_json,
-            status=dto.status,
         )
 
     def get_by_creator(self, username: str) -> List[ReservaEventoRead]:
@@ -165,12 +163,7 @@ class ReservaEventoRepository(BaseRepository[ReservaEvento, ReservaEventoRead]):
         """
         orm_objs = (
             self.session.query(self.model_class)
-            .filter(
-                and_(
-                    self.model_class.sala_id == room_id,
-                    self.model_class.status == "Aprovada",
-                )
-            )
+            .filter(self.model_class.sala_id == room_id)
             .all()
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]

@@ -5,7 +5,8 @@ Handles the creation, management, and conflict detection for recurring
 room reservations using the Parent/Instance design pattern.
 """
 
-from datetime import datetime, date
+import logging
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,8 @@ from src.schemas.allocation import (
 )
 from src.utils.recurrence_calculator import RecurrenceCalculator
 from src.utils.ui_feedback import set_session_feedback
+
+logger = logging.getLogger(__name__)
 
 
 class ReservaEventoService:
@@ -110,20 +113,29 @@ class ReservaEventoService:
                 return None, errors
 
             # Create the event and all occurrences in a transaction
+            logger.info(f"Starting event creation for: {evento_dto.titulo_evento}")
             created_event = self._create_event_with_occurrences(
                 evento_dto, occurrences_with_blocks
             )
 
             if created_event:
+                logger.info(f"Event creation successful: {created_event.id}")
                 return created_event, []
             else:
-                errors.append("Erro ao criar a reserva")
+                logger.error("Event creation failed - see logs above for details")
+                errors.append(
+                    "Erro ao salvar a reserva no banco de dados (Verifique o log para detalhes)"
+                )
                 return None, errors
 
         except json.JSONDecodeError:
             errors.append("Formato JSON inválido na regra de recorrência")
             return None, errors
         except Exception as e:
+            import traceback
+
+            logger.error(f"Erro inesperado ao criar reserva: {str(e)}")
+            logger.error(traceback.format_exc())
             errors.append(f"Erro inesperado: {str(e)}")
             return None, errors
 
@@ -171,11 +183,17 @@ class ReservaEventoService:
                 fim=rule_dict["fim"],
             )
         else:
+            logger.error(f"Unknown recurrence type: {tipo}")
             return []
 
-        return RecurrenceCalculator.expand_dates_with_blocks(
+        occurrences = RecurrenceCalculator.expand_dates_with_blocks(
             rule, start_date, time_blocks
         )
+        logger.info(f"Generated {len(occurrences)} occurrences from rule: {rule_dict}")
+        if occurrences:
+            logger.debug(f"First occurrence: {occurrences[0]}")
+            logger.debug(f"Last occurrence: {occurrences[-1]}")
+        return occurrences
 
     def _check_conflicts_for_occurrences(
         self, room_id: int, occurrences_with_blocks: List[Dict[str, Any]]
@@ -192,6 +210,9 @@ class ReservaEventoService:
         """
         errors = []
         conflict_count = 0
+        logger.info(
+            f"Checking conflicts for room {room_id} with {len(occurrences_with_blocks)} occurrences"
+        )
 
         for occurrence in occurrences_with_blocks:
             data_reserva = occurrence["data_reserva"]
@@ -207,6 +228,9 @@ class ReservaEventoService:
 
             if semester_conflict:
                 conflict_count += 1
+                logger.warning(
+                    f"Conflict found: semester allocation on {data_reserva} {codigo_bloco}"
+                )
                 continue  # Don't add individual error messages, just count
 
             # Check conflicts with existing reservations (both legacy and recurring)
@@ -216,6 +240,9 @@ class ReservaEventoService:
 
             if reserva_conflict:
                 conflict_count += 1
+                logger.warning(
+                    f"Conflict found: existing reservation on {data_reserva} {codigo_bloco}"
+                )
 
         if conflict_count > 0:
             errors.append(
@@ -241,10 +268,16 @@ class ReservaEventoService:
         """
         try:
             # Create the parent event
+            logger.info(
+                f"Creating event: {evento_dto.titulo_evento} in room {evento_dto.sala_id}"
+            )
             created_event = self.evento_repo.create(evento_dto)
 
             if not created_event:
+                logger.error("Failed to create parent event - repository returned None")
                 return None
+
+            logger.info(f"Event created successfully with ID: {created_event.id}")
 
             # Create all occurrences
             ocorrencia_dtos = []
@@ -256,18 +289,31 @@ class ReservaEventoService:
                 )
                 ocorrencia_dtos.append(ocorrencia_dto)
 
+            logger.info(
+                f"Creating {len(ocorrencia_dtos)} occurrences for event {created_event.id}"
+            )
+
             # Bulk create occurrences
             created_ocorrencias = self.ocorrencia_repo.create_bulk(ocorrencia_dtos)
 
             if not created_ocorrencias:
                 # Rollback event creation if occurrences failed
+                logger.error(
+                    f"Failed to create occurrences - rolling back event {created_event.id}"
+                )
                 self.evento_repo.delete(created_event.id)
                 return None
 
+            logger.info(f"Successfully created {len(created_ocorrencias)} occurrences")
             return created_event
 
         except Exception as e:
             # Transaction should be rolled back automatically
+            import traceback
+
+            logger.error(f"Error creating event with occurrences: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(traceback.format_exc())
             return None
 
     def excluir_serie_recorrente(
@@ -356,9 +402,6 @@ class ReservaEventoService:
             if "nome_responsavel" in novos_dados:
                 update_data["nome_responsavel"] = novos_dados["nome_responsavel"]
 
-            if "status" in novos_dados:
-                update_data["status"] = novos_dados["status"]
-
             if not update_data:
                 return False, "Nenhum campo para atualizar"
 
@@ -369,7 +412,6 @@ class ReservaEventoService:
                 titulo_evento: Optional[str] = None
                 nome_solicitante: Optional[str] = None
                 nome_responsavel: Optional[str] = None
-                status: Optional[str] = None
 
             update_dto = UpdateDTO(**update_data)
             updated_event = self.evento_repo.update(evento_id, update_dto)

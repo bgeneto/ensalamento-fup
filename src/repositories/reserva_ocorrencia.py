@@ -112,7 +112,6 @@ class ReservaOcorrenciaRepository(
                 and_(
                     self.model_class.data_reserva == data_reserva,
                     self.model_class.evento.has(sala_id=room_id),
-                    self.model_class.evento.has(status="Aprovada"),
                     or_(
                         self.model_class.status_excecao.is_(None),
                         self.model_class.status_excecao != "Cancelada",
@@ -146,7 +145,6 @@ class ReservaOcorrenciaRepository(
                     self.model_class.data_reserva == data_reserva,
                     self.model_class.codigo_bloco == codigo_bloco,
                     self.model_class.evento.has(sala_id=room_id),
-                    self.model_class.evento.has(status="Aprovada"),
                     or_(
                         self.model_class.status_excecao.is_(None),
                         self.model_class.status_excecao != "Cancelada",
@@ -280,7 +278,6 @@ class ReservaOcorrenciaRepository(
                     self.model_class.data_reserva >= start_date,
                     self.model_class.data_reserva <= end_date,
                     self.model_class.evento.has(sala_id=room_id),
-                    self.model_class.evento.has(status="Aprovada"),
                     or_(
                         self.model_class.status_excecao.is_(None),
                         self.model_class.status_excecao != "Cancelada",

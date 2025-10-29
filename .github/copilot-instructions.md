@@ -245,7 +245,7 @@ if "import_result" in st.session_state:
 - ✅ Use this pattern for: imports, form submissions, bulk operations, confirmations
 - ✅ Prefer `src.utils.ui_feedback` helpers (`set_session_feedback`, `display_session_feedback`) for DRY toast + TTL handling across pages
 
-**Real Example:** See `pages/3_👨‍🏫_Professores.py` CSV import section for working implementation.
+**Real Example:** See `pages/4_👨‍🏫_Professores.py` CSV import section for working implementation.
 
 ### Toast-Based Feedback Helper (Reusable)
 
