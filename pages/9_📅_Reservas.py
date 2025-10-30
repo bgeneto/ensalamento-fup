@@ -920,6 +920,7 @@ elif selected_tab == "➕ Nova Reserva":
                     max_value=data_inicio_evento + timedelta(days=365),
                     key="form_data_fim_diaria",
                     help="Última data possível para repetição (máximo 1 ano)",
+                    format="DD/MM/YYYY",
                 )
             st.caption(
                 f"📅 Exemplo: Repetir a cada {intervalo_dias} dia(s) de {data_inicio_evento.strftime('%d/%m/%Y')} até {data_fim_evento.strftime('%d/%m/%Y')}"
