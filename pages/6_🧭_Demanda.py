@@ -129,7 +129,7 @@ st.selectbox(
     options=[current_semester_id],
     format_func=lambda x: semester_options_dict.get(x, f"Semestre {x}"),
     disabled=True,
-    help="Para alterar o semestre, acesse a página Painel",
+    help="Para alterar o semestre, use o menu lateral.",
     key="readonly_semester_display_demanda",
     width=400,
 )

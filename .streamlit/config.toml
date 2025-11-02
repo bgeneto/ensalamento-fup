@@ -5,15 +5,6 @@
 # Suppress warnings on direct execution
 showWarningOnDirectExecution = false
 
-[locale]
-timezone = "America/Sao Paulo"
-language = "pt-BR"
-
-[locale.formats]
-date = "DD/MM/YYYY"  # Brazilian format
-datetime = "DD/MM/YYYY HH:mm:ss"
-time = "HH:mm"
-
 [logger]
 # Set logging level (debug, info, warning, error)
 # Setting to "error" will hide the deprecation warnings from libraries
@@ -31,7 +22,6 @@ enableStaticServing = true
 gatherUsageStats = false
 serverAddress = "localhost"
 serverPort = 8501
-useBrowserLocale = false
 
 [client]
 # Client-side configuration
