@@ -344,9 +344,7 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
 # ============================================================================
 
 st.title("📅 Visualização do Ensalamento")
-st.markdown(
-    "Visualize o ensalamento semestral consolidado para o semestre desejado."
-)
+st.markdown("Visualize o ensalamento semestral consolidado para o semestre desejado.")
 
 # ============================================================================
 # FILTERS AND CONTROLS
@@ -403,7 +401,9 @@ try:
                 "🏢 Prédio:",
                 options=["all"] + list(predios_options.keys()),
                 format_func=lambda x: (
-                    "Todas os prédios" if x == "all" else predios_options.get(x, f"ID {x}")
+                    "Todas os prédios"
+                    if x == "all"
+                    else predios_options.get(x, f"ID {x}")
                 ),
                 key="predio_filter",
             )
@@ -418,16 +418,18 @@ try:
                 key="entity_filter",
             )
 
-            # Clear filters button
+            # Clear filters button with empty label for alignment
             def clear_filters():
                 st.session_state.predio_filter = "all"
                 st.session_state.entity_filter = "all"
 
+            st.markdown("&nbsp;", unsafe_allow_html=True)  # Empty space for alignment
             if st.button(
                 "🔄 Limpar Filtros",
                 help="Limpa os filtros de prédio e sala",
                 key="clear_filters",
                 on_click=clear_filters,
+                use_container_width=True,
             ):
                 pass  # The on_click callback handles the clearing
 
