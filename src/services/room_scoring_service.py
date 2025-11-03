@@ -24,6 +24,7 @@ from src.schemas.manual_allocation import CompatibilityScore
 from src.models.inventory import Sala
 from src.models.academic import Professor
 from src.utils.sigaa_parser import SigaaScheduleParser
+from src.utils.room_utils import get_room_occupancy
 
 
 @dataclass
@@ -166,7 +167,7 @@ class RoomScoringService:
             candidates.append(candidate)
 
         # Sort by score (highest first), then by conflict status, then by room occupancy (highest first for optimization)
-        candidates.sort(key=lambda c: (c.score, not c.has_conflicts, self._get_room_occupancy(c.sala.id, semester_id)), reverse=True)
+        candidates.sort(key=lambda c: (c.score, not c.has_conflicts, get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id)), reverse=True)
         
         # Debug: Log when room occupancy optimization affects sorting
         if len(candidates) >= 2:
@@ -176,8 +177,8 @@ class RoomScoringService:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.debug(f"Room occupancy optimization applied for demand {candidates[0].sala.id}: "
-                           f"Room {candidates[0].sala.nome} (occupancy: {self._get_room_occupancy(candidates[0].sala.id, semester_id)}) "
-                           f"vs Room {candidates[1].sala.nome} (occupancy: {self._get_room_occupancy(candidates[1].sala.id, semester_id)})")
+                           f"Room {candidates[0].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[0].sala.id, semester_id)}) "
+                           f"vs Room {candidates[1].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[1].sala.id, semester_id)})")
 
         return candidates
 
@@ -238,49 +239,6 @@ class RoomScoringService:
 
         return score
 
-    def _get_room_occupancy(self, room_id: int, semester_id: int) -> int:
-        """
-        Get current occupancy count for a room in the specified semester.
-        
-        Uses current semester occupancy count, with historical data as fallback.
-        
-        Args:
-            room_id: Room ID to check occupancy for
-            semester_id: Current semester ID
-            
-        Returns:
-            int: Number of allocations for this room in the semester
-        """
-        try:
-            # Get current semester occupancy
-            current_allocations = self.alocacao_repo.get_by_sala_and_semestre(room_id, semester_id)
-            current_count = len(current_allocations) if current_allocations else 0
-            
-            # If current semester has allocations, use that
-            if current_count > 0:
-                return current_count
-            
-            # Fallback: try previous semester (if current is empty)
-            # This helps with optimization early in allocation process
-            try:
-                # Assuming semester IDs are sequential (e.g., 20241, 20242, etc.)
-                # Try previous semester by subtracting 1
-                prev_semester_id = semester_id - 1
-                if prev_semester_id > 0:
-                    prev_allocations = self.alocacao_repo.get_by_sala_and_semestre(room_id, prev_semester_id)
-                    return len(prev_allocations) if prev_allocations else 0
-            except Exception:
-                # If fallback fails, just return 0
-                pass
-                
-            return 0
-            
-        except Exception as e:
-            # Log error but don't break the allocation process
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Error calculating occupancy for room {room_id}: {e}")
-            return 0
 
     def _calculate_detailed_scoring_breakdown(
         self,
