@@ -319,7 +319,7 @@ class AutonomousAllocationReportService:
             [
                 "Demandas Não Alocadas",
                 str(results.get("demands_skipped", 0)),
-                "Requerem intervenção manual",
+                "Intervenção manual",
             ],
         ]
 

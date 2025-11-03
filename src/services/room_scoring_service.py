@@ -342,13 +342,16 @@ class RoomScoringService:
         historical_freq = self._calculate_historical_frequency_bonus(
             demanda.codigo_disciplina, room.id, semester_id
         )
-        # Cap historical frequency at maximum configured points to ensure rules/preferences take priority
-        capped_historical_freq = min(
+        # Cap historical frequency points at maximum configured value
+        # Note: historical_freq is already in POINTS (frequency × weight), not count
+        breakdown.historical_frequency_points = min(
             historical_freq, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP
         )
-        breakdown.historical_frequency_points = capped_historical_freq
+        # Store actual frequency count for display (divide by weight to get count)
         breakdown.historical_allocations = (
-            historical_freq  # Store actual count for display
+            historical_freq // SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
+            if SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION > 0
+            else 0
         )
 
         # Calculate total
@@ -478,12 +481,24 @@ class RoomScoringService:
 
         Returns bonus points based on how many times this discipline has been
         allocated to this room in previous semesters.
+
+        The result is capped at HISTORICAL_FREQUENCY_MAX_CAP points (not allocations).
+
+        Returns:
+            Historical frequency points (already capped at MAX_CAP value)
         """
-        # Use existing repository method
+        # Use existing repository method to get frequency count
         frequency = self.alocacao_repo.get_discipline_room_frequency(
             disciplina_codigo, sala_id, exclude_semester_id
         )
-        return frequency * SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
+
+        # Calculate points: frequency (count) × weight (points per allocation)
+        historical_points = (
+            frequency * SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
+        )
+
+        # Cap at maximum POINTS (not maximum allocations)
+        return min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
 
     def _lookup_professors_for_demands_from_objects(
         self, demands

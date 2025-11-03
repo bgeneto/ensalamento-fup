@@ -1053,7 +1053,7 @@ elif selected_tab == "➕ Nova Reserva":
 
         with col_submit:
             submit_button = st.form_submit_button(
-                "✅ Criar Reserva", type="primary", use_container_width=True
+                "✅ Criar Reserva", type="primary", width="stretch"
             )
 
         # Form submission handling

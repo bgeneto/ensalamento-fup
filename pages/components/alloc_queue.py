@@ -55,7 +55,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
         with col2:
             st.metric("Alocadas", f"{progress['allocated_demands']}")
         with col3:
-            st.metric("Slots Pendentes", f"{progress['unallocated_demands']}")
+            st.metric("Pendentes", f"{progress['unallocated_demands']}")
 
         # Progress bar
         if progress["total_demands"] > 0:

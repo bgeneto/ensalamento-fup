@@ -247,6 +247,7 @@ tramp
 # For example:
 # user_data/
 # exported_data/
+data/reports/
 
 .clinerules
 memory-bank/

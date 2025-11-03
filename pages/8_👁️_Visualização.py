@@ -13,10 +13,10 @@ from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
 if not initialize_page(
-    page_title="Exibição - Ensalamento",
+    page_title="Visualização - Ensalamento",
     page_icon="👁️",
     layout="wide",
-    key_suffix="exibicao",
+    key_suffix="visualizacao",
 ):
     st.stop()
 
@@ -418,7 +418,7 @@ try:
                 help="Limpa os filtros de prédio e sala",
                 key="clear_filters",
                 on_click=clear_filters,
-                use_container_width=True,
+                width="stretch",
             ):
                 pass  # The on_click callback handles the clearing
 

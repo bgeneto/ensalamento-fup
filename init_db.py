@@ -39,7 +39,8 @@ def load_historical_allocations():
         ("./docs/Ensalamento Oferta 1-2024.csv", "2024-1", []),
         ("./docs/Ensalamento Oferta 2-2024.csv", "2024-2", []),
         ("./docs/Ensalamento Oferta 1-2025.csv", "2025-1", []),
-        ("./docs/Ensalamento Oferta 2-2025.csv", "2025-2", ["--disable-allocation"]),
+        ("./docs/Ensalamento Oferta 2-2025.csv", "2025-2", []),
+        ("./docs/Ensalamento Oferta 1-2026.csv", "2026-1", ["--disable-allocation"]),
     ]
 
     for csv_file, semester, extra_args in allocations:

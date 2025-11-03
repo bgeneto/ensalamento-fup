@@ -219,8 +219,28 @@ with col1:
                     else:
                         # Store PDF report in session state for download
                         if "pdf_report" in result:
-                            st.session_state["autonomous_allocation_pdf"] = result["pdf_report"]
-                            st.session_state["autonomous_allocation_pdf_filename"] = result.get("pdf_filename", "relatorio_alocacao.pdf")
+                            st.session_state["autonomous_allocation_pdf"] = result[
+                                "pdf_report"
+                            ]
+                            st.session_state["autonomous_allocation_pdf_filename"] = (
+                                result.get("pdf_filename", "relatorio_alocacao.pdf")
+                            )
+
+                            # Save PDF report to data/reports folder automatically
+                            import os
+
+                            pdf_filename = result.get(
+                                "pdf_filename", "relatorio_alocacao.pdf"
+                            )
+                            reports_dir = "data/reports"
+                            os.makedirs(reports_dir, exist_ok=True)
+                            pdf_path = os.path.join(reports_dir, pdf_filename)
+
+                            with open(pdf_path, "wb") as f:
+                                f.write(result["pdf_report"])
+
+                            # Log successful save
+                            print(f"PDF report saved to: {pdf_path}")
 
                         # Full allocation results
                         allocations_done = result["allocations_completed"]
@@ -256,7 +276,9 @@ with col2:
     # Show download button if PDF report is available from previous allocation
     if st.session_state.get("autonomous_allocation_pdf"):
         pdf_data = st.session_state["autonomous_allocation_pdf"]
-        pdf_filename = st.session_state.get("autonomous_allocation_pdf_filename", "relatorio_alocacao.pdf")
+        pdf_filename = st.session_state.get(
+            "autonomous_allocation_pdf_filename", "relatorio_alocacao.pdf"
+        )
 
         st.download_button(
             label="📄 Relatório PDF da Alocação",
@@ -264,7 +286,7 @@ with col2:
             file_name=pdf_filename,
             mime="application/pdf",
             help="Baixe o relatório detalhado em PDF com todas as decisões de alocação",
-            type="primary"
+            type="primary",
         )
 
 
@@ -406,9 +428,11 @@ with st.sidebar:
     st.markdown(
         """
     ### 💡 Dicas
-    - **Regras obrigatórias** têm prioridade máxima
-    - Verifique horários com **conflitos** antes de alocar
-    - Use seleção manual quando regras são flexíveis
+    1. Importe a **🧭 Demanda** de disciplinas primeiramente;
+    2. Execute a **🚀 Alocação Autônoma**;
+    3. Verifique se restou demandas pendentes;
+    4. Use o botão **🎯 Alocar Sala** para alocar manualmente as demandas pendentes
+    5. Revise e imprima o ensalamento completo na página de **👁️ Visualização**
     """
     )
 
