@@ -104,6 +104,31 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
 
+    def get_by_sala_and_semestre(
+        self, sala_id: int, semestre_id: int
+    ) -> List[AlocacaoSemestralRead]:
+        """Get all allocations in a specific room for a specific semester.
+
+        Args:
+            sala_id: Room ID
+            semestre_id: Semester ID
+
+        Returns:
+            List of AlocacaoSemestralRead DTOs sorted by day and time
+        """
+        orm_objs = (
+            self.session.query(AlocacaoSemestral)
+            .filter(
+                and_(
+                    AlocacaoSemestral.sala_id == sala_id,
+                    AlocacaoSemestral.semestre_id == semestre_id,
+                )
+            )
+            .order_by(AlocacaoSemestral.dia_semana_id, AlocacaoSemestral.codigo_bloco)
+            .all()
+        )
+        return [self.orm_to_dto(obj) for obj in orm_objs]
+
     def get_by_sala_and_dia(
         self, sala_id: int, dia_semana_id: int
     ) -> List[AlocacaoSemestralRead]:

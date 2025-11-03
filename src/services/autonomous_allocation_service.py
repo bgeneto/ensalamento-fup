@@ -487,8 +487,8 @@ class AutonomousAllocationService:
             # Try to use Phase 2 candidates if available (preferred approach)
             if phase2_candidates and demanda_id in phase2_candidates:
                 valid_candidates = phase2_candidates[demanda_id]
-                # Sort by score descending
-                valid_candidates.sort(key=lambda c: c.score, reverse=True)
+                # Sort by score descending, then by room occupancy (highest first for optimization)
+                valid_candidates.sort(key=lambda c: (c.score, self._get_room_occupancy(c.sala.id, semester_id)), reverse=True)
 
                 # Try top candidates first
                 allocation_success = False
@@ -537,8 +537,8 @@ class AutonomousAllocationService:
                             valid_candidates.append(candidate)
 
                     if valid_candidates:
-                        # Sort by score and try top candidates
-                        valid_candidates.sort(key=lambda c: c.score, reverse=True)
+                        # Sort by score and try top candidates (with room occupancy optimization)
+                        valid_candidates.sort(key=lambda c: (c.score, self._get_room_occupancy(c.sala.id, semester_id)), reverse=True)
 
                         allocation_success = False
                         for candidate in valid_candidates[:3]:  # Try top 3
@@ -607,6 +607,16 @@ class AutonomousAllocationService:
                 professor = self.prof_repo.get_by_nome_completo(prof_name)
                 if professor and not professor.tem_baixa_mobilidade:
                     priority_score += 5  # Professors with mobility constraints
+            
+            # Add course-level priority (graduate courses often need better rooms)
+            curso_codigo = getattr(demanda, 'codigo_curso', '')
+            if curso_codigo:
+                # Graduate courses (typically starting with 'P' or high numbers)
+                if curso_codigo.startswith('P') or any(c.isdigit() and int(c) >= 6 for c in curso_codigo if c.isdigit()):
+                    priority_score += 15
+                # Laboratory courses need specific equipment
+                if any(term in getattr(demanda, 'nome_disciplina', '').lower() for term in ['laboratório', 'lab', 'prático']):
+                    priority_score += 20
 
             priorities.append(
                 DemandPriority(
@@ -703,6 +713,48 @@ class AutonomousAllocationService:
                 professor_map[demanda_id] = professor
 
         return professor_map
+
+    def _get_room_occupancy(self, room_id: int, semester_id: int) -> int:
+        """
+        Get current occupancy count for a room in the specified semester.
+        
+        Uses current semester occupancy count, with historical data as fallback.
+        
+        Args:
+            room_id: Room ID to check occupancy for
+            semester_id: Current semester ID
+            
+        Returns:
+            int: Number of allocations for this room in the semester
+        """
+        try:
+            # Get current semester occupancy
+            current_allocations = self.alocacao_repo.get_by_sala_and_semestre(room_id, semester_id)
+            current_count = len(current_allocations) if current_allocations else 0
+            
+            # If current semester has allocations, use that
+            if current_count > 0:
+                return current_count
+            
+            # Fallback: try previous semester (if current is empty)
+            # This helps with optimization early in allocation process
+            try:
+                # Assuming semester IDs are sequential (e.g., 20241, 20242, etc.)
+                # Try previous semester by subtracting 1
+                prev_semester_id = semester_id - 1
+                if prev_semester_id > 0:
+                    prev_allocations = self.alocacao_repo.get_by_sala_and_semestre(room_id, prev_semester_id)
+                    return len(prev_allocations) if prev_allocations else 0
+            except Exception:
+                # If fallback fails, just return 0
+                pass
+                
+            return 0
+            
+        except Exception as e:
+            # Log error but don't break the allocation process
+            logger.warning(f"Error calculating occupancy for room {room_id}: {e}")
+            return 0
 
     def _score_room_candidates_for_demand(
         self, demanda: Any, professor: Optional[Professor], semester_id: int
@@ -864,7 +916,7 @@ class AutonomousAllocationService:
 
                 self.alocacao_repo.create(allocation_dto)
 
-            logger.info(
+            logger.debug(
                 f"Allocated {len(candidate.atomic_blocks)} blocks for demand {candidate.demanda_id} to room {candidate.sala.id}"
             )
             return True

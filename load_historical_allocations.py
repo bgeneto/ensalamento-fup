@@ -7,7 +7,7 @@ parsing the data and creating AlocacaoSemestral records for the semester
 history (RF-006.6 - rules based on historical allocations).
 
 Usage:
-    python load_historical_allocations.py [--dry-run] [--force] [--enable-reservations] [CSV_FILE]
+    python load_historical_allocations.py [--dry-run] [--force] [--enable-reservations] [--disable-allocation] [CSV_FILE]
 
 Arguments:
     CSV_FILE: Path to CSV file (default: docs/Ensalamento Oferta 2-2025.csv)
@@ -16,6 +16,7 @@ Options:
     --dry-run: Show what would be done without making changes
     --force: Overwrite existing allocations for conflicts
     --enable-reservations: Enable creation of ReservaEsporadica records (default: disabled)
+    --disable-allocation: Skip creation of AlocacaoSemestral records (only create demandas) (default: disabled)
 """
 
 import csv
@@ -76,6 +77,7 @@ class CSVAllocator:
         semester_name: str = "2025-2",
         enable_reservations: bool = False,
         debug: bool = False,
+        disable_allocation: bool = False,
     ):
         self.session = session
         self.dry_run = dry_run
@@ -83,6 +85,7 @@ class CSVAllocator:
         self.semestre_name = semester_name
         self.enable_reservations = enable_reservations
         self.debug = debug
+        self.disable_allocation = disable_allocation
 
         # Initialize repositories
         self.sem_repo = SemestreRepository(session)
@@ -725,31 +728,36 @@ class CSVAllocator:
             return False
 
         # PHASE 3: Process allocations (demandas are now pre-populated)
-        print("🏗️ PHASE 3: Processing room allocations...")
+        if not self.disable_allocation:
+            print("🏗️ PHASE 3: Processing room allocations...")
 
-        with open(csv_file, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f, delimiter=";")
+            with open(csv_file, "r", encoding="utf-8-sig") as f:
+                reader = csv.reader(f, delimiter=";")
 
-            # Read header row with room names
-            header_row = next(reader)
-            room_mapping = [col.strip() for col in header_row if col.strip()]
+                # Read header row with room names
+                header_row = next(reader)
+                room_mapping = [col.strip() for col in header_row if col.strip()]
 
-            print(f"Found {len(room_mapping)} rooms: {room_mapping[:3]}...")
+                print(f"Found {len(room_mapping)} rooms: {room_mapping[:3]}...")
 
-            # Process each data row for allocations
-            for row in reader:
-                if not row or not row[0].strip():
-                    continue  # Skip empty rows
+                # Process each data row for allocations
+                for row in reader:
+                    if not row or not row[0].strip():
+                        continue  # Skip empty rows
 
-                self.process_csv_row(row, room_mapping, semestre.id)
+                    self.process_csv_row(row, room_mapping, semestre.id)
 
-        print("\n" + "=" * 50)
+            print("\n" + "=" * 50)
+        else:
+            print("⏭️ PHASE 3: Skipping room allocations (disabled by --disable-allocation)")
+            print("\n" + "=" * 50)
         print("LOAD RESULTS:")
         print(f"Rows processed: {self.stats['rows_processed']}")
-        print(f"Allocations created: {self.stats['allocations_created']}")
-        print(f"Reservas created: {self.stats['reservas_created']}")
+        if not self.disable_allocation:
+            print(f"Allocations created: {self.stats['allocations_created']}")
+            print(f"Reservas created: {self.stats['reservas_created']}")
+            print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
         print(f"Demandas created: {self.stats['demandas_created']}")
-        print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
         print(f"Errors: {self.stats['errors']}")
 
         # After processing all rows, log unallocated demandas
@@ -844,6 +852,12 @@ Examples:
         help="Semester name (e.g., '2025-2') (default: 2025-2)",
     )
 
+    parser.add_argument(
+        "--disable-allocation",
+        action="store_true",
+        help="Skip creation of AlocacaoSemestral records (only create demandas) (default: disabled)",
+    )
+
     args = parser.parse_args()
 
     if args.dry_run and args.force:
@@ -858,6 +872,7 @@ Examples:
             semester_name=args.semester,
             enable_reservations=args.enable_reservations,
             debug=args.debug,
+            disable_allocation=args.disable_allocation,
         )
         success = allocator.load_csv(args.csv_file)
 

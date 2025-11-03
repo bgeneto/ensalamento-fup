@@ -90,9 +90,12 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
         # Show count with appropriate title
         st.subheader(header_title)
 
+        # Sort demands by priority (unallocated first, then by complexity)
+        sorted_demands = _sort_demands_by_priority(filtered_demands, allocation_info_map)
+        
         # Display as cards
         action_triggered = False
-        for demanda in filtered_demands:
+        for demanda in sorted_demands:
             demanda_id = getattr(demanda, "id")
             allocation_info = allocation_info_map.get(demanda_id)
             action_taken = _render_demand_card(
@@ -283,13 +286,58 @@ def _check_rule_warnings(demanda) -> List[str]:
     """
     warnings = []
 
-    # Example placeholder logic - would be replaced with actual rule checking
+    # TODO: replace with actual rule checking
+    # Example placeholder logic 
     # This is simplified for the demonstration
 
     professors = str(getattr(demanda, "professores_disciplina", "")).lower()
+    discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()
 
     # Check for accessibility needs (simplified)
     if any(term in professors for term in ["baixa mobilidade", "cadeira de rodas"]):
         warnings.append("Professor com restrição de mobilidade")
+    
+    # Check for laboratory requirements
+    if any(term in discipline_name for term in ["laboratório", "prático", "prática"]):
+        warnings.append("Disciplina pode necessitar de laboratório")
+    
+    # Check for high enrollment (may need larger rooms)
+    vagas = getattr(demanda, "vagas_disciplina", 0)
+    if vagas and vagas > 60:
+        warnings.append("Alta demanda - verificar capacidade da sala")
 
     return warnings
+
+
+def _sort_demands_by_priority(demandas, allocation_info_map) -> List:
+    """
+    Sort demands by allocation priority for better user experience.
+    
+    Priority order:
+    1. Unallocated demands with hard rules
+    2. Unallocated demands with high enrollment
+    3. Other unallocated demands
+    4. Allocated demands
+    """
+    def get_priority_score(demanda):
+        demanda_id = getattr(demanda, "id")
+        allocation_info = allocation_info_map.get(demanda_id, {})
+        
+        # Already allocated - lowest priority
+        if allocation_info.get("is_allocated"):
+            return (0, 0, 0)
+        
+        # Unallocated - calculate priority
+        score = 100  # Base score for unallocated
+        
+        # High enrollment gets higher priority
+        vagas = getattr(demanda, "vagas_disciplina", 0)
+        enrollment_priority = min(vagas // 10, 20)  # Max 20 points for enrollment
+        
+        # Laboratory courses get priority
+        discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()
+        lab_priority = 15 if any(term in discipline_name for term in ["laboratório", "lab", "prático"]) else 0
+        
+        return (score, lab_priority, enrollment_priority)
+    
+    return sorted(demandas, key=get_priority_score, reverse=True)

@@ -193,9 +193,15 @@ class SigaaScheduleParser:
         Converte uma string Sigaa bruta em uma lista de tuplas atômicas (bloco, dia).
 
         Ex: "24M12" vira [('M1', 2), ('M2', 2), ('M1', 4), ('M2', 4)]
+        
+        Returns empty list for invalid input to handle errors gracefully.
         """
+        if not text or not isinstance(text, str):
+            return []
+            
         atomic_array = self.split_to_atomic_array(text)
         results = []
+        invalid_blocks = []
 
         for block in atomic_array:
             if len(block) >= 3:
@@ -203,10 +209,34 @@ class SigaaScheduleParser:
                 try:
                     day = int(block[0])
                     code = block[1:]  # "M1"
+                    
+                    # Validate day range (2-7 for Monday-Saturday)
+                    if day < 2 or day > 7:
+                        invalid_blocks.append(block)
+                        continue
+                        
+                    # Validate shift and slot
+                    if code[0] not in ['M', 'T', 'N']:
+                        invalid_blocks.append(block)
+                        continue
+                        
+                    slot_num = int(code[1:])
+                    if slot_num < 1 or slot_num > 7:
+                        invalid_blocks.append(block)
+                        continue
+                        
                     results.append((code, day))
-                except (ValueError, IndexError):
-                    # Pula blocos malformados
+                except (ValueError, IndexError) as e:
+                    invalid_blocks.append(block)
                     continue
+            else:
+                invalid_blocks.append(block)
+
+        # Log warnings for invalid blocks (if any)
+        if invalid_blocks:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Invalid SIGAA blocks detected and skipped: {invalid_blocks}")
 
         return results
 
