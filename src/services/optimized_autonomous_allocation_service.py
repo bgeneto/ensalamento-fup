@@ -382,6 +382,12 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                             atomic_blocks=self.parser.split_to_atomic_tuples(
                                 demanda.horario_sigaa_bruto
                             ),
+                            scoring_breakdown=(
+                                candidate.scoring_breakdown.__dict__
+                                if hasattr(candidate, "scoring_breakdown")
+                                and candidate.scoring_breakdown
+                                else None
+                            ),
                         )
                     )
 
@@ -544,12 +550,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     allocated=True,
                     allocated_room=candidate.sala,
                     final_score=candidate.score,
-                    scoring_breakdown=(
-                        getattr(candidate, "scoring_breakdown", None).__dict__
-                        if hasattr(candidate, "scoring_breakdown")
-                        and candidate.scoring_breakdown
-                        else None
-                    ),
+                    scoring_breakdown=candidate.scoring_breakdown,
                     candidates_evaluated=[candidate],
                     decision_reason=f"Successfully allocated in atomic phase with score {candidate.score}",
                 )

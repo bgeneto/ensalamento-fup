@@ -232,6 +232,9 @@ class AutonomousAllocationReportService:
         # Phase-by-phase analysis with success metrics
         story.extend(self._build_phase_analysis(allocation_results))
 
+        # Detailed allocation decisions with scoring breakdowns
+        story.extend(self._build_detailed_allocation_decisions(allocation_decisions))
+
         # Candidate fallback analysis - How many tries per demand
         story.extend(self._build_candidate_fallback_analysis(allocation_decisions))
 
@@ -1065,6 +1068,272 @@ class AutonomousAllocationReportService:
         content.append(Spacer(1, 15))
 
         return content
+
+    def _build_detailed_allocation_decisions(
+        self, decisions: List[Dict[str, Any]]
+    ) -> List[Any]:
+        """Build detailed allocation decisions section with comprehensive scoring breakdowns."""
+        content = []
+
+        content.append(
+            Paragraph(
+                "DECISÕES DE ALOCAÇÃO DETALHADAS COM ANÁLISE DE PONTUAÇÃO",
+                self.styles["SectionHeader"],
+            )
+        )
+
+        # Get only allocated decisions with scoring information
+        allocated_decisions = [
+            d
+            for d in decisions
+            if d.get("allocated", False) and d.get("scoring_breakdown")
+        ]
+
+        if allocated_decisions:
+            content.append(
+                Paragraph(
+                    f"Análise detalhada de <b>{len(allocated_decisions)}</b> alocações realizadas",
+                    self.styles["Heading3"],
+                )
+            )
+
+            # Sort by final score descending to show best allocations first
+            allocated_decisions.sort(
+                key=lambda x: x.get("final_score", 0), reverse=True
+            )
+
+            # Show ALL allocations with detailed scoring
+            for i, decision in enumerate(allocated_decisions):
+                disciplina_codigo = decision.get("disciplina_codigo", "N/A")
+                disciplina_nome = decision.get("disciplina_nome", "N/A")
+                allocated_room = decision.get("allocated_room_name", "N/A")
+                final_score = decision.get("final_score", 0)
+                allocation_phase = decision.get("allocation_phase", "N/A")
+
+                # Discipline header
+                content.append(
+                    Paragraph(
+                        f"<b>{disciplina_codigo}</b> - {disciplina_nome[:60]}{'...' if len(disciplina_nome) > 60 else ''}",
+                        self.styles["DecisionHeader"],
+                    )
+                )
+
+                # Allocation summary
+                allocation_summary = f"""
+                <b>Sala Alocada:</b> {allocated_room}<br/>
+                <b>Pontuação Final:</b> {final_score} pontos<br/>
+                <b>Fase de Alocação:</b> {allocation_phase}<br/>
+                <b>Turma:</b> {decision.get('turma', 'N/A')}<br/>
+                <b>Professor:</b> {decision.get('professores', 'N/A')[:50]}{'...' if len(decision.get('professores', '')) > 50 else ''}
+                """
+
+                content.append(Paragraph(allocation_summary, self.styles["Normal"]))
+
+                # Detailed scoring breakdown
+                scoring_breakdown = decision.get("scoring_breakdown", {})
+
+                if scoring_breakdown:
+                    content.append(Spacer(1, 5))
+                    content.append(
+                        Paragraph(
+                            "<b>🔍 Detalhamento da Pontuação:</b>",
+                            self.styles["Normal"],
+                        )
+                    )
+
+                    # Create scoring breakdown table
+                    breakdown_data = [
+                        ["FATOR", "PONTOS", "EXPLICAÇÃO"],
+                        [
+                            "Capacidade da Sala",
+                            str(scoring_breakdown.get("capacity_points", 0)),
+                            (
+                                "Sala adequada para o número de vagas"
+                                if scoring_breakdown.get("capacity_satisfied", False)
+                                else "Capacidade insuficiente"
+                            ),
+                        ],
+                        [
+                            "Regras Obrigatórias",
+                            str(scoring_breakdown.get("hard_rules_points", 0)),
+                            self._format_hard_rules_explanation(scoring_breakdown),
+                        ],
+                        [
+                            "Preferências Professor",
+                            str(scoring_breakdown.get("soft_preference_points", 0)),
+                            self._format_preferences_explanation(scoring_breakdown),
+                        ],
+                        [
+                            "Histórico de Uso",
+                            str(
+                                scoring_breakdown.get("historical_frequency_points", 0)
+                            ),
+                            f"{scoring_breakdown.get('historical_allocations', 0)} alocações anteriores nesta sala",
+                        ],
+                        [
+                            "TOTAL",
+                            str(final_score),
+                            "Pontuação final que determinou esta alocação",
+                        ],
+                    ]
+
+                    breakdown_table = Table(
+                        breakdown_data, colWidths=[50 * mm, 20 * mm, 70 * mm]
+                    )
+                    breakdown_table.setStyle(
+                        TableStyle(
+                            [
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+                                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                                ("FONTNAME", (0, 0), (-1, 0), get_table_header_font()),
+                                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                                ("FONTNAME", (0, 1), (-1, -2), get_table_cell_font()),
+                                ("FONTSIZE", (0, 1), (-1, -2), 7),
+                                ("ALIGN", (0, 1), (1, -2), "CENTER"),
+                                ("ALIGN", (2, 1), (2, -2), "LEFT"),
+                                ("VALIGN", (0, 1), (-1, -2), "MIDDLE"),
+                                # Total row styling
+                                ("BACKGROUND", (0, -1), (-1, -1), colors.lightyellow),
+                                (
+                                    "FONTNAME",
+                                    (0, -1),
+                                    (-1, -1),
+                                    get_table_header_font(),
+                                ),
+                                ("FONTSIZE", (0, -1), (-1, -1), 8),
+                            ]
+                        )
+                    )
+
+                    content.append(breakdown_table)
+
+                    # Decision reasoning
+                    content.append(Spacer(1, 5))
+                    content.append(
+                        Paragraph(
+                            "<b>💡 Por que esta sala foi escolhida:</b>",
+                            self.styles["Normal"],
+                        )
+                    )
+
+                    reasoning = self._generate_decision_reasoning(
+                        decision, scoring_breakdown
+                    )
+                    content.append(Paragraph(reasoning, self.styles["ScoreDetail"]))
+
+                content.append(Spacer(1, 10))
+
+                # Add page break every 3 allocations to avoid overcrowding
+                if (i + 1) % 3 == 0 and i < 19:
+                    content.append(PageBreak())
+
+            # Summary note - now showing all allocations
+            content.append(
+                Paragraph(
+                    f"<i>Análise completa de todas as {len(allocated_decisions)} alocações realizadas.</i>",
+                    self.styles["Normal"],
+                )
+            )
+
+        else:
+            content.append(
+                Paragraph(
+                    "ℹ️ Nenhuma decisão de alocação com informações de pontuação disponíveis.",
+                    self.styles["Normal"],
+                )
+            )
+
+        content.append(PageBreak())
+        return content
+
+    def _format_hard_rules_explanation(self, scoring_breakdown: Dict) -> str:
+        """Format explanation for hard rules satisfied."""
+        hard_rules_satisfied = scoring_breakdown.get("hard_rules_satisfied", [])
+
+        if not hard_rules_satisfied:
+            return "Nenhuma regra obrigatória atendida"
+
+        if len(hard_rules_satisfied) == 1:
+            return f"Regra atendida: {hard_rules_satisfied[0]}"
+        else:
+            return f"{len(hard_rules_satisfied)} regras obrigatórias atendidas"
+
+    def _format_preferences_explanation(self, scoring_breakdown: Dict) -> str:
+        """Format explanation for professor preferences satisfied."""
+        soft_preferences_satisfied = scoring_breakdown.get(
+            "soft_preferences_satisfied", []
+        )
+
+        if not soft_preferences_satisfied:
+            return "Nenhuma preferência atendida"
+
+        if len(soft_preferences_satisfied) == 1:
+            return f"Preferência atendida: {soft_preferences_satisfied[0]}"
+        else:
+            return f"{len(soft_preferences_satisfied)} preferências atendidas"
+
+    def _generate_decision_reasoning(
+        self, decision: Dict, scoring_breakdown: Dict
+    ) -> str:
+        """Generate human-readable reasoning for why this allocation was chosen."""
+        reasoning_parts = []
+
+        final_score = decision.get("final_score", 0)
+        allocation_phase = decision.get("allocation_phase", "")
+
+        # Phase-based reasoning
+        if allocation_phase == "hard_rules":
+            reasoning_parts.append(
+                "• Alocação obrigatória por regras específicas da disciplina"
+            )
+        elif allocation_phase == "atomic_allocation":
+            reasoning_parts.append(
+                "• Alocação por pontuação inteligente após avaliação de múltiplas opções"
+            )
+
+        # Score-based reasoning
+        if final_score >= 15:
+            reasoning_parts.append(
+                "• Pontuação excelente - combinação ideal de fatores"
+            )
+        elif final_score >= 10:
+            reasoning_parts.append(
+                "• Boa pontuação - equilíbrio entre capacidade e preferências"
+            )
+        elif final_score >= 5:
+            reasoning_parts.append("• Pontuação adequada - foco em capacidade básica")
+        else:
+            reasoning_parts.append(
+                "• Pontuação baixa - alocação necessária apesar de limitações"
+            )
+
+        # Factor-specific insights
+        hard_points = scoring_breakdown.get("hard_rules_points", 0)
+        if hard_points > 0:
+            reasoning_parts.append(
+                f"• Regras obrigatórias contribuíram com {hard_points} pontos"
+            )
+
+        pref_points = scoring_breakdown.get("soft_preference_points", 0)
+        if pref_points > 0:
+            reasoning_parts.append(
+                f"• Preferências do professor contribuíram com {pref_points} pontos"
+            )
+
+        hist_points = scoring_breakdown.get("historical_frequency_points", 0)
+        if hist_points > 0:
+            hist_count = scoring_breakdown.get("historical_allocations", 0)
+            reasoning_parts.append(
+                f"• Histórico de {hist_count} usos anteriores nesta sala"
+            )
+
+        capacity_satisfied = scoring_breakdown.get("capacity_satisfied", False)
+        if capacity_satisfied:
+            reasoning_parts.append("• Capacidade da sala adequada para a demanda")
+
+        return "\n".join(reasoning_parts)
 
     def _build_allocation_decisions(self, decisions: List[Dict[str, Any]]) -> List[Any]:
         """Build detailed allocation decisions section."""

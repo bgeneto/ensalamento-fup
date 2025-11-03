@@ -55,6 +55,7 @@ class AllocationCandidate:
     professor_id: Optional[int] = None
     atomic_blocks: List[Tuple[str, int]] = None
     conflicts_found: bool = False
+    scoring_breakdown: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.atomic_blocks is None:
