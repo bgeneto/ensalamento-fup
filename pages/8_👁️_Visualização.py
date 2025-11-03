@@ -544,6 +544,7 @@ try:
                                 selected_semestre, f"Semestre {selected_semestre}"
                             ),
                             selected_room_id=room_id_for_pdf,
+                            portrait_mode=portrait_mode,
                         )
 
                         # Create download button
@@ -592,6 +593,14 @@ try:
 
                     with st.expander("🔍 Detalhes do erro"):
                         st.code(traceback.format_exc())
+
+            # Portrait mode checkbox
+            portrait_mode = st.checkbox(
+                "📄 Modo Retrato",
+                value=False,
+                help="Gera relatório em orientação retrato A4 (padrão: paisagem)",
+                key="portrait_mode_checkbox",
+            )
 
         with col2:
             # Statistics Report Generation

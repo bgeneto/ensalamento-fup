@@ -42,7 +42,7 @@ class PDFReportService:
             ParagraphStyle(
                 name="RoomTitle",
                 parent=self.styles["Heading1"],
-                fontSize=11,
+                fontSize=12,
                 textColor=colors.HexColor("#1f4788"),
                 spaceAfter=3,
                 spaceBefore=0,
@@ -56,8 +56,8 @@ class PDFReportService:
             ParagraphStyle(
                 name="CellContent",
                 parent=self.styles["Normal"],
-                fontSize=6,
-                leading=7,
+                fontSize=8,
+                leading=9,
                 alignment=TA_LEFT,
                 fontName="Helvetica",
                 leftIndent=1,
@@ -70,8 +70,8 @@ class PDFReportService:
             ParagraphStyle(
                 name="TimeSlot",
                 parent=self.styles["Normal"],
-                fontSize=6,
-                leading=7,
+                fontSize=8,
+                leading=9,
                 alignment=TA_CENTER,
                 fontName="Helvetica-Bold",
             )
@@ -82,7 +82,7 @@ class PDFReportService:
             ParagraphStyle(
                 name="DayHeader",
                 parent=self.styles["Normal"],
-                fontSize=7,
+                fontSize=9,
                 alignment=TA_CENTER,
                 fontName="Helvetica-Bold",
                 textColor=colors.white,
@@ -94,6 +94,7 @@ class PDFReportService:
         room_allocations: Dict[int, Dict[str, Any]],
         semester_name: str,
         selected_room_id: Optional[int] = None,
+        portrait_mode: bool = False,
     ) -> bytes:
         """
         Generate PDF report for room allocations.
@@ -108,12 +109,30 @@ class PDFReportService:
         """
         buffer = io.BytesIO()
 
-        # Create PDF document in landscape orientation with minimal margins
+        # Set page size and margins based on orientation
+        if portrait_mode:
+            page_size = A4  # Portrait A4
+            # Portrait A4 = 210mm width - 16mm margins = 194mm available (same as landscape)
+            # Time column: 20mm (increased for better time display), Day columns: (194-20)/6 = 29mm each
+            right_margin = 8 * mm
+            left_margin = 8 * mm
+            time_col_width = 20 * mm
+            day_col_width = 29 * mm
+        else:
+            page_size = landscape(A4)  # Landscape A4 (default)
+            # Landscape A4 = 297mm width - 16mm margins = 281mm available
+            # Time column: 17mm, Day columns: (281-17)/6 = 44.0mm each
+            right_margin = 8 * mm
+            left_margin = 8 * mm
+            time_col_width = 17 * mm
+            day_col_width = 44.0 * mm
+
+        # Create PDF document
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=landscape(A4),
-            rightMargin=8 * mm,
-            leftMargin=8 * mm,
+            pagesize=page_size,
+            rightMargin=right_margin,
+            leftMargin=left_margin,
             topMargin=5 * mm,
             bottomMargin=5 * mm,
             title=f"Ensalamento {semester_name}",
@@ -152,13 +171,10 @@ class PDFReportService:
             table_data = self._build_schedule_table(allocations)
 
             if table_data:
-                # Create table with optimized column widths
-                # IMPORTANT: Check rightMargin and leftMargin in doc settings above to ensure correct calculation
-                # Landscape A4 = 297mm width - 16mm margins = 281mm available
-                # Time column: 17mm, Day columns: (281-17)/6 = 44.0 mm each
+                # Create table with optimized column widths based on orientation
                 table = Table(
                     table_data,
-                    colWidths=[17 * mm] + [44.0 * mm] * 6,  # Optimized for A4 landscape
+                    colWidths=[time_col_width] + [day_col_width] * 6,
                     repeatRows=1,  # Repeat header row on each page
                 )
 
@@ -176,14 +192,14 @@ class PDFReportService:
                             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
                             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                            ("FONTSIZE", (0, 0), (-1, 0), 7),
+                            ("FONTSIZE", (0, 0), (-1, 0), 9),
                             ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                             ("TOPPADDING", (0, 0), (-1, 0), 4),
                             # Time column styling (first column)
                             ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#e8eaf6")),
                             ("ALIGN", (0, 1), (0, -1), "CENTER"),
                             ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
-                            ("FONTSIZE", (0, 1), (0, -1), 6),
+                            ("FONTSIZE", (0, 1), (0, -1), 8),
                             # All cells - minimal padding
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
                             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
