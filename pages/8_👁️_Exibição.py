@@ -408,6 +408,20 @@ try:
                 key="predio_filter",
             )
 
+            # Clear filters button with empty label for alignment
+            def clear_filters():
+                st.session_state.predio_filter = "all"
+                st.session_state.entity_filter = "all"
+
+            if st.button(
+                "🔄 Limpar Filtros",
+                help="Limpa os filtros de prédio e sala",
+                key="clear_filters",
+                on_click=clear_filters,
+                use_container_width=True,
+            ):
+                pass  # The on_click callback handles the clearing
+
         with col2:
             selected_entity = st.selectbox(
                 "🚪 Sala:",
@@ -417,21 +431,6 @@ try:
                 ),
                 key="entity_filter",
             )
-
-            # Clear filters button with empty label for alignment
-            def clear_filters():
-                st.session_state.predio_filter = "all"
-                st.session_state.entity_filter = "all"
-
-            st.markdown("&nbsp;", unsafe_allow_html=True)  # Empty space for alignment
-            if st.button(
-                "🔄 Limpar Filtros",
-                help="Limpa os filtros de prédio e sala",
-                key="clear_filters",
-                on_click=clear_filters,
-                use_container_width=True,
-            ):
-                pass  # The on_click callback handles the clearing
 
         # Show reservations only if checkbox is checked
         # show_reservations = st.checkbox(
@@ -598,7 +597,7 @@ try:
             # Statistics Report Generation
             if st.button(
                 "📈 Gerar Estatísticas",
-                help="Gera relatório estatístico completo (Executive Summary + Utilização + Heatmap)",
+                help="Gera relatório estatístico completo",
                 key="generate_statistics_report",
             ):
                 try:

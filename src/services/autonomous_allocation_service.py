@@ -763,12 +763,7 @@ class AutonomousAllocationService:
                     break
 
             candidate.score = room_score
-
-            # Add historical frequency bonus (RF-006.6)
-            frequency_bonus = self._calculate_historical_frequency_bonus(
-                demanda.codigo_disciplina, room.id, semester_id
-            )
-            candidate.score += frequency_bonus
+            # Note: Historical frequency bonus is already included in room_score from RoomScoringService
 
             candidates.append(candidate)
 
@@ -805,30 +800,7 @@ class AutonomousAllocationService:
 
         return prefs
 
-    def _calculate_historical_frequency_bonus(
-        self, disciplina_codigo: str, sala_id: int, exclude_semester_id: int
-    ) -> int:
-        """
-        Calculate historical frequency bonus (RF-006.6).
-
-        Returns bonus points based on how many times this discipline has been
-        allocated to this room in previous semesters.
-
-        Args:
-            disciplina_codigo: Discipline code to look up history for
-            sala_id: Room ID to check frequency with
-            exclude_semester_id: Current semester to exclude from history
-
-        Returns:
-            int: Bonus points (1 point per historical allocation)
-        """
-        # Find all alocacoes_semestrais for this discipline in other semesters
-        frequency = self.alocacao_repo.get_discipline_room_frequency(
-            disciplina_codigo, sala_id, exclude_semester_id
-        )
-
-        return frequency  # Direct 1:1 bonus points
-
+    
     def _check_allocation_conflicts(
         self, candidate: AllocationCandidate, semester_id: int
     ) -> List[Dict]:

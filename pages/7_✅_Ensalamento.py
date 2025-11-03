@@ -193,8 +193,8 @@ with col1:
             "🧠 Executando alocação autônoma. Isso pode levar alguns minutos..."
         ):
             with get_db_session() as session:
-                from src.services.autonomous_allocation_service import (
-                    AutonomousAllocationService,
+                from src.services.optimized_autonomous_allocation_service import (
+                    OptimizedAutonomousAllocationService as AutonomousAllocationService,
                 )
 
                 autonomous_service = AutonomousAllocationService(session)
@@ -217,16 +217,23 @@ with col1:
                             ttl=8,
                         )
                     else:
+                        # Store PDF report in session state for download
+                        if "pdf_report" in result:
+                            st.session_state["autonomous_allocation_pdf"] = result["pdf_report"]
+                            st.session_state["autonomous_allocation_pdf_filename"] = result.get("pdf_filename", "relatorio_alocacao.pdf")
+
                         # Full allocation results
                         allocations_done = result["allocations_completed"]
                         total_real_conflicts = (
                             result["phase1_hard_rules"]["conflicts"]
                             + result["phase3_atomic_allocation"]["conflicts"]
                         )
+                        execution_time = result.get("execution_time", 0)
+
                         set_session_feedback(
                             "autonomous_allocation_result",
                             True,
-                            f"Alocação autônoma concluída: {allocations_done} alocações realizadas",
+                            f"Alocação autônoma concluída: {allocations_done} alocações realizadas em {execution_time:.2f}s",
                             ttl=10,
                         )
 
@@ -245,6 +252,20 @@ with col2:
         index=0,  # Default to "all"
         key="demandas_filter",
     )
+
+    # Show download button if PDF report is available from previous allocation
+    if st.session_state.get("autonomous_allocation_pdf"):
+        pdf_data = st.session_state["autonomous_allocation_pdf"]
+        pdf_filename = st.session_state.get("autonomous_allocation_pdf_filename", "relatorio_alocacao.pdf")
+
+        st.download_button(
+            label="📄 Relatório PDF da Alocação",
+            data=pdf_data,
+            file_name=pdf_filename,
+            mime="application/pdf",
+            help="Baixe o relatório detalhado em PDF com todas as decisões de alocação",
+            type="primary"
+        )
 
 
 # ============================================================================

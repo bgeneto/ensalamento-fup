@@ -297,9 +297,13 @@ class ManualAllocationService:
         - Historical frequency bonus (RF-006.6)
         - Semester-isolated conflict detection
         """
-        # Use the shared advanced scoring service
+        # Use the shared advanced scoring service with professor override for consistency
+        # Lookup professor information first to match autonomous allocation behavior
+        professor_map = self.scoring_service._lookup_professors_for_demands_from_objects([self.demanda_repo.get_by_id(demanda_id)])
+        professor_override = professor_map.get(demanda_id)
+        
         candidates = self.scoring_service.score_room_candidates_for_demand(
-            demanda_id, semester_id
+            demanda_id, semester_id, professor_override=professor_override
         )
 
         # Convert candidates to RoomSuggestion format for compatibility
