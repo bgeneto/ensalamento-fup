@@ -28,6 +28,7 @@ from src.repositories.regra import RegraRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.semestre import SemestreRepository
+from src.config.scoring_config import SCORING_WEIGHTS, calculate_enrollment_priority
 from src.utils.sigaa_parser import SigaaScheduleParser
 from src.utils.room_utils import get_room_occupancy
 from src.services.manual_allocation_service import ManualAllocationService
@@ -601,23 +602,23 @@ class AutonomousAllocationService:
             # Priority scoring: specific room constraints get highest priority
             priority_score = hard_rules_count * 10
             if has_specific_room:
-                priority_score += 50  # Must allocate specific rooms first
+                priority_score += SCORING_WEIGHTS.PRIORITY_SPECIFIC_ROOM_REQUIRED
             if has_professor:
                 # Check if professor has mobility constraints
                 prof_name = demanda.professores_disciplina.strip()
                 professor = self.prof_repo.get_by_nome_completo(prof_name)
                 if professor and not professor.tem_baixa_mobilidade:
-                    priority_score += 5  # Professors with mobility constraints
+                    priority_score += SCORING_WEIGHTS.PRIORITY_MOBILITY_CONSTRAINTS
             
             # Add course-level priority (graduate courses often need better rooms)
             curso_codigo = getattr(demanda, 'codigo_curso', '')
             if curso_codigo:
                 # Graduate courses (typically starting with 'P' or high numbers)
                 if curso_codigo.startswith('P') or any(c.isdigit() and int(c) >= 6 for c in curso_codigo if c.isdigit()):
-                    priority_score += 15
+                    priority_score += SCORING_WEIGHTS.PRIORITY_ROOM_PREFERENCES
                 # Laboratory courses need specific equipment
                 if any(term in getattr(demanda, 'nome_disciplina', '').lower() for term in ['laboratório', 'lab', 'prático']):
-                    priority_score += 20
+                    priority_score += SCORING_WEIGHTS.PRIORITY_CHARACTERISTIC_PREFERENCES
 
             priorities.append(
                 DemandPriority(

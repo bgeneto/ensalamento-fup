@@ -242,6 +242,7 @@ def seed_db():
             {"nome": "2024-2", "status": 0},
             {"nome": "2025-1", "status": 0},
             {"nome": "2025-2", "status": 0},
+            {"nome": "2026-1", "status": 1},
         ]
 
         for semestre_data in semestres_data:
@@ -323,6 +324,7 @@ def seed_db():
             {"nome": "Auditório"},
             {"nome": "Sala de Aula"},
             {"nome": "Laboratório"},
+            {"nome": "Laboratório de Ensino"},
             {"nome": "Laboratório de Física e Geologia"},
             {"nome": "Laboratório de Química"},
             {"nome": "Laboratório de Biologia"},
@@ -360,6 +362,7 @@ def seed_db():
             {"nome": "Computadores"},
             {"nome": "Equipamento de Som"},
             {"nome": "Mesas Redondas"},
+            {"nome": "TV"},
         ]
 
         for carac_data in caracteristicas_data:
@@ -691,6 +694,23 @@ def seed_db():
                 "andar": 0,
                 "tipo_sala": "Laboratório",
                 "predio_id": 2,
+                "caracteristicas": [],
+            },
+            {
+                "nome": "AT-54/9",
+                "descricao": "LAPEC 2",
+                "capacidade": 20,
+                "andar": 0,
+                "tipo_sala": "Laboratório de Ensino",
+                "predio_id": 1,
+                "caracteristicas": ["TV", "Ventilador"],
+            },
+            {
+                "nome": "AT-44/56",
+                "capacidade": 25,
+                "andar": 0,
+                "tipo_sala": "Sala de Aula",
+                "predio_id": 1,
                 "caracteristicas": [],
             },
         ]

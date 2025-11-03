@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from src.config.scoring_config import SCORING_WEIGHTS, SCORING_RULES, get_scoring_breakdown_template
+
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.regra import RegraRepository
@@ -196,7 +198,7 @@ class RoomScoringService:
         # 1. Capacity check (basic requirement)
         if room.capacidade and room.capacidade >= demanda.vagas_disciplina:
             score.meets_capacity = True
-            score.total_score += 1
+            score.total_score += SCORING_WEIGHTS.CAPACITY_ADEQUATE
 
         # 2. Hard rules compliance (highest priority: 4 points each)
         hard_compliant = True
@@ -207,7 +209,7 @@ class RoomScoringService:
                     hard_compliant = False
                     violations.append(f"Regra dura violada: {rule.descricao}")
                 else:
-                    score.total_score += 4
+                    score.total_score += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
 
         score.hard_rules_compliant = hard_compliant
 
@@ -222,7 +224,7 @@ class RoomScoringService:
         # Room preferences
         prof_room_prefs = professor_prefs.get("preferred_rooms", [])
         if room.id in prof_room_prefs:
-            soft_score += 2
+            soft_score += SCORING_WEIGHTS.PREFERRED_ROOM
             score.soft_preferences_compliant = True
 
         # Characteristic preferences
@@ -230,7 +232,7 @@ class RoomScoringService:
         room_chars = self._get_room_characteristics(room.id)
         for char_id in prof_char_prefs:
             if char_id in room_chars:
-                soft_score += 2
+                soft_score += SCORING_WEIGHTS.PREFERRED_CHARACTERISTIC
                 score.soft_preferences_compliant = True
                 break
 
@@ -258,7 +260,7 @@ class RoomScoringService:
 
         # 1. Capacity check (+1 point)
         if room.capacidade and room.capacidade >= demanda.vagas_disciplina:
-            breakdown.capacity_points = 1
+            breakdown.capacity_points = SCORING_WEIGHTS.CAPACITY_ADEQUATE
             breakdown.capacity_satisfied = True
         else:
             breakdown.capacity_points = 0
@@ -272,7 +274,7 @@ class RoomScoringService:
             if rule.prioridade == 0:  # Hard rule
                 compliance = self._check_rule_compliance(room, demanda, rule)
                 if compliance:
-                    hard_point_total += 4
+                    hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
                     # Add descriptive rule name for UI
                     hard_rules_satisfied_list.append(self._get_rule_description(rule))
                 else:
@@ -298,7 +300,7 @@ class RoomScoringService:
             # Room preferences
             prof_room_prefs = professor_prefs.get("preferred_rooms", [])
             if room.id in prof_room_prefs:
-                soft_point_total += 2
+                soft_point_total += SCORING_WEIGHTS.PREFERRED_ROOM
                 soft_preferences_satisfied_list.append("Sala preferida pelo professor")
 
             # Characteristic preferences
@@ -307,7 +309,7 @@ class RoomScoringService:
             for char_id in prof_char_prefs:
                 if char_id in room_chars:
                     char_name = self._get_characteristic_name(char_id)
-                    soft_point_total += 2
+                    soft_point_total += SCORING_WEIGHTS.PREFERRED_CHARACTERISTIC
                     soft_preferences_satisfied_list.append(
                         f"Característica preferida: {char_name}"
                     )
@@ -320,8 +322,8 @@ class RoomScoringService:
         historical_freq = self._calculate_historical_frequency_bonus(
             demanda.codigo_disciplina, room.id, semester_id
         )
-        # Cap historical frequency at maximum 3 points to ensure rules/preferences take priority
-        capped_historical_freq = min(historical_freq, 3)
+        # Cap historical frequency at maximum configured points to ensure rules/preferences take priority
+        capped_historical_freq = min(historical_freq, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
         breakdown.historical_frequency_points = capped_historical_freq
         breakdown.historical_allocations = historical_freq  # Store actual count for display
 
@@ -430,7 +432,7 @@ class RoomScoringService:
         frequency = self.alocacao_repo.get_discipline_room_frequency(
             disciplina_codigo, sala_id, exclude_semester_id
         )
-        return frequency  # Direct 1:1 bonus points
+        return frequency * SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
 
     def _lookup_professors_for_demands_from_objects(
         self, demands

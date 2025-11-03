@@ -26,14 +26,14 @@ The scoring system is implemented through three main components:
 
 The scoring system awards points across four main categories:
 
-#### 1. Capacity Score (+1 point)
+#### 1. Capacity Score (+{SCORING_WEIGHTS.CAPACITY_ADEQUATE} point)
 - **Requirement**: Room capacity ≥ Demand student count
-- **Points**: 1 point if capacity adequate, 0 if insufficient
+- **Points**: {SCORING_WEIGHTS.CAPACITY_ADEQUATE} point if capacity adequate, 0 if insufficient
 - **Purpose**: Basic requirement check for room size
 
-#### 2. Hard Rules Compliance (+4 points each)
+#### 2. Hard Rules Compliance (+{SCORING_WEIGHTS.HARD_RULE_COMPLIANCE} points each)
 - **Priority**: Rule priority = 0 (hard rules)
-- **Points**: 4 points per satisfied hard rule
+- **Points**: {SCORING_WEIGHTS.HARD_RULE_COMPLIANCE} points per satisfied hard rule
 - **Failure Cascades**: If ANY hard rule fails, scores 0 for hard rules AND soft preferences are not checked
 - **Rule Types**:
 
@@ -43,16 +43,17 @@ The scoring system awards points across four main categories:
   | `DISCIPLINA_SALA`           | Must use specific room            | "Room B203 only"                |
   | `DISCIPLINA_CARACTERISTICA` | Must have specific characteristic | "Projector required"            |
 
-#### 3. Professor Preferences (+2 points each category)
+#### 3. Professor Preferences (+{SCORING_WEIGHTS.PREFERRED_ROOM} points each category)
 - **Priority**: Only checked if hard rules pass
-- **Points**: 2 points per satisfied preference category
+- **Points**: {SCORING_WEIGHTS.PREFERRED_ROOM} points per satisfied preference category
 - **Categories**:
   - **Room Preferences**: Professor's preferred room (must match exactly)
   - **Characteristic Preferences**: Professor's preferred room characteristics (any match counts)
 
-#### 4. Historical Frequency Bonus (+1 point per allocation)
+#### 4. Historical Frequency Bonus (+{SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION} point per allocation)
 - **Algorithm**: RF-006.6 - Direct bonus for previous allocations
-- **Points**: 1 point × number of times this discipline was allocated to this room in previous semesters
+- **Points**: {SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION} point × number of times this discipline was allocated to this room in previous semesters
+- **Capped at**: {SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP} points maximum
 - **Purpose**: Continuity and room familiarity
 
 ### Total Score Calculation

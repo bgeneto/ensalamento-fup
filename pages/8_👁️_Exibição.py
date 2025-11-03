@@ -345,12 +345,14 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
 
 st.title("📅 Visualização do Ensalamento")
 st.markdown(
-    "Visualize o ensalamento semestral consolidado para o semestre selecionado abaixo."
+    "Visualize o ensalamento semestral consolidado para o semestre desejado."
 )
 
 # ============================================================================
 # FILTERS AND CONTROLS
 # ============================================================================
+
+st.subheader("🔎 Filtrar Exibição do Ensalamento")
 
 try:
     with get_db_session() as session:
@@ -382,6 +384,7 @@ try:
 
         # Create filter options
         salas_options = {s.id: f"{s.predio.nome}: {s.nome}" for s in salas_orm}
+        predios_options = {p.id: p.nome for p in session.query(Predio).all()}
 
         col1, col2 = st.columns(2)
 
@@ -396,6 +399,15 @@ try:
                 key="semester_display_exibicao",
             )
 
+            selected_predio = st.selectbox(
+                "🏢 Prédio:",
+                options=["all"] + list(predios_options.keys()),
+                format_func=lambda x: (
+                    "Todas os prédios" if x == "all" else predios_options.get(x, f"ID {x}")
+                ),
+                key="predio_filter",
+            )
+
         with col2:
             selected_entity = st.selectbox(
                 "🚪 Sala:",
@@ -405,6 +417,19 @@ try:
                 ),
                 key="entity_filter",
             )
+
+            # Clear filters button
+            def clear_filters():
+                st.session_state.predio_filter = "all"
+                st.session_state.entity_filter = "all"
+
+            if st.button(
+                "🔄 Limpar Filtros",
+                help="Limpa os filtros de prédio e sala",
+                key="clear_filters",
+                on_click=clear_filters,
+            ):
+                pass  # The on_click callback handles the clearing
 
         # Show reservations only if checkbox is checked
         # show_reservations = st.checkbox(
@@ -432,8 +457,17 @@ try:
             room_allocations = {}
             for alloc in allocacoes:
                 room_id = alloc.sala_id
+
+                # Apply entity filter (specific room)
                 if selected_entity != "all" and room_id != selected_entity:
                     continue
+
+                # Apply building filter (selected_predio)
+                if selected_predio != "all":
+                    # Get the room to check its building
+                    room = next((s for s in salas_orm if s.id == room_id), None)
+                    if room and room.predio_id != selected_predio:
+                        continue
 
                 if room_id not in room_allocations:
                     room_allocations[room_id] = {
@@ -446,8 +480,17 @@ try:
             # Group reservations by room
             for reserva in reservas:
                 room_id = reserva.sala_id
+
+                # Apply entity filter (specific room)
                 if selected_entity != "all" and room_id != selected_entity:
                     continue
+
+                # Apply building filter (selected_predio)
+                if selected_predio != "all":
+                    # Get the room to check its building
+                    room = next((s for s in salas_orm if s.id == room_id), None)
+                    if room and room.predio_id != selected_predio:
+                        continue
 
                 if room_id not in room_allocations:
                     room_allocations[room_id] = {
