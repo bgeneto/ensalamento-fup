@@ -74,6 +74,11 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             )
             self.decision_logger.log_phase_summary("hard_rules", phase1_result.__dict__)
 
+            # ✅ Commit Phase 1 allocations to ensure fresh conflict checks in Phase 3
+            if not dry_run:
+                self.session.commit()
+                logger.info("Phase 1 allocations committed to database")
+
             # Get remaining demands - REFRESH after phase 1 allocations
             remaining_demands = self.manual_service.get_unallocated_demands(semester_id)
             logger.info(
@@ -97,6 +102,11 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             self.decision_logger.log_phase_summary(
                 "atomic_allocation", phase3_result.__dict__
             )
+
+            # ✅ Commit Phase 3 allocations
+            if not dry_run:
+                self.session.commit()
+                logger.info("Phase 3 allocations committed to database")
 
             # Compile final results - count only new allocations made in this session
             execution_time = time.time() - start_time
@@ -413,66 +423,116 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         semester_id: int,
         dry_run: bool,
     ) -> PhaseResult:
-        """Optimized atomic allocation phase with batch operations and logging."""
+        """Optimized atomic allocation phase with FRESH conflict checks.
+
+        This method performs a batch conflict check against CURRENT DB state
+        (after Phase 1 allocations) to ensure accurate conflict detection.
+        The conflict map is updated incrementally as each demand is allocated.
+        """
         result = PhaseResult()
 
-        # Sort all demands by score (highest first)
-        sorted_demands = []
+        # Sort all candidates by score for prioritization
+        # Keep ALL candidates per demand (not just top 1) to enable fallback
+        demands_with_candidates = {}
         for demanda_id, candidates in phase2_candidates.items():
             if candidates:
                 # Sort candidates by score for this demand
                 candidates.sort(key=lambda c: c.score, reverse=True)
-                sorted_demands.append(
-                    (demanda_id, candidates[0])
-                )  # Take best candidate
+                demands_with_candidates[demanda_id] = candidates
 
-        # Sort all demands by best score
-        sorted_demands.sort(key=lambda x: x[1].score, reverse=True)
+        # Sort demands by their best candidate score
+        sorted_demand_ids = sorted(
+            demands_with_candidates.keys(),
+            key=lambda did: demands_with_candidates[did][0].score,
+            reverse=True,
+        )
 
         logger.info(
-            f"Attempting atomic allocation for {len(sorted_demands)} scored demands"
-        )
-
-        # Batch: Get current room occupancy for optimization
-        all_room_ids = list(set(candidate.sala.id for _, candidate in sorted_demands))
-        room_occupancy = self.optimized_alocacao_repo.get_room_occupancy_batch(
-            all_room_ids, semester_id
-        )
-
-        # Re-sort by score then occupancy (highest first for optimization)
-        sorted_demands.sort(
-            key=lambda x: (x[1].score, room_occupancy.get(x[1].sala.id, 0)),
-            reverse=True,
+            f"Attempting atomic allocation for {len(sorted_demand_ids)} scored demands"
         )
 
         allocation_attempts = []
 
-        for demanda_id, best_candidate in sorted_demands:
+        for demanda_id in sorted_demand_ids:
             # Get demand details for logging
             demanda = self.demanda_repo.get_by_id(demanda_id)
             if not demanda:
                 continue
 
-            # No need to re-check conflicts - Phase 2 already filtered out conflicting candidates
-            # This prevents race conditions where previous allocations in this phase affect subsequent ones
-            
-            if not dry_run:
-                success = self._allocate_atomic_blocks_optimized(
-                    best_candidate, semester_id
+            candidates = demands_with_candidates[demanda_id]
+            allocation_success = False
+
+            # ✅ CRITICAL FIX: Try ALL candidates for this demand until one succeeds
+            # Original version tries multiple candidates; optimized was only trying 1
+            for candidate in candidates:
+                # Build slots for this specific candidate
+                slots = [
+                    (candidate.sala.id, dia_sigaa, bloco_codigo)
+                    for bloco_codigo, dia_sigaa in candidate.atomic_blocks
+                ]
+
+                # ✅ Fresh conflict check for THIS candidate against CURRENT DB state
+                fresh_conflict_check = (
+                    self.optimized_alocacao_repo.check_conflicts_batch(
+                        slots, semester_id
+                    )
                 )
-                if success:
-                    result.allocations_completed += 1
-                    allocation_attempts.append(
-                        (demanda, best_candidate, True, None)
+                has_conflicts = any(
+                    fresh_conflict_check.get(slot, False) for slot in slots
+                )
+
+                if has_conflicts:
+                    # Try next candidate for this demand
+                    result.conflicts_found += 1
+                    logger.debug(
+                        f"Candidate {candidate.sala.nome} for {demanda.codigo_disciplina} has conflicts, trying next..."
                     )
+                    continue
+
+                # No conflicts - try to allocate
+                if not dry_run:
+                    success = self._allocate_atomic_blocks_optimized(
+                        candidate, semester_id
+                    )
+                    if success:
+                        result.allocations_completed += 1
+                        allocation_attempts.append((demanda, candidate, True, None))
+                        allocation_success = True
+                        logger.debug(
+                            f"Successfully allocated {demanda.codigo_disciplina} to room {candidate.sala.nome} (score: {candidate.score})"
+                        )
+                        break  # Success - move to next demand
+                    else:
+                        # Allocation failed - try next candidate
+                        logger.debug(
+                            f"Allocation failed for {candidate.sala.nome}, trying next candidate..."
+                        )
+                        continue
                 else:
-                    allocation_attempts.append(
-                        (demanda, best_candidate, False, "Allocation failed")
+                    # Dry run - just count as successful (no DB operations)
+                    result.allocations_completed += 1
+                    allocation_attempts.append((demanda, candidate, True, None))
+                    allocation_success = True
+                    logger.debug(
+                        f"[DRY RUN] Would allocate {demanda.codigo_disciplina} to room {candidate.sala.nome}"
                     )
-            else:
-                # Dry run - just count as successful
-                result.allocations_completed += 1
-                allocation_attempts.append((demanda, best_candidate, True, None))
+                    break
+
+            # If no candidates worked, record the failure
+            if not allocation_success:
+                best_candidate = candidates[0]
+                allocation_attempts.append(
+                    (
+                        demanda,
+                        best_candidate,
+                        False,
+                        f"All {len(candidates)} candidates had conflicts or failed allocation",
+                    )
+                )
+                result.demands_skipped += 1
+                logger.debug(
+                    f"Could not allocate {demanda.codigo_disciplina} - all {len(candidates)} candidates exhausted"
+                )
 
         # Log all allocation decisions
         for demanda, candidate, success, failure_reason in allocation_attempts:
@@ -504,9 +564,11 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     skipped_reason=failure_reason,
                 )
 
-        result.total_demands_processed = len(sorted_demands)
+        result.total_demands_processed = len(sorted_demand_ids)
         result.success_rate = (
-            result.allocations_completed / len(sorted_demands) if sorted_demands else 0
+            result.allocations_completed / len(sorted_demand_ids)
+            if sorted_demand_ids
+            else 0
         )
 
         return result

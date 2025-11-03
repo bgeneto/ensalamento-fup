@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 
 from src.config.database import get_db_session
-from src.config.scoring_config import calculate_enrollment_priority
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.alocacao import AlocacaoRepository
@@ -334,9 +333,10 @@ def _sort_demands_by_priority(demandas, allocation_info_map) -> List:
         # Unallocated - calculate priority
         score = 100  # Base score for unallocated
 
-        # High enrollment gets higher priority
+        # High enrollment gets higher priority (up to +20 points)
+        # Formula: +1 point per 10 students, capped at 20
         vagas = getattr(demanda, "vagas_disciplina", 0)
-        enrollment_priority = calculate_enrollment_priority(vagas)
+        enrollment_priority = min((vagas // 10), 20)
 
         # Laboratory courses get priority
         discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()

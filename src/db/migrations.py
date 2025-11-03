@@ -288,7 +288,7 @@ def seed_db():
             },
             {
                 "nome": "UEP",
-                "descricao": "Edifício Cora Coralina",
+                "descricao": "Edifício Ana Maria Primavesi",
                 "id": 2,
                 "campus_nome": "FUP",  # Reference by campus name instead of campus.id
             },
@@ -324,7 +324,6 @@ def seed_db():
             {"nome": "Auditório"},
             {"nome": "Sala de Aula"},
             {"nome": "Laboratório"},
-            {"nome": "Laboratório de Ensino"},
             {"nome": "Laboratório de Física e Geologia"},
             {"nome": "Laboratório de Química"},
             {"nome": "Laboratório de Biologia"},
@@ -332,6 +331,7 @@ def seed_db():
             {"nome": "Laboratório de Informática"},
             {"nome": "Laboratório de Matemática"},
             {"nome": "Laboratório de Linguagens e Artes"},
+            {"nome": "Laboratório de Ensino"},
         ]
 
         tipo_sala_ref = None
@@ -850,21 +850,32 @@ def seed_db():
             professor.tem_baixa_mobilidade = True
             print("  ✓ Updated professor id=20: tem_baixa_mobilidade = True")
 
-        # Seed rule for FUP0246 to use room AT-22/7
-        regra_data = {
-            "id": 1,
-            "descricao": "🔒 Obrigatório: Disciplina FUP0246 deve usar Laboratório de Química",
-            "tipo_regra": "DISCIPLINA_TIPO_SALA",
-            "config_json": '{"codigo_disciplina": "FUP0246", "tipo_sala_id": 5}',
-            "prioridade": 0,
-        }
-        existing_regra = (
-            session.query(Regra).filter(Regra.id == regra_data["id"]).first()
-        )
-        if not existing_regra:
-            regra = Regra(**regra_data)
-            session.add(regra)
-            print(f"  ✓ Added rule: {regra_data['descricao']}")
+        # Seed rules for specific disciplines
+        regras_data = [
+            {
+                "id": 1,
+                "descricao": "🔒 Obrigatório: Disciplina FUP0246 deve usar Laboratório de Química",
+                "tipo_regra": "DISCIPLINA_TIPO_SALA",
+                "config_json": '{"codigo_disciplina": "FUP0246", "tipo_sala_id": 5}',
+                "prioridade": 0,
+            },
+            {
+                "id": 2,
+                "descricao": "🔒 Obrigatório: Disciplina LIP0174 deve usar Laboratório de Linguagens e Artes",
+                "tipo_regra": "DISCIPLINA_TIPO_SALA",
+                "config_json": '{"codigo_disciplina": "LIP0174", "tipo_sala_id": 10}',
+                "prioridade": 0,
+            },
+        ]
+
+        for regra_data in regras_data:
+            existing_regra = (
+                session.query(Regra).filter(Regra.id == regra_data["id"]).first()
+            )
+            if not existing_regra:
+                regra = Regra(**regra_data)
+                session.add(regra)
+                print(f"  ✓ Added rule: {regra_data['descricao']}")
 
         session.commit()
         print("✅ Database seeding completed successfully")

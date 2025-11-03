@@ -299,9 +299,13 @@ class ManualAllocationService:
         """
         # Use the shared advanced scoring service with professor override for consistency
         # Lookup professor information first to match autonomous allocation behavior
-        professor_map = self.scoring_service._lookup_professors_for_demands_from_objects([self.demanda_repo.get_by_id(demanda_id)])
+        professor_map = (
+            self.scoring_service._lookup_professors_for_demands_from_objects(
+                [self.demanda_repo.get_by_id(demanda_id)]
+            )
+        )
         professor_override = professor_map.get(demanda_id)
-        
+
         candidates = self.scoring_service.score_room_candidates_for_demand(
             demanda_id, semester_id, professor_override=professor_override
         )
@@ -317,21 +321,41 @@ class ManualAllocationService:
             if not demanda:
                 continue
 
-            # Get hard rules compliance (for RoomSuggestion format)
-            hard_rules = self.regra_repo.find_rules_by_disciplina(
-                demanda.codigo_disciplina
+            # ✅ Trust scoring service results instead of re-checking rules
+            # The scoring service already validated hard rules compliance
+            hard_compliant = (
+                bool(candidate.scoring_breakdown.hard_rules_satisfied)
+                if candidate.scoring_breakdown
+                else True
             )
-            hard_rules = [r for r in hard_rules if r.prioridade == 0]
 
-            hard_compliant = True
+            # Build violation messages from scoring breakdown
             rule_violations = []
+            if (
+                candidate.scoring_breakdown
+                and not candidate.scoring_breakdown.hard_rules_satisfied
+            ):
+                # Get rules that were NOT satisfied
+                hard_rules = self.regra_repo.find_rules_by_disciplina(
+                    demanda.codigo_disciplina
+                )
+                hard_rules = [r for r in hard_rules if r.prioridade == 0]
 
-            for rule in hard_rules:
-                if not self._manual_check_rule_compliance(
-                    demanda, candidate.sala, rule
+                # If hard_rules_satisfied is empty list, all rules failed
+                if (
+                    isinstance(candidate.scoring_breakdown.hard_rules_satisfied, list)
+                    and not candidate.scoring_breakdown.hard_rules_satisfied
                 ):
-                    hard_compliant = False
-                    rule_violations.append(f"Regra dura violada: {rule.descricao}")
+                    for rule in hard_rules:
+                        # Only add violations if description exists and has content
+                        if rule.descricao and rule.descricao.strip():
+                            # Avoid duplicate prefix if already in description
+                            if rule.descricao.startswith("🔒 Obrigatório:"):
+                                rule_violations.append(rule.descricao)
+                            else:
+                                rule_violations.append(
+                                    f"🔒 Obrigatório: {rule.descricao}"
+                                )
 
             # Generate detailed scoring breakdown for UI display
             breakdown_data = None
@@ -417,7 +441,15 @@ class ManualAllocationService:
         )
 
     def _manual_check_rule_compliance(self, demanda, room, rule) -> bool:
-        """Check rule compliance for RoomSuggestion creation."""
+        """
+        [DEPRECATED] Check rule compliance for RoomSuggestion creation.
+
+        ⚠️ This method is no longer used. Rule compliance is now checked by
+        RoomScoringService._check_rule_compliance() to avoid duplicate logic
+        and data inconsistency issues.
+
+        Kept for backward compatibility but should be removed in future refactor.
+        """
         import json
 
         try:

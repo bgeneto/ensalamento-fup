@@ -28,7 +28,7 @@ from src.repositories.regra import RegraRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.semestre import SemestreRepository
-from src.config.scoring_config import SCORING_WEIGHTS, calculate_enrollment_priority
+from src.config.scoring_config import SCORING_WEIGHTS
 from src.utils.sigaa_parser import SigaaScheduleParser
 from src.utils.room_utils import get_room_occupancy
 from src.services.manual_allocation_service import ManualAllocationService
@@ -490,7 +490,13 @@ class AutonomousAllocationService:
             if phase2_candidates and demanda_id in phase2_candidates:
                 valid_candidates = phase2_candidates[demanda_id]
                 # Sort by score descending, then by room occupancy (highest first for optimization)
-                valid_candidates.sort(key=lambda c: (c.score, get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id)), reverse=True)
+                valid_candidates.sort(
+                    key=lambda c: (
+                        c.score,
+                        get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id),
+                    ),
+                    reverse=True,
+                )
 
                 # Try top candidates first
                 allocation_success = False
@@ -540,7 +546,15 @@ class AutonomousAllocationService:
 
                     if valid_candidates:
                         # Sort by score and try top candidates (with room occupancy optimization)
-                        valid_candidates.sort(key=lambda c: (c.score, get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id)), reverse=True)
+                        valid_candidates.sort(
+                            key=lambda c: (
+                                c.score,
+                                get_room_occupancy(
+                                    self.alocacao_repo, c.sala.id, semester_id
+                                ),
+                            ),
+                            reverse=True,
+                        )
 
                         allocation_success = False
                         for candidate in valid_candidates[:3]:  # Try top 3
@@ -609,16 +623,23 @@ class AutonomousAllocationService:
                 professor = self.prof_repo.get_by_nome_completo(prof_name)
                 if professor and not professor.tem_baixa_mobilidade:
                     priority_score += SCORING_WEIGHTS.PRIORITY_MOBILITY_CONSTRAINTS
-            
+
             # Add course-level priority (graduate courses often need better rooms)
-            curso_codigo = getattr(demanda, 'codigo_curso', '')
+            curso_codigo = getattr(demanda, "codigo_curso", "")
             if curso_codigo:
                 # Graduate courses (typically starting with 'P' or high numbers)
-                if curso_codigo.startswith('P') or any(c.isdigit() and int(c) >= 6 for c in curso_codigo if c.isdigit()):
+                if curso_codigo.startswith("P") or any(
+                    c.isdigit() and int(c) >= 6 for c in curso_codigo if c.isdigit()
+                ):
                     priority_score += SCORING_WEIGHTS.PRIORITY_ROOM_PREFERENCES
                 # Laboratory courses need specific equipment
-                if any(term in getattr(demanda, 'nome_disciplina', '').lower() for term in ['laboratório', 'lab', 'prático']):
-                    priority_score += SCORING_WEIGHTS.PRIORITY_CHARACTERISTIC_PREFERENCES
+                if any(
+                    term in getattr(demanda, "nome_disciplina", "").lower()
+                    for term in ["laboratório", "lab", "prático"]
+                ):
+                    priority_score += (
+                        SCORING_WEIGHTS.PRIORITY_CHARACTERISTIC_PREFERENCES
+                    )
 
             priorities.append(
                 DemandPriority(
@@ -716,7 +737,6 @@ class AutonomousAllocationService:
 
         return professor_map
 
-    
     def _score_room_candidates_for_demand(
         self, demanda: Any, professor: Optional[Professor], semester_id: int
     ) -> List[AllocationCandidate]:
@@ -800,7 +820,6 @@ class AutonomousAllocationService:
 
         return prefs
 
-    
     def _check_allocation_conflicts(
         self, candidate: AllocationCandidate, semester_id: int
     ) -> List[Dict]:

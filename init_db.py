@@ -12,6 +12,7 @@ Usage:
 
 import sys
 import argparse
+import subprocess
 from pathlib import Path
 
 # Add src to path
@@ -28,6 +29,40 @@ def check_admin_users():
     with get_db_session() as session:
         admins = session.query(Usuario).filter(Usuario.role == "admin").all()
         print(f"  Found {len(admins)} admin users:")
+
+
+def load_historical_allocations():
+    """Load historical allocations from CSV files."""
+    print("\n📂 Loading historical allocations...")
+
+    allocations = [
+        ("./docs/Ensalamento Oferta 1-2024.csv", "2024-1", []),
+        ("./docs/Ensalamento Oferta 2-2024.csv", "2024-2", []),
+        ("./docs/Ensalamento Oferta 1-2025.csv", "2025-1", []),
+        ("./docs/Ensalamento Oferta 2-2025.csv", "2025-2", ["--disable-allocation"]),
+    ]
+
+    for csv_file, semester, extra_args in allocations:
+        csv_path = Path(__file__).parent / csv_file
+        if not csv_path.exists():
+            print(f"  ⚠️  File not found: {csv_path}")
+            continue
+
+        cmd = [
+            sys.executable,
+            "load_historical_allocations.py",
+            str(csv_path),
+            "--semester",
+            semester,
+        ] + extra_args
+
+        print(f"  Loading {csv_file} for semester {semester}...")
+        try:
+            result = subprocess.run(cmd, cwd=str(Path(__file__).parent), check=True)
+            print(f"  ✅ Loaded {csv_file}")
+        except subprocess.CalledProcessError as e:
+            print(f"  ❌ Failed to load {csv_file}: {e}")
+            raise
 
 
 def main():
@@ -77,6 +112,10 @@ def main():
             from src.db.migrations import run_sql_migrations
 
             run_sql_migrations(str(Path(__file__).parent / "src" / "db" / "migrations"))
+
+        # Load historical allocations after seeding
+        if args.seed or args.all:
+            load_historical_allocations()
 
         # Show admin users if they should exist
         if not args.drop and (args.init or args.all or args.seed):

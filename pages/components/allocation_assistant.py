@@ -200,9 +200,9 @@ def _render_room_suggestion_card(
                             st.markdown("**Regras Obrigatórias:**")
                             hard_rules = breakdown.get("hard_rules_satisfied", [])
                             if hard_rules:
-                                rules_details = "<br>• ".join(hard_rules)
+                                rules_details = " • ".join(hard_rules)
                                 st.success(
-                                    f"✅ Atendidas (+{breakdown.get('hard_rules_points', 0)})<br>• {rules_details}"
+                                    f"✅ Atendidas (+{breakdown.get('hard_rules_points', 0)}) • {rules_details}"
                                 )
                             else:
                                 st.error(
@@ -213,9 +213,9 @@ def _render_room_suggestion_card(
                             st.markdown("**Preferências Professor:**")
                             soft_prefs = breakdown.get("soft_preferences_satisfied", [])
                             if soft_prefs:
-                                prefs_details = "<br>• ".join(soft_prefs)
+                                prefs_details = " • ".join(soft_prefs)
                                 st.success(
-                                    f"✅ Atendidas (+{breakdown.get('soft_preference_points', 0)})<br>• {prefs_details}"
+                                    f"✅ Atendidas (+{breakdown.get('soft_preference_points', 0)}) • {prefs_details}"
                                 )
                             else:
                                 st.info(
@@ -242,9 +242,24 @@ def _render_room_suggestion_card(
                     # Fallback to simple motivation display
                     st.caption(suggestion.motivation_reason)
 
-            # Show rule violations
+            # Show rule violations - filter out empty or incomplete strings
             if suggestion.rule_violations:
-                st.warning("⚠️ Violações: " + "; ".join(suggestion.rule_violations))
+                # Filter violations: must have content beyond just the prefix
+                valid_violations = []
+                for v in suggestion.rule_violations:
+                    if not v or not v.strip():
+                        continue
+                    v_stripped = v.strip()
+                    # Skip if it's just the prefix without actual content
+                    if v_stripped in ["🔒 Obrigatório:", "⚠️", "❌"]:
+                        continue
+                    # Skip if it ends with colon/emoji and has no text after
+                    if v_stripped.endswith(":") and len(v_stripped) < 20:
+                        continue
+                    valid_violations.append(v_stripped)
+
+                if valid_violations:
+                    st.warning("⚠️ Violações: " + "; ".join(valid_violations))
 
         with col2:
             button_key = f"alloc_{suggestion.sala_id}"

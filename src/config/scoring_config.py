@@ -20,7 +20,7 @@ class ScoringWeights:
     CAPACITY_ADEQUATE: int = 4
 
     # Hard rules compliance
-    HARD_RULE_COMPLIANCE: int = 8
+    HARD_RULE_COMPLIANCE: int = 20
 
     # Professor preferences
     PREFERRED_ROOM: int = 4
@@ -28,17 +28,7 @@ class ScoringWeights:
 
     # Historical frequency
     HISTORICAL_FREQUENCY_PER_ALLOCATION: int = 1
-    HISTORICAL_FREQUENCY_MAX_CAP: int = 8
-
-    # Autonomous allocation priority scoring
-    PRIORITY_SPECIFIC_ROOM_REQUIRED: int = 50
-    PRIORITY_MOBILITY_CONSTRAINTS: int = 5
-    PRIORITY_ROOM_PREFERENCES: int = 15
-    PRIORITY_CHARACTERISTIC_PREFERENCES: int = 20
-
-    # Queue priority (enrollment-based)
-    ENROLLMENT_PRIORITY_PER_10_STUDENTS: int = 1
-    ENROLLMENT_PRIORITY_MAX: int = 20
+    HISTORICAL_FREQUENCY_MAX_CAP: int = 12
 
 
 @dataclass
@@ -50,9 +40,6 @@ class ScoringRules:
 
     # Historical frequency applies across all previous semesters
     HISTORICAL_EXCLUDE_CURRENT_SEMESTER: bool = True
-
-    # Enrollment priority calculation
-    ENROLLMENT_PRIORITY_DIVISOR: int = 10
 
 
 # Global instances
@@ -69,13 +56,3 @@ def get_scoring_breakdown_template() -> Dict[str, int]:
         "historical_frequency_points": 0,
         "total_score": 0,
     }
-
-
-def calculate_enrollment_priority(vagas: int) -> int:
-    """Calculate enrollment priority using configured rules."""
-    return min(
-        vagas
-        // SCORING_RULES.ENROLLMENT_PRIORITY_DIVISOR
-        * SCORING_WEIGHTS.ENROLLMENT_PRIORITY_PER_10_STUDENTS,
-        SCORING_WEIGHTS.ENROLLMENT_PRIORITY_MAX,
-    )

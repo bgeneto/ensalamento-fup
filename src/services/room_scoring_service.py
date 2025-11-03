@@ -10,15 +10,22 @@ Provides unified scoring algorithm for room-demand compatibility with:
 Used by both ManualAllocationService and AutonomousAllocationService for consistency.
 """
 
+import logging
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from src.config.scoring_config import SCORING_WEIGHTS, SCORING_RULES, get_scoring_breakdown_template
+from src.config.scoring_config import (
+    SCORING_WEIGHTS,
+    SCORING_RULES,
+    get_scoring_breakdown_template,
+)
 
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
+
+logger = logging.getLogger(__name__)
 from src.repositories.regra import RegraRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
@@ -158,7 +165,7 @@ class RoomScoringService:
                 if not scoring_breakdown.capacity_satisfied:
                     candidate.rule_violations.append("Capacidade insuficiente")
                 if not scoring_breakdown.hard_rules_satisfied:
-                    candidate.rule_violations.append("Regras duras não atendidas")
+                    candidate.rule_violations.append("Regras rígidas não atendidas")
 
             # Check for conflicts within the specified semester
             conflicts = self._check_allocation_conflicts_semester_isolated(
@@ -169,18 +176,28 @@ class RoomScoringService:
             candidates.append(candidate)
 
         # Sort by score (highest first), then by conflict status, then by room occupancy (highest first for optimization)
-        candidates.sort(key=lambda c: (c.score, not c.has_conflicts, get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id)), reverse=True)
-        
+        candidates.sort(
+            key=lambda c: (
+                c.score,
+                not c.has_conflicts,
+                get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id),
+            ),
+            reverse=True,
+        )
+
         # Debug: Log when room occupancy optimization affects sorting
         if len(candidates) >= 2:
             top_score = candidates[0].score
             second_score = candidates[1].score
             if top_score == second_score:
                 import logging
+
                 logger = logging.getLogger(__name__)
-                logger.debug(f"Room occupancy optimization applied for demand {candidates[0].sala.id}: "
-                           f"Room {candidates[0].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[0].sala.id, semester_id)}) "
-                           f"vs Room {candidates[1].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[1].sala.id, semester_id)})")
+                logger.debug(
+                    f"Room occupancy optimization applied for demand {candidates[0].sala.id}: "
+                    f"Room {candidates[0].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[0].sala.id, semester_id)}) "
+                    f"vs Room {candidates[1].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[1].sala.id, semester_id)})"
+                )
 
         return candidates
 
@@ -207,7 +224,7 @@ class RoomScoringService:
                 compliance = self._check_rule_compliance(room, demanda, rule)
                 if not compliance:
                     hard_compliant = False
-                    violations.append(f"Regra dura violada: {rule.descricao}")
+                    violations.append(f"Regra rígida violada: {rule.descricao}")
                 else:
                     score.total_score += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
 
@@ -241,7 +258,6 @@ class RoomScoringService:
 
         return score
 
-
     def _calculate_detailed_scoring_breakdown(
         self,
         room: Sala,
@@ -273,6 +289,14 @@ class RoomScoringService:
         for rule in hard_rules:
             if rule.prioridade == 0:  # Hard rule
                 compliance = self._check_rule_compliance(room, demanda, rule)
+
+                # Debug logging
+                logger.debug(
+                    f"Hard rule check: {rule.descricao} | "
+                    f"Room: {room.nome} (tipo_sala_id={room.tipo_sala_id}) | "
+                    f"Compliant: {compliance}"
+                )
+
                 if compliance:
                     hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
                     # Add descriptive rule name for UI
@@ -281,16 +305,12 @@ class RoomScoringService:
                     # For hard rules, if any fails, no points and no soft preferences checked
                     hard_point_total = 0
                     hard_rules_satisfied_list = []
-                    breakdown.hard_rules_satisfied = False
+                    # Don't set to False here - let it be set after loop
                     break
 
         breakdown.hard_rules_points = hard_point_total
-        breakdown.hard_rules_satisfied = (
-            len(hard_rules_satisfied_list) > 0 if hard_rules else True
-        )
-        breakdown.hard_rules_satisfied = (
-            hard_rules_satisfied_list  # Store list of rule names
-        )
+        # Store list of satisfied rule names (empty list means failed, non-empty means satisfied)
+        breakdown.hard_rules_satisfied = hard_rules_satisfied_list
 
         # 3. Professor preferences (+2 points each category, but only if hard rules pass)
         soft_point_total = 0
@@ -323,9 +343,13 @@ class RoomScoringService:
             demanda.codigo_disciplina, room.id, semester_id
         )
         # Cap historical frequency at maximum configured points to ensure rules/preferences take priority
-        capped_historical_freq = min(historical_freq, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+        capped_historical_freq = min(
+            historical_freq, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP
+        )
         breakdown.historical_frequency_points = capped_historical_freq
-        breakdown.historical_allocations = historical_freq  # Store actual count for display
+        breakdown.historical_allocations = (
+            historical_freq  # Store actual count for display
+        )
 
         # Calculate total
         breakdown.total_score = (
@@ -346,22 +370,49 @@ class RoomScoringService:
 
             if rule.tipo_regra == "DISCIPLINA_TIPO_SALA":
                 required_type_id = config.get("tipo_sala_id")
-                return room.tipo_sala_id == required_type_id
+                result = room.tipo_sala_id == required_type_id
+                logger.debug(
+                    f"Rule check DISCIPLINA_TIPO_SALA: {rule.descricao} | "
+                    f"Room {room.nome} tipo_sala_id={room.tipo_sala_id} | "
+                    f"Required tipo_sala_id={required_type_id} | "
+                    f"Match: {result}"
+                )
+                return result
 
             elif rule.tipo_regra == "DISCIPLINA_SALA":
                 required_room_id = config.get("sala_id")
-                return room.id == required_room_id
+                result = room.id == required_room_id
+                logger.debug(
+                    f"Rule check DISCIPLINA_SALA: {rule.descricao} | "
+                    f"Room id={room.id} | Required room_id={required_room_id} | "
+                    f"Match: {result}"
+                )
+                return result
 
             elif rule.tipo_regra == "DISCIPLINA_CARACTERISTICA":
                 required_char = config.get("caracteristica_nome")
                 room_chars = self._get_room_characteristics(room.id)
                 char_names = [self._get_characteristic_name(cid) for cid in room_chars]
-                return required_char in char_names
+                result = required_char in char_names
+                logger.debug(
+                    f"Rule check DISCIPLINA_CARACTERISTICA: {rule.descricao} | "
+                    f"Room {room.nome} chars={char_names} | "
+                    f"Required char={required_char} | "
+                    f"Match: {result}"
+                )
+                return result
 
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(
+                f"Rule compliance check failed for {rule.descricao}: {e} | "
+                f"config_json={rule.config_json}"
+            )
             return False
 
-        return True
+        logger.warning(
+            f"Unknown rule type: {rule.tipo_regra} for rule {rule.descricao}"
+        )
+        return False
 
     def _check_allocation_conflicts_semester_isolated(
         self, candidate: RoomCandidate, semester_id: int
