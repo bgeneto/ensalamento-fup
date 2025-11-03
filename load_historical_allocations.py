@@ -104,6 +104,8 @@ class CSVAllocator:
             "demandas_created": 0,
             "conflicts_skipped": 0,
             "errors": 0,
+            "critical_errors": 0,  # Database failures, invalid data
+            "non_critical_errors": 0,  # Missing rooms, conflicts, etc.
         }
 
     def get_semestre(self):
@@ -359,6 +361,7 @@ class CSVAllocator:
                     self.stats["reservas_created"] += 1
                 except Exception as e:
                     print(f"  ❌ Error creating reserva: {e}")
+                    self.stats["critical_errors"] += 1
                     self.stats["errors"] += 1
             else:
                 print(f"    [DRY RUN] Would create reserva: {allocation.titulo_evento}")
@@ -402,6 +405,7 @@ class CSVAllocator:
                     self.stats["allocations_created"] += 1
                 except Exception as e:
                     print(f"  ❌ Error creating allocation: {e}")
+                    self.stats["critical_errors"] += 1
                     self.stats["errors"] += 1
             else:
                 print(
@@ -424,6 +428,7 @@ class CSVAllocator:
         match = re.match(r"^(\d+)([MTN])(\d+)$", time_slot)
         if not match:
             print(f"  ⚠️ Invalid time slot format: {time_slot}")
+            self.stats["non_critical_errors"] += 1
             self.stats["errors"] += 1
             return
 
@@ -438,6 +443,7 @@ class CSVAllocator:
         dia_obj = self.dia_repo.get_by_id_sigaa(dia_sigaa)
         if not dia_obj:
             print(f"  ⚠️ Day {dia_sigaa} not found")
+            self.stats["non_critical_errors"] += 1
             self.stats["errors"] += 1
             return
 
@@ -462,6 +468,7 @@ class CSVAllocator:
             sala_orm = self.session.query(Sala).filter(Sala.nome == sala_nome).first()
             if not sala_orm:
                 print(f"  ⚠️ Room {sala_nome} not found")
+                self.stats["non_critical_errors"] += 1
                 self.stats["errors"] += 1
                 continue
             sala = self.sala_repo.orm_to_dto(sala_orm)
@@ -692,6 +699,7 @@ class CSVAllocator:
                         demanda_id_map[(codigo, turma)] = demanda.id
                     except Exception as e:
                         print(f"  ❌ Error creating demanda {codigo} T{turma}: {e}")
+                        self.stats["critical_errors"] += 1
                         self.stats["errors"] += 1
                 else:
                     print(f"    [DRY RUN] Would create demanda: {codigo} T{turma}")
@@ -758,7 +766,10 @@ class CSVAllocator:
             print(f"Reservas created: {self.stats['reservas_created']}")
             print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
         print(f"Demandas created: {self.stats['demandas_created']}")
-        print(f"Errors: {self.stats['errors']}")
+        if self.stats['errors'] > 0:
+            print(f"Errors: {self.stats['errors']} (Critical: {self.stats['critical_errors']}, Non-critical: {self.stats['non_critical_errors']})")
+        else:
+            print("Errors: 0")
 
         # After processing all rows, log unallocated demandas
         print("\n🔍 Checking for unallocated demandas...")
@@ -793,13 +804,24 @@ class CSVAllocator:
         else:
             print("✅ All demandas have allocations.")
 
-        if not self.dry_run and self.stats["errors"] == 0:
-            self.session.commit()
-            print("✅ All changes committed to database")
+        if not self.dry_run:
+            if self.stats["critical_errors"] == 0:
+                # Commit successful work even if there are non-critical errors
+                self.session.commit()
+                if self.stats["errors"] == 0:
+                    print("✅ All changes committed to database")
+                else:
+                    print(f"⚠️ Changes committed with {self.stats['non_critical_errors']} non-critical errors")
+                    print("   (Missing rooms, conflicts, etc. - allocations for valid rooms were saved)")
+            else:
+                # Rollback on critical errors
+                self.session.rollback()
+                print(f"❌ Critical errors occurred ({self.stats['critical_errors']}), all changes rolled back")
         elif self.dry_run:
             print("📋 Dry run completed (no database changes)")
 
-        return self.stats["errors"] == 0
+        # Return success only if no critical errors
+        return self.stats["critical_errors"] == 0
 
 
 def main():
