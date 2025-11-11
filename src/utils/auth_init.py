@@ -12,18 +12,16 @@ import streamlit as st
 
 def require_auth_or_redirect():
     """
-    Check if user is authenticated. If not, show error and redirect instructions.
+    Check if user is authenticated. If not, redirect to login page.
 
     This should be called at the TOP of every page (before page_config).
-    Returns True if authenticated, stops execution if not.
+    Returns True if authenticated, redirects if not.
     """
     auth_status = st.session_state.get("authentication_status")
 
     # If authentication_status is None or False, user is not authenticated
     if auth_status is not True:
-        st.error("❌ Acesso negado. Faça login primeiro.")
-        st.info("👈 Volte à página inicial (Home) no menu lateral para fazer login.")
-        st.stop()
+        st.switch_page("0_🔓_Login.py")
         return False
 
     return True

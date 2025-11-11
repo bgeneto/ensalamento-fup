@@ -48,11 +48,6 @@ def initialize_page(
         authenticator = st.session_state.get("authenticator")
 
         if authenticator is None:
-            st.warning(
-                "👈 Por favor, faça login na página inicial para acessar o sistema."
-            )
-            st.page_link("0_🔓_Login.py", label="Voltar para o início ↩", icon="🏠")
-            # navigate back to main page where login widget is located
             st.switch_page("0_🔓_Login.py")
             return False
 
@@ -64,7 +59,7 @@ def initialize_page(
         try:
             authenticator.login(location="unrendered", key=auth_key)
         except Exception as exc:
-            st.error(f"❌ Erro de autenticação: {exc}")
+            st.switch_page("0_🔓_Login.py")
             return False
 
         auth_status = st.session_state.get("authentication_status")
@@ -81,16 +76,8 @@ def initialize_page(
             authenticator.logout(
                 location="sidebar", key=logout_key, use_container_width=True
             )
-        elif auth_status is False:
-            st.error("❌ Acesso negado.")
-            return False
         else:
-            # Not authenticated - redirect to main page
-            st.warning(
-                "👈 Por favor, faça login na página inicial para acessar o sistema."
-            )
-            st.page_link("0_🔓_Login.py", label="Voltar para o início ↩", icon="🏠")
-            # navigate back to main page where login widget is located
+            # Not authenticated - redirect to login page
             st.switch_page("0_🔓_Login.py")
             return False
 
