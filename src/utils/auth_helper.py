@@ -30,7 +30,7 @@ def require_auth():
 
             if auth_status is None:
                 # Authentication check hasn't been run yet
-                # This shouldn't happen if main.py ran the authenticator properly,
+                # This shouldn't happen if 0_🔓_Login.py ran the authenticator properly,
                 # but we handle it gracefully
                 st.warning(
                     "⏳ Inicializando autenticação... Por favor, recarregue a página."

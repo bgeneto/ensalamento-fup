@@ -146,14 +146,15 @@ def render_semester_selector(
     target = st.sidebar if use_sidebar else st
 
     # Render the selectbox with on_change callback
-    label = "📅 Seleção Global do Semestre:" if show_label else ""
+    # Always provide a non-empty label for accessibility, but hide it when show_label=False
+    label = "📅 Seleção Global do Semestre:" if show_label else "Semestre"
     selected_semester = target.selectbox(
         label=label,
         options=list(semester_options_dict.keys()),
         format_func=lambda x: semester_options_dict.get(x, f"Semestre {x}"),
         index=index,
         key=key,
-        label_visibility="visible" if show_label else "collapsed",
+        label_visibility="visible" if show_label else "hidden",
         on_change=_on_semester_change_callback,  # CRITICAL: Use callback for immediate detection
     )
 

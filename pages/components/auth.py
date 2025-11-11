@@ -15,6 +15,7 @@ def initialize_page(
     page_icon: str,
     layout: str = "wide",
     key_suffix: str = "",
+    requires_auth: bool = True,
 ) -> bool:
     """
     Initialize page with authentication and configuration.
@@ -24,9 +25,10 @@ def initialize_page(
         page_icon: Streamlit page icon (e.g., "🏠")
         layout: Streamlit layout, defaults to "wide"
         key_suffix: Unique suffix for this page's auth keys (e.g., "home", "professores")
+        requires_auth: Whether this page requires authentication (default: True)
 
     Returns:
-        bool: True if authentication succeeds, False otherwise (page should stop)
+        bool: True if authentication succeeds (or not required), False otherwise (page should stop)
 
     Example usage:
         if not initialize_page(
@@ -39,53 +41,58 @@ def initialize_page(
     """
 
     # ============================================================================
-    # AUTHENTICATION CHECK
+    # AUTHENTICATION CHECK (only if required)
     # ============================================================================
-    # Retrieve authenticator from session state (set by main.py)
-    authenticator = st.session_state.get("authenticator")
+    if requires_auth:
+        # Retrieve authenticator from session state (set by 0_🔓_Login.py)
+        authenticator = st.session_state.get("authenticator")
 
-    if authenticator is None:
-        st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-        st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-        # navigate back to main page where login widget is located
-        st.switch_page("main.py")
-        return False
+        if authenticator is None:
+            st.warning(
+                "👈 Por favor, faça login na página inicial para acessar o sistema."
+            )
+            st.page_link("0_🔓_Login.py", label="Voltar para o início ↩", icon="🏠")
+            # navigate back to main page where login widget is located
+            st.switch_page("0_🔓_Login.py")
+            return False
 
-    # Generate unique keys for this page
-    auth_key = f"authenticator-{key_suffix}"
-    logout_key = f"logout-{key_suffix}"
+        # Generate unique keys for this page
+        auth_key = f"authenticator-{key_suffix}"
+        logout_key = f"logout-{key_suffix}"
 
-    # Call login with unrendered location to maintain session (required for page refresh fix)
-    try:
-        authenticator.login(location="unrendered", key=auth_key)
-    except Exception as exc:
-        st.error(f"❌ Erro de autenticação: {exc}")
-        return False
+        # Call login with unrendered location to maintain session (required for page refresh fix)
+        try:
+            authenticator.login(location="unrendered", key=auth_key)
+        except Exception as exc:
+            st.error(f"❌ Erro de autenticação: {exc}")
+            return False
 
-    auth_status = st.session_state.get("authentication_status")
+        auth_status = st.session_state.get("authentication_status")
 
-    if auth_status:
-        # Show semester badge in sidebar
-        from pages.components.ui.semester_badge import show as show_semester_badge
+        if auth_status:
+            # Show semester badge in sidebar
+            from pages.components.ui.semester_badge import show as show_semester_badge
 
-        show_semester_badge()
+            show_semester_badge()
 
-        # st.sidebar.markdown("---")
+            # st.sidebar.markdown("---")
 
-        # Show logout button in sidebar
-        authenticator.logout(
-            location="sidebar", key=logout_key, use_container_width=True
-        )
-    elif auth_status is False:
-        st.error("❌ Acesso negado.")
-        return False
-    else:
-        # Not authenticated - redirect to main page
-        st.warning("👈 Por favor, faça login na página inicial para acessar o sistema.")
-        st.page_link("main.py", label="Voltar para o início ↩", icon="🏠")
-        # navigate back to main page where login widget is located
-        st.switch_page("main.py")
-        return False
+            # Show logout button in sidebar
+            authenticator.logout(
+                location="sidebar", key=logout_key, use_container_width=True
+            )
+        elif auth_status is False:
+            st.error("❌ Acesso negado.")
+            return False
+        else:
+            # Not authenticated - redirect to main page
+            st.warning(
+                "👈 Por favor, faça login na página inicial para acessar o sistema."
+            )
+            st.page_link("0_🔓_Login.py", label="Voltar para o início ↩", icon="🏠")
+            # navigate back to main page where login widget is located
+            st.switch_page("0_🔓_Login.py")
+            return False
 
     # ============================================================================
     # PAGE CONFIG
@@ -97,5 +104,5 @@ def initialize_page(
         layout=layout,
     )
 
-    # Authentication successful
+    # Authentication successful (or not required)
     return True

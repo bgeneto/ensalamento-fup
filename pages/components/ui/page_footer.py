@@ -18,7 +18,7 @@ def _get_footer_html() -> str:
     return f"""
     <div style="text-align: center; color: #999; font-size: 0.85rem; padding: 0rem 0;">
         <span><strong>{app_name}</strong></span><br>
-        <span>Versão {app_version} • Beta 1</span><br>
+        <span>Versão {app_version}</span><br>
         <span>© 2025-{year} bgeneto • Faculdade UnB Planaltina</span>
     </div>
     """

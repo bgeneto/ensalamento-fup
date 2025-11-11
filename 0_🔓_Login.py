@@ -1,7 +1,7 @@
 """
 Ensalamento FUP - Room Allocation Management System
 
-Main Streamlit application with authentication and multipage support.
+Main Streamlit application entrypoint (with authentication and multipage support).
 
 Features:
 - Admin-only authentication via streamlit-authenticator
@@ -160,20 +160,6 @@ def render_admin_menu(authenticator):
 
         # Logout button
         authenticator.logout(location="sidebar")
-
-        st.markdown("---")
-
-        # Footer
-        st.markdown(
-            """
-        <div style="text-align: center; color: #666; font-size: 0.8rem;">
-            <p><strong>Ensalamento FUP</strong></p>
-            <p>Sistema de Alocação de Salas</p>
-            <p style="color: #999; font-size: 0.7rem;">v1.0 • Phase 3 M2</p>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
 
 
 def render_home():
@@ -384,7 +370,7 @@ def main():
     """Main application entry point - handles authentication.
 
     Note: Streamlit automatically routes to pages/ after authentication.
-    This main.py only handles login/logout flow and initialization of authenticator.
+    This 0_🔓_Login.py only handles login/logout flow and initialization of authenticator.
 
     CRITICAL: The authenticator object must be stored in st.session_state
     so that it can be retrieved and used in all other pages (pages/ directory).
@@ -411,20 +397,9 @@ def main():
             st.markdown(f"*@{st.session_state.username}*")
             st.markdown("---")
             authenticator.logout(location="sidebar", key="logout-home")
-            st.markdown("---")
-            st.markdown(
-                """
-            <div style="text-align: center; color: #666; font-size: 0.8rem;">
-                <p><strong>Ensalamento FUP</strong></p>
-                <p>Sistema de Alocação de Salas</p>
-                <p style="color: #999; font-size: 0.7rem;">v1.0 • Phase 3 M2</p>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
 
         # For multipage apps, Streamlit automatically shows pages from pages/ directory
-        # This main.py becomes the home page (accessed via "Home" in sidebar)
+        # This 0_🔓_Login.py becomes the home page (accessed via "Home" in sidebar)
 
         st.markdown(
             f"""

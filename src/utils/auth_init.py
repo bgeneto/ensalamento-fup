@@ -3,7 +3,7 @@ Shared authentication utilities for all pages.
 
 This module provides utilities to check authentication status properly.
 The key insight: streamlit-authenticator maintains auth state in st.session_state
-from cookies. When main.py runs and calls authenticator.login(), it populates
+from cookies. When 0_🔓_Login.py runs and calls authenticator.login(), it populates
 st.session_state globally for all pages. Pages just need to check this state.
 """
 
