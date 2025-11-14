@@ -1,0 +1,22 @@
+reflex==0.8.19
+# Async support
+asyncio
+
+# Data processing libraries from existing system
+pandas
+requests
+
+# PDF generation (maintaining compatibility)
+reportlab
+
+# Date/time handling
+python-dateutil
+
+# Testing framework
+pytest
+pytest-asyncio
+pytest-cov
+
+# Development tools
+ruff
+pyright

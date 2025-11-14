@@ -14,12 +14,12 @@ This migration roadmap provides a detailed, step-by-step implementation plan for
 
 ### **🗄️ Database Architecture: SQLite3 Preserved**
 **Critical Decision:** All migration work preserves the existing **SQLite3 database architecture**. The Reflex implementation uses the exact same:
-- Database file: `data/scoring_config.json`
-- Schema structure: No changes to existing tables
+- Database file: `./ensalamento.db`
+- Schema structure: No changes to existing tables (see: `/docs/schema.sql`)
 - Connection patterns: Single-writer SQLite constraints maintained
 - Data integrity: All existing business logic preserved
 
-**Migration Promise:** Your database remains untouched. Both Streamlit and Reflex applications read/write to exactly the same SQLite3 database location.
+**Migration Promise:** Your database remains untouched. Both Streamlit and Reflex applications read/write to exactly the same SQLite3 database (db file can be copied to reflex directory if required).
 
 ### Current Architecture → Target Architecture
 
@@ -32,6 +32,7 @@ This migration roadmap provides a detailed, step-by-step implementation plan for
 | **User Feedback**    | `st.success()`/`st.error()` disappearing on rerun | Toast notifications with yield-based updates               |
 | **Business Logic**   | Direct service calls in pages                     | Wrapped async service calls in state methods               |
 | **File Structure**   | Flat page structure                               | Hierarchical component/state/service architecture          |
+| **UI Language**      | Portuguese (Brazil)                               | Portuguese (Brazil)                                        |
 
 ### Success Criteria
 
@@ -55,7 +56,7 @@ Establish Reflex project structure and core infrastructure following established
 
 ```bash
 # Create new directory structure
-ensalamento_reflex/
+ensalamento-reflex/
 ├── ensalamento_reflex/
 │   ├── __init__.py
 │   └── ensalamento_reflex.py  # Main app file
@@ -768,7 +769,7 @@ def sidebar_navigation() -> rx.Component:
     return rx.box(
         rx.vstack(
             # Logo/title
-            rx.heading("🎓 Ensalamento", size="md", padding="4"),
+            rx.heading("🎓 Ensalamento", size="6", padding="4"),
 
             # Navigation items
             navigation_item("Dashboard", "dashboard", "home"),
@@ -786,7 +787,7 @@ def sidebar_navigation() -> rx.Component:
                 rx.text(AuthState.display_name, font_weight="bold"),
                 rx.cond(
                     AuthState.is_logged_in,
-                    rx.button("Logout", on_click=AuthState.logout, size="sm")
+                    rx.button("Logout", on_click=AuthState.logout, size="4")
                 ),
                 padding="4",
                 spacing="2"
@@ -865,11 +866,11 @@ def stat_card(title: str, value: rx.Var | int | str, icon: str, color: str) -> r
     return rx.card(
         rx.vstack(
             rx.hstack(
-                rx.icon(icon, size=24, color=f"{color}.500"),
+                rx.icon(icon, size="6"4, color=f"{color}.500"),
                 rx.spacer(),
-                rx.heading(str(value), size="lg", color=f"{color}.600")
+                rx.heading(str(value), size="8", color=f"{color}.600")
             ),
-            rx.text(title, color="gray.600", font_size="sm"),
+            rx.text(title, color="gray.600", font_size="4"),
             align="start",
             spacing="2"
         ),
@@ -882,7 +883,7 @@ def recent_activity() -> rx.Component:
     """Recent activity feed"""
     return rx.card(
         rx.vstack(
-            rx.heading("Recent Activity", size="lg"),
+            rx.heading("Recent Activity", size="8"),
             rx.divider(),
 
             # Activity list (would come from state)
@@ -910,7 +911,7 @@ def activity_item(description: str, timestamp: str) -> rx.Component:
             margin_right="3"
         ),
         rx.vstack(
-            rx.text(description, font_size="sm"),
+            rx.text(description, font_size="4"),
             rx.text(timestamp, font_size="xs", color="gray.500"),
             align="start",
             spacing="0"
@@ -930,7 +931,7 @@ def room_management_table() -> rx.Component:
         rx.vstack(
             # Header with actions
             rx.hstack(
-                rx.heading("Room Inventory", size="lg"),
+                rx.heading("Room Inventory", size="8"),
                 rx.spacer(),
                 rx.button(
                     rx.icon("plus", size=16),
@@ -1021,7 +1022,7 @@ def room_action_button(action: str, room_id: int, label: str, color: str = "blue
     """Action button for room operations"""
     return rx.button(
         label,
-        size="sm",
+        size="4",
         color_scheme=color,
         variant="soft",
         on_click=lambda: RoomState.handle_room_action(action, room_id)
@@ -1037,7 +1038,7 @@ def pagination_controls() -> rx.Component:
         ),
         rx.text(
             f"Page {RoomState.page} of {RoomState.total_pages}",
-            font_size="sm"
+            font_size="4"
         ),
         rx.button(
             "Next",
@@ -1076,7 +1077,7 @@ def reservation_form_dialog() -> rx.Component:
                         ),
                         rx.cond(
                             ReservationState.form_title_error != "",
-                            rx.text(ReservationState.form_title_error, color="red", size="sm")
+                            rx.text(ReservationState.form_title_error, color="red", size="4")
                         ),
 
                         # Date and time
@@ -1137,7 +1138,7 @@ def reservation_form_dialog() -> rx.Component:
 def room_selector() -> rx.Component:
     """Room selection component with search"""
     return rx.vstack(
-        rx.heading("Select Room", size="sm"),
+        rx.heading("Select Room", size="4"),
         rx.select(
             # Would be populated from RoomState
             ["Room A1-01 (30 seats)", "Room A1-02 (25 seats)", "Auditorium (200 seats)"],
@@ -1151,13 +1152,13 @@ def room_selector() -> rx.Component:
             ReservationState.form_selected_room != "",
             rx.box(
                 rx.vstack(
-                    rx.heading("Room Details", size="sm"),
+                    rx.heading("Room Details", size="4"),
                     rx.text(f"Selected: {ReservationState.form_selected_room}"),
                     rx.text("Capacity: 30 seats"),
                     rx.text("Equipment: Projector, Whiteboard"),
                     padding="3",
                     bg="gray.50",
-                    border_radius="md"
+                    border_radius=6
                 ),
                 margin_top="2"
             )
@@ -1224,7 +1225,7 @@ def login_page() -> rx.Component:
     return rx.center(
         rx.card(
             rx.vstack(
-                rx.heading("🎓 Ensalamento FUP", size="xl"),
+                rx.heading("🎓 Ensalamento FUP", size="3"),
                 rx.text("Entre com suas credenciais", margin_bottom="4"),
 
                 # Login form
@@ -1305,14 +1306,14 @@ def error_display() -> rx.Component:
     return rx.center(
         rx.vstack(
             rx.icon("alert_triangle", size=64, color="red.500"),
-            rx.heading("Something went wrong", size="xl"),
+            rx.heading("Something went wrong", size="3"),
             rx.text(ErrorState.global_error_message, text_align="center"),
             rx.divider(),
 
             rx.cond(
                 ErrorState.show_error_details,
                 rx.box(
-                    rx.heading("Technical Details", size="md"),
+                    rx.heading("Technical Details", size="5"),
                     rx.code_block(
                         ErrorState.global_error_details,
                         language="text",

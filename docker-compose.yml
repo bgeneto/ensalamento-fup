@@ -18,11 +18,12 @@ services:
   reflex:
     build: ./reflex
     ports:
-      - "8000:8000"
+      - "8000:8000"  # Backend API
+      - "3000:3000"  # Frontend Next.js
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
-      - PYTHONPATH=/app/reflex
+      - PYTHONPATH=/app
     profiles: ["reflex"]
-    command: reflex run --port 8000 --host 0.0.0.0
+    command: python -m ensalamento_reflex.ensalamento_reflex

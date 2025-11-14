@@ -1,0 +1,24 @@
+{
+    "include": [
+        "ensalamento_reflex",
+        "core",
+        "tests"
+    ],
+    "exclude": [
+        "**/__pycache__",
+        "**/node_modules"
+    ],
+    "strict": [
+        "ensalamento_reflex",
+        "core"
+    ],
+    "reportMissingTypeStubs": "warning",
+    "reportUnknownParameterType": "warning",
+    "reportUnknownVariableType": "warning",
+    "reportUnknownMemberType": "warning",
+    "reportMissingSuperCall": "warning",
+    "reportConstantRedefinition": "error",
+    "pythonVersion": "3.12",
+    "pythonPlatform": "Linux",
+    "typeCheckingMode": "basic"
+}

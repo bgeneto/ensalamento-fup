@@ -78,7 +78,7 @@ rx.cond(
 ```python
 def header() -> rx.Component:
     return rx.box(
-        rx.heading("My App", size="lg"),
+        rx.heading("My App", size="9"),
         rx.hstack(
             navigation_links(),
             user_menu(),
@@ -130,7 +130,7 @@ def product_card(
 ) -> rx.Component:
     return rx.box(
         rx.image(src=image_url),
-        rx.heading(name, size="md"),
+        rx.heading(name, size="6"),
         rx.text(f"${price:.2f}"),
         rx.button(
             "Add to Cart",
@@ -224,7 +224,7 @@ rx.box(
 
 ```python
 rx.box(
-    rx.heading("Title", size={"base": "md", "lg": "xl"}),
+    rx.heading("Title", size={"base": "3", "8": "9"}),
     padding={"base": "1rem", "md": "2rem", "lg": "4rem"},
     width={"base": "100%", "md": "80%", "lg": "60%"},
     # Breakpoints: base (mobile), sm, md, lg, xl, 2xl
@@ -762,7 +762,7 @@ def contact_form():
         ),
         rx.cond(
             ContactFormState.name_error != "",
-            rx.text(ContactFormState.name_error, color="red", size="sm")
+            rx.text(ContactFormState.name_error, color="red", size="3")
         ),
         
         rx.input(
@@ -773,7 +773,7 @@ def contact_form():
         ),
         rx.cond(
             ContactFormState.email_error != "",
-            rx.text(ContactFormState.email_error, color="red", size="sm")
+            rx.text(ContactFormState.email_error, color="red", size="3")
         ),
         
         rx.text_area(
@@ -784,7 +784,7 @@ def contact_form():
         ),
         rx.cond(
             ContactFormState.message_error != "",
-            rx.text(ContactFormState.message_error, color="red", size="sm")
+            rx.text(ContactFormState.message_error, color="red", size="3")
         ),
         
         rx.button(
@@ -1099,7 +1099,7 @@ def chat_interface():
             lambda msg: rx.box(
                 rx.text(msg["username"], font_weight="bold"),
                 rx.text(msg["text"]),
-                rx.text(msg["timestamp"], size="sm", color="gray")
+                rx.text(msg["timestamp"], size="3", color="gray")
             )
         ),
         rx.input(
