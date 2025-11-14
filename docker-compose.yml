@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # Legacy Streamlit application (for comparison/testing)
+  streamlit-legacy:
+    build: ./streamlit-legacy
+    ports:
+      - "8501:8501"  # Different port than Reflex
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app/streamlit-legacy/src
+    profiles: ["legacy"]
+    command: streamlit run streamlit-legacy/0_🔓_Login.py --server.port 8501 --server.address 0.0.0.0
+
+  # New Reflex application
+  reflex:
+    build: ./reflex
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app/reflex
+    profiles: ["reflex"]
+    command: reflex run --port 8000 --host 0.0.0.0
