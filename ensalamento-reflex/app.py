@@ -1,67 +1,166 @@
 """Main Ensalamento Reflex application."""
 
 import reflex as rx
-from ensalamento_reflex.core.states.auth_state import AuthState
-from ensalamento_reflex.core.states.navigation_state import NavigationState
+from core.states.auth_state import AuthState
+from core.states.navigation_state import NavigationState
 
 
 def login_page() -> rx.Component:
-    """Login page component."""
-    return rx.center(
-        rx.card(
+    """Professional login page component following Reflex auth patterns."""
+    return rx.box(
+        # Background container
+        rx.vstack(
+            # Logo and title section
             rx.vstack(
-                # Header
-                rx.heading("🎓 Sistema de Ensalamento FUP", size="6"),
-                rx.text("Entre com suas credenciais", margin_bottom="6"),
-                # Login form
+                rx.heading("🎓", font_size="4xl", text_align="center"),
+                rx.heading(
+                    "Sistema de Ensalamento FUP",
+                    size="5",
+                    weight="bold",
+                    text_align="center",
+                ),
+                rx.text(
+                    "Universidade de Brasília - Faculdade UnB Planaltina",
+                    font_size="sm",
+                    color="gray.500",
+                    text_align="center",
+                ),
+                spacing="2",
+                width="100%",
+                margin_bottom="6",
+            ),
+            
+            # Login form card
+            rx.card(
                 rx.vstack(
-                    rx.input(
-                        placeholder="Nome de usuário",
-                        value=AuthState.login_username,
-                        on_change=AuthState.set_login_username,
+                    # Form title
+                    rx.text(
+                        "Entrar no Sistema",
+                        font_size="lg",
+                        weight="semibold",
+                        text_align="center",
+                    ),
+                    rx.divider(),
+                    
+                    # Username field
+                    rx.vstack(
+                        rx.text("Nome de Usuário", font_size="sm", weight="medium"),
+                        rx.input(
+                            placeholder="seu_usuario",
+                            value=AuthState.login_username,
+                            on_change=AuthState.set_login_username,
+                            width="100%",
+                            size="2",
+                        ),
+                        spacing="2",
                         width="100%",
                     ),
-                    rx.input(
-                        type="password",
-                        placeholder="Senha",
-                        value=AuthState.login_password,
-                        on_change=AuthState.set_login_password,
+                    
+                    # Password field
+                    rx.vstack(
+                        rx.text("Senha", font_size="sm", weight="medium"),
+                        rx.input(
+                            type="password",
+                            placeholder="••••••••",
+                            value=AuthState.login_password,
+                            on_change=AuthState.set_login_password,
+                            width="100%",
+                            size="2",
+                        ),
+                        spacing="2",
                         width="100%",
                     ),
-                    rx.button(
-                        "Entrar",
-                        on_click=AuthState.login,
-                        loading=AuthState.loading,
-                        width="100%",
-                    ),
-                    # Error display
+                    
+                    # Error message display
                     rx.cond(
                         AuthState.login_error != "",
                         rx.callout(
-                            AuthState.login_error,
-                            icon="alert_triangle",
+                            rx.hstack(
+                                rx.icon("alert_circle", size=16),
+                                rx.text(AuthState.login_error, font_size="sm"),
+                                spacing="2",
+                                width="100%",
+                            ),
                             color_scheme="red",
                             width="100%",
+                            padding="3",
                         ),
                     ),
-                    spacing="3",
-                    width="300px",
+                    
+                    # Login button
+                    rx.button(
+                        "Entrar",
+                        on_click=AuthState.login,
+                        loading=AuthState.loading_login,
+                        width="100%",
+                        size="2",
+                    ),
+                    
+                    # Development credentials hint
+                    rx.box(
+                        rx.vstack(
+                            rx.text(
+                                "Credenciais de Desenvolvimento:",
+                                font_size="xs",
+                                weight="bold",
+                                color="blue.600",
+                            ),
+                            rx.unordered_list(
+                                rx.list_item(
+                                    rx.code("admin"),
+                                    " / ",
+                                    rx.code("admin"),
+                                    " (Administrador)",
+                                    font_size="xs",
+                                ),
+                                rx.list_item(
+                                    rx.code("coord"),
+                                    " / ",
+                                    rx.code("coord"),
+                                    " (Coordenador)",
+                                    font_size="xs",
+                                ),
+                                margin_left="3",
+                            ),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        background_color="blue.50",
+                        padding="3",
+                        border_radius="md",
+                        border="1px solid",
+                        border_color="blue.200",
+                    ),
+                    
+                    spacing="4",
+                    width="100%",
                 ),
-                # Development note
-                rx.text(
-                    "Para desenvolvimento: admin/admin ou coord/coord",
-                    font_size="xs",
-                    color="gray.500",
-                    text_align="center",
-                    margin_top="4",
-                ),
-                spacing="6",
-                align="center",
+                width="360px",
+                padding="6",
+                box_shadow="0 4px 12px rgba(0, 0, 0, 0.1)",
             ),
-            width="400px",
-            padding="8",
+            
+            # Footer
+            rx.text(
+                "© 2025 Universidade de Brasília - Todos os direitos reservados",
+                font_size="xs",
+                color="gray.500",
+                text_align="center",
+                margin_top="6",
+            ),
+            
+            # Layout properties
+            spacing="4",
+            align="center",
+            justify="center",
+            min_height="100vh",
+            width="100%",
+            padding="4",
+            background="linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%)",
         ),
+        width="100%",
         height="100vh",
+        overflow="auto",
     )
 
 

@@ -82,8 +82,6 @@ class BaseState(rx.State):
             self.success_message = success_msg
             yield rx.toast.success(success_msg)
 
-            return result
-
         except Exception as e:
             # Error handling
             error_prefix_text = error_prefix or f"{operation_name} failed"

@@ -16,10 +16,4 @@ config = rx.Config(
     ],
     # Disable auto-reload in production
     reload=True,
-    # Frontend build configuration
-    frontend_path=".",
-    # Backend configuration
-    backend_path=".",
-    # Static files
-    static_url_prefix="/_static/",
 )

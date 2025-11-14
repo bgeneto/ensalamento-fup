@@ -15,17 +15,18 @@ class AuthState(BaseState):
     """
 
     # Persistent state - survives browser refresh
-    username: str = rx.LocalStorage(default="")
-    is_logged_in: bool = rx.LocalStorage(default=False, name="auth_logged_in")
-    role: str = rx.LocalStorage(default="user", name="auth_role")
+    username: str = rx.LocalStorage("")
+    is_logged_in: bool = rx.LocalStorage(False)
+    role: str = rx.LocalStorage("user")
 
     # Session-only state - resets on tab close
-    current_token: str = rx.SessionStorage(default="", name="auth_token")
+    current_token: str = rx.SessionStorage("")
 
     # Volatile state for UI
     login_username: str = ""
     login_password: str = ""
     login_error: str = ""
+    loading_login: bool = False
 
     @rx.var
     def display_name(self) -> str:
@@ -62,10 +63,13 @@ class AuthState(BaseState):
 
         # Reset error state
         self.login_error = ""
+        self.loading_login = True
+        yield
 
         # Basic validation
         if not username or not password:
             self.login_error = "Nome de usuário e senha são obrigatórios"
+            self.loading_login = False
             yield rx.toast.error("Nome de usuário e senha são obrigatórios")
             return
 
@@ -86,18 +90,22 @@ class AuthState(BaseState):
 
                 # Success feedback
                 yield rx.toast.success(f"Bem-vindo, {user_data['username']}!")
+                self.loading_login = False
+                yield
 
                 # Navigate to dashboard
-                yield rx.redirect("/dashboard")
+                yield rx.redirect("/")
 
             else:
                 error_msg = "Credenciais inválidas"
                 self.login_error = error_msg
+                self.loading_login = False
                 yield rx.toast.error(error_msg)
 
         except Exception as e:
             error_msg = f"Erro no login: {str(e)}"
             self.login_error = error_msg
+            self.loading_login = False
             yield rx.toast.error("Erro interno do servidor")
             print(f"Login error: {error_msg}")  # TODO: Replace with proper logging
 
@@ -113,6 +121,7 @@ class AuthState(BaseState):
         self.login_username = ""
         self.login_password = ""
         self.login_error = ""
+        self.loading_login = False
 
         # Navigate to login
         return rx.redirect("/")
