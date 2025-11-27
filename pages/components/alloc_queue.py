@@ -1,13 +1,12 @@
 """Reusable component for displaying the demand queue in manual allocation."""
 
+from typing import Any, Dict, List, Optional
+
 import streamlit as st
-from typing import List, Dict, Any, Optional
-import pandas as pd
 
 from src.config.database import get_db_session
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.professor import ProfessorRepository
 from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
 from src.services.manual_allocation_service import ManualAllocationService
 from src.utils.cache_helpers import get_sigaa_parser
@@ -24,7 +23,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
     Returns:
         bool: True if any allocation action was triggered (for page refresh)
     """
-    st.header(f"📊 Status das Demandas")
+    st.header("📊 Status das Demandas")
 
     # Initialize filters if not provided
     if filters is None:
@@ -154,7 +153,9 @@ def _get_allocation_info(
     {
         demanda_id: {
             'is_allocated': bool,
-            'room_name': str or None,
+            'room_name': str or None,  # Comma-separated if multiple rooms
+            'room_names': [str, ...],  # List of all room names
+            'is_split': bool,  # True if allocated to multiple rooms
             'allocations': [allocation_dto, ...]
         }
     }
@@ -166,20 +167,33 @@ def _get_allocation_info(
         allocations = alocacao_repo.get_by_demanda(demanda_id)
 
         if allocations:
-            # Get room name from first allocation (assuming single room allocation)
-            room_id = allocations[0].sala_id
-            room_info = sala_repo.get_by_id(room_id)
-            room_name = room_info.nome if room_info else f"Sala {room_id}"
+            # Get ALL unique room IDs from allocations
+            unique_room_ids = list(dict.fromkeys(a.sala_id for a in allocations))
+
+            # Get room names for all unique rooms
+            room_names = []
+            for room_id in unique_room_ids:
+                room_info = sala_repo.get_by_id(room_id)
+                room_name = room_info.nome if room_info else f"Sala {room_id}"
+                room_names.append(room_name)
+
+            # Join room names for display
+            room_name_display = ", ".join(room_names)
+            is_split = len(unique_room_ids) > 1
 
             allocation_info_map[demanda_id] = {
                 "is_allocated": True,
-                "room_name": room_name,
+                "room_name": room_name_display,
+                "room_names": room_names,
+                "is_split": is_split,
                 "allocations": allocations,
             }
         else:
             allocation_info_map[demanda_id] = {
                 "is_allocated": False,
                 "room_name": None,
+                "room_names": [],
+                "is_split": False,
                 "allocations": [],
             }
 
@@ -224,7 +238,13 @@ def _render_demand_card(
             # Room allocation info for allocated demands
             if allocation_info and allocation_info.get("is_allocated"):
                 room_name = allocation_info.get("room_name", "N/A")
-                st.caption(f"🏢 **Sala Alocada:** {room_name}")
+                is_split = allocation_info.get("is_split", False)
+
+                if is_split:
+                    # Multiple rooms - show with split indicator
+                    st.caption(f"🏢 **Salas Alocadas:** {room_name} 🔀")
+                else:
+                    st.caption(f"🏢 **Sala Alocada:** {room_name}")
 
             # Schedule info
             horario_bruto = getattr(demanda, "horario_sigaa_bruto", "")
@@ -233,7 +253,7 @@ def _render_demand_card(
                 horario_readable = parser.parse_to_human_readable(horario_bruto)
                 st.caption(f"📅 **Horário:** {horario_readable}")
             else:
-                st.caption(f"📅 **Horário:** N/A")
+                st.caption("📅 **Horário:** N/A")
 
             # Rule warnings (simplified - would need more logic in real implementation)
             # Could check for hard rules that apply to this discipline

@@ -5,15 +5,15 @@ Provides data access methods for course-room allocation queries with
 conflict detection and availability checking.
 """
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
+from sqlalchemy import and_
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
 
 from src.models.allocation import AlocacaoSemestral
-from src.schemas.allocation import AlocacaoSemestralRead, AlocacaoSemestralCreate
-from src.schemas.academic import DemandaRead
 from src.repositories.base import BaseRepository
+from src.schemas.academic import DemandaRead
+from src.schemas.allocation import AlocacaoSemestralCreate, AlocacaoSemestralRead
 
 
 class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead]):
@@ -394,3 +394,104 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         # Count the results
         count = query.count()
         return count
+
+    def get_discipline_room_day_frequency(
+        self,
+        disciplina_codigo: str,
+        sala_id: int,
+        dia_semana_id: int,
+        exclude_semester_id: Optional[int] = None,
+    ) -> int:
+        """Get historical frequency count of discipline-room-day allocations.
+
+        Enhanced RF-006.6: Count how many times a discipline code has been allocated
+        to a specific room ON A SPECIFIC DAY across all semesters except the current one.
+
+        This enables per-day historical scoring for hybrid disciplines that may
+        use different rooms on different days (e.g., lab on Monday, lecture hall on Wednesday).
+
+        Args:
+            disciplina_codigo: Discipline code to count
+            sala_id: Room ID to count allocations for
+            dia_semana_id: Day of week ID (2=MON, 3=TUE, ..., 7=SAT)
+            exclude_semester_id: Semester ID to exclude from count (current semester)
+
+        Returns:
+            int: Number of historical allocations of this discipline to this room on this day
+        """
+        from src.models.academic import Demanda
+
+        # Build query to join alocacao_semestral with disciplina
+        query = (
+            self.session.query(AlocacaoSemestral)
+            .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
+            .filter(
+                and_(
+                    Demanda.codigo_disciplina == disciplina_codigo,
+                    AlocacaoSemestral.sala_id == sala_id,
+                    AlocacaoSemestral.dia_semana_id == dia_semana_id,
+                )
+            )
+        )
+
+        # Exclude current semester if provided
+        if exclude_semester_id is not None:
+            query = query.filter(AlocacaoSemestral.semestre_id != exclude_semester_id)
+
+        # Count the results
+        count = query.count()
+        return count
+
+    def get_discipline_room_day_frequencies_bulk(
+        self,
+        disciplina_codigo: str,
+        sala_ids: List[int],
+        dia_semana_ids: List[int],
+        exclude_semester_id: Optional[int] = None,
+    ) -> Dict[Tuple[int, int], int]:
+        """Bulk fetch historical frequencies for multiple room-day combinations.
+
+        Performance optimization: Fetches all (room, day) frequencies in a single query
+        instead of N queries for N combinations.
+
+        Args:
+            disciplina_codigo: Discipline code to count
+            sala_ids: List of room IDs to check
+            dia_semana_ids: List of day IDs to check (2=MON, 3=TUE, ..., 7=SAT)
+            exclude_semester_id: Semester ID to exclude from count (current semester)
+
+        Returns:
+            Dict[(sala_id, dia_semana_id), count]: Historical frequency for each combination
+        """
+        from sqlalchemy import func
+
+        from src.models.academic import Demanda
+
+        # Build query with GROUP BY
+        query = (
+            self.session.query(
+                AlocacaoSemestral.sala_id,
+                AlocacaoSemestral.dia_semana_id,
+                func.count(AlocacaoSemestral.id).label("count"),
+            )
+            .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
+            .filter(
+                and_(
+                    Demanda.codigo_disciplina == disciplina_codigo,
+                    AlocacaoSemestral.sala_id.in_(sala_ids),
+                    AlocacaoSemestral.dia_semana_id.in_(dia_semana_ids),
+                )
+            )
+            .group_by(AlocacaoSemestral.sala_id, AlocacaoSemestral.dia_semana_id)
+        )
+
+        # Exclude current semester if provided
+        if exclude_semester_id is not None:
+            query = query.filter(AlocacaoSemestral.semestre_id != exclude_semester_id)
+
+        # Execute and build result dict
+        results = {}
+        for row in query.all():
+            results[(row.sala_id, row.dia_semana_id)] = row.count
+
+        return results

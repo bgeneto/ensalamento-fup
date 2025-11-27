@@ -4,10 +4,11 @@ Preferences Management Page
 Configure professor and courses preferences.
 """
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
 from typing import Optional
+
+import pandas as pd
+import streamlit as st
+
 from pages.components.auth import initialize_page
 from pages.components.ui import page_footer
 
@@ -24,24 +25,21 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
-from src.repositories.professor import ProfessorRepository
+import json
+
+from src.config.database import get_db_session
+from src.models.inventory import Caracteristica, Sala
+from src.repositories.caracteristica import CaracteristicaRepository
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.predio import PredioRepository
 from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
-from src.repositories.caracteristica import CaracteristicaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
-from src.repositories.predio import PredioRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.schemas.academic import ProfessorCreate
 from src.schemas.allocation import RegraCreate, RegraRead
-from src.models.academic import Professor
-from src.models.inventory import Sala, Caracteristica, TipoSala
-from src.models.allocation import Regra
-from src.config.database import get_db_session
 from src.utils.ui_feedback import (
     display_session_feedback,
     set_session_feedback,
 )
-import json
 
 
 def _generate_rule_description(
@@ -213,7 +211,7 @@ with tab1:
                 }
 
                 # Create rooms options with building names
-                from src.models.inventory import Sala, Predio
+                from src.models.inventory import Predio, Sala
 
                 salas_orm = (
                     session.query(Sala).join(Predio, Sala.predio_id == Predio.id).all()
@@ -420,7 +418,7 @@ with tab2:
             disc_repo = DisciplinaRepository(session)
 
             # Get data for lookups - use ORM objects to access related data like building names
-            from src.models.inventory import Sala, Predio, Caracteristica, TipoSala
+            from src.models.inventory import Caracteristica, Predio, Sala
 
             salas_orm = (
                 session.query(Sala).join(Predio, Sala.predio_id == Predio.id).all()
@@ -534,10 +532,8 @@ with tab2:
                     """
                 )
 
-                # Sort rules by priority ascending (hard rules first)
-                filtered_regras.sort(
-                    key=lambda x: (x.prioridade, x.tipo_regra, x.descricao)
-                )
+                # Sort rules by ID ascending
+                filtered_regras.sort(key=lambda x: x.id)
 
                 for regra in filtered_regras:
                     # Create an expandable card for each rule
@@ -548,6 +544,21 @@ with tab2:
                         col1, col2 = st.columns([3, 1])
 
                         with col1:
+                            # Extract discipline code from config and show name
+                            try:
+                                config = (
+                                    json.loads(regra.config_json)
+                                    if regra.config_json
+                                    else {}
+                                )
+                                cod_disc = config.get("codigo_disciplina", "")
+                                if cod_disc and cod_disc in disc_options:
+                                    st.markdown(f"**Disciplina:** {disc_options[cod_disc]}")
+                                elif cod_disc:
+                                    st.markdown(f"**Disciplina:** {cod_disc}")
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
                             st.markdown(f"**Descrição:** {regra.descricao}")
                             st.markdown(f"**Tipo:** {regra.tipo_regra}")
                             st.markdown(

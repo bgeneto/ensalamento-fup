@@ -1,25 +1,29 @@
 """Service for executing manual allocation operations."""
 
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from typing import Dict, List, Optional, Tuple
 
-from src.schemas.manual_allocation import (
-    AllocationResult,
-    ConflictDetail,
-    RoomSuggestion,
-    AllocationSuggestions,
-)
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.reserva import ReservaRepository
-from src.repositories.semestre import SemestreRepository
-from src.repositories.sala import SalaRepository
 from src.repositories.regra import RegraRepository
-from src.schemas.allocation import AlocacaoSemestralCreate
+from src.repositories.reserva import ReservaRepository
+from src.repositories.sala import SalaRepository
+from src.repositories.semestre import SemestreRepository
+from src.schemas.allocation import (
+    AlocacaoSemestralCreate,
+    PartialAllocationResult,
+)
+from src.schemas.manual_allocation import (
+    AllocationResult,
+    AllocationSuggestions,
+    ConflictDetail,
+    RoomSuggestion,
+)
+from src.services.room_scoring_service import BlockGroup, RoomScoringService
 from src.utils.sigaa_parser import SigaaScheduleParser
-from src.services.room_scoring_service import RoomScoringService
-from sqlalchemy import text
 
 
 class ManualAllocationService:
@@ -134,6 +138,397 @@ class ManualAllocationService:
                 sala_id=sala_id,
                 error_message=f"Erro inesperado na alocação: {str(e)}",
             )
+
+    def allocate_demand_partial(
+        self,
+        demanda_id: int,
+        sala_id: int,
+        day_ids: Optional[List[int]] = None,
+        block_codes: Optional[List[str]] = None,
+    ) -> PartialAllocationResult:
+        """
+        Allocate specific blocks/days of a demand to a room.
+
+        This enables partial/split allocation for hybrid disciplines that need
+        different rooms on different days (e.g., lab on Monday, lecture on Wednesday).
+
+        Args:
+            demanda_id: Demand ID to allocate
+            sala_id: Room ID to allocate to
+            day_ids: Optional list of specific day IDs to allocate (2=MON, 3=TUE, etc.)
+                     If None, all days are considered.
+            block_codes: Optional list of specific block codes to allocate (M1, M2, T1, etc.)
+                         If None, all blocks for the specified days are allocated.
+
+        Returns:
+            PartialAllocationResult with details of what was allocated and what remains.
+        """
+        # Get demand details
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return PartialAllocationResult(
+                success=False,
+                message="Demanda não encontrada",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+
+        # Get semester
+        semester = self.semestre_repo.get_by_id(demanda.semestre_id)
+        if not semester:
+            return PartialAllocationResult(
+                success=False,
+                message="Semestre da demanda não encontrado",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+
+        # Get room for result
+        room = self.sala_repo.get_by_id(sala_id)
+        room_name = room.nome if room else "N/A"
+
+        # Parse all atomic blocks for this demand
+        all_atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        if not all_atomic_blocks:
+            return PartialAllocationResult(
+                success=False,
+                message="Não foi possível parsear o horário da demanda",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+
+        # Get already allocated blocks for this demand
+        existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        already_allocated = set()
+        for alloc in existing_allocations:
+            already_allocated.add((alloc.codigo_bloco, alloc.dia_semana_id))
+
+        # Filter blocks to allocate based on day_ids and block_codes
+        blocks_to_allocate = []
+        for block_code, day_id in all_atomic_blocks:
+            # Skip if already allocated
+            if (block_code, day_id) in already_allocated:
+                continue
+
+            # Filter by day_ids if specified
+            if day_ids is not None and day_id not in day_ids:
+                continue
+
+            # Filter by block_codes if specified
+            if block_codes is not None and block_code not in block_codes:
+                continue
+
+            blocks_to_allocate.append((block_code, day_id))
+
+        if not blocks_to_allocate:
+            # Check if there are remaining unallocated blocks
+            remaining = [
+                f"{day}{block}"
+                for block, day in all_atomic_blocks
+                if (block, day) not in already_allocated
+            ]
+            return PartialAllocationResult(
+                success=False,
+                message="Nenhum bloco a alocar (já alocados ou não correspondem aos filtros)",
+                allocated_blocks=[],
+                remaining_blocks=remaining,
+            )
+
+        # Check for conflicts before attempting allocation
+        conflicts = self._check_allocation_conflicts(
+            sala_id, blocks_to_allocate, semester.id
+        )
+        if conflicts:
+            return PartialAllocationResult(
+                success=False,
+                message=f"Encontrados {len(conflicts)} conflitos de horário",
+                allocated_blocks=[],
+                remaining_blocks=[f"{day}{block}" for block, day in blocks_to_allocate],
+            )
+
+        # Execute allocation
+        try:
+            created_allocation_ids = []
+            allocated_blocks = []
+
+            for block_code, day_id in blocks_to_allocate:
+                allocation_dto = AlocacaoSemestralCreate(
+                    semestre_id=semester.id,
+                    demanda_id=demanda_id,
+                    sala_id=sala_id,
+                    dia_semana_id=day_id,
+                    codigo_bloco=block_code,
+                )
+
+                new_allocation = self.alocacao_repo.create(allocation_dto)
+                created_allocation_ids.append(new_allocation.id)
+                allocated_blocks.append(f"{day_id}{block_code}")
+
+            # Calculate remaining unallocated blocks
+            now_allocated = already_allocated.union(set(blocks_to_allocate))
+            remaining_blocks = [
+                f"{day}{block}"
+                for block, day in all_atomic_blocks
+                if (block, day) not in now_allocated
+            ]
+
+            return PartialAllocationResult(
+                success=True,
+                message=f"Alocados {len(allocated_blocks)} blocos com sucesso",
+                allocated_blocks=allocated_blocks,
+                remaining_blocks=remaining_blocks,
+                allocation_ids=created_allocation_ids,
+                room_id=sala_id,
+                room_name=room_name,
+            )
+
+        except IntegrityError as e:
+            self.session.rollback()
+            return PartialAllocationResult(
+                success=False,
+                message=f"Erro de integridade ao alocar: {str(e)}",
+                allocated_blocks=[],
+                remaining_blocks=[f"{day}{block}" for block, day in blocks_to_allocate],
+            )
+        except Exception as e:
+            self.session.rollback()
+            return PartialAllocationResult(
+                success=False,
+                message=f"Erro inesperado na alocação: {str(e)}",
+                allocated_blocks=[],
+                remaining_blocks=[f"{day}{block}" for block, day in blocks_to_allocate],
+            )
+
+    def get_block_groups_for_demand(self, demanda_id: int) -> List[Dict]:
+        """
+        Get block groups for a demand, organized by day.
+
+        Returns a list of block groups with allocation status for each.
+        Useful for UI to show which day-groups are allocated and which are pending.
+
+        Args:
+            demanda_id: Demand ID to get block groups for
+
+        Returns:
+            List of dicts with block group info and allocation status:
+            [
+                {
+                    'day_id': 2,
+                    'day_name': 'SEG',
+                    'blocks': ['M1', 'M2'],
+                    'time_range': '08:00-09:50',
+                    'is_allocated': True,
+                    'allocated_room_id': 5,
+                    'allocated_room_name': 'AT-01',
+                },
+                ...
+            ]
+        """
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return []
+
+        # Get block groups using parser
+        block_groups = self.parser.get_block_groups_with_names(demanda.horario_sigaa_bruto)
+
+        # Get existing allocations for this demand
+        existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+
+        # Build a map of (day_id, block_code) -> allocation info
+        allocation_map: Dict[Tuple[int, str], dict] = {}
+        for alloc in existing_allocations:
+            key = (alloc.dia_semana_id, alloc.codigo_bloco)
+            if key not in allocation_map:
+                # Get room info
+                room = self.sala_repo.get_by_id(alloc.sala_id)
+                allocation_map[key] = {
+                    'sala_id': alloc.sala_id,
+                    'sala_nome': room.nome if room else "N/A",
+                }
+
+        # Enrich block groups with allocation status
+        result = []
+        for group in block_groups:
+            day_id = group['day_id']
+            blocks = group['blocks']
+
+            # Check if ALL blocks in this day are allocated (and to the same room)
+            allocated_rooms = set()
+            all_allocated = True
+            for block in blocks:
+                key = (day_id, block)
+                if key in allocation_map:
+                    allocated_rooms.add(allocation_map[key]['sala_id'])
+                else:
+                    all_allocated = False
+
+            # Determine allocation status
+            is_allocated = all_allocated and len(allocated_rooms) == 1
+            is_partial = len(allocated_rooms) > 0 and not is_allocated
+
+            allocated_room_id = None
+            allocated_room_name = None
+            if is_allocated and allocated_rooms:
+                room_id = list(allocated_rooms)[0]
+                allocated_room_id = room_id
+                room = self.sala_repo.get_by_id(room_id)
+                allocated_room_name = room.nome if room else "N/A"
+
+            result.append({
+                'day_id': day_id,
+                'day_name': group['day_name'],
+                'blocks': blocks,
+                'time_range': self.parser.get_time_range_for_blocks(blocks),
+                'is_allocated': is_allocated,
+                'is_partial': is_partial,
+                'allocated_room_id': allocated_room_id,
+                'allocated_room_name': allocated_room_name,
+            })
+
+        return result
+
+    def get_suggestions_for_block_group(
+        self,
+        demanda_id: int,
+        day_id: int,
+        semester_id: int,
+    ) -> List[Dict]:
+        """
+        Get room suggestions for a specific block group (day) of a demand.
+
+        Uses per-day historical scoring to provide day-specific room recommendations.
+        This is essential for hybrid disciplines that need different rooms on different days.
+
+        Args:
+            demanda_id: Demand ID
+            day_id: Day ID (2=MON, 3=TUE, etc.)
+            semester_id: Semester to check conflicts within
+
+        Returns:
+            List of room suggestions with per-day scoring, sorted by score descending.
+        """
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return []
+
+        # Get block groups for this demand
+        block_groups_raw = self.parser.get_block_groups_with_names(demanda.horario_sigaa_bruto)
+
+        # Find the specific block group for this day
+        target_group = None
+        for group in block_groups_raw:
+            if group['day_id'] == day_id:
+                target_group = BlockGroup(
+                    day_id=group['day_id'],
+                    day_name=group['day_name'],
+                    blocks=group['blocks'],
+                )
+                break
+
+        if not target_group:
+            return []
+
+        # Use scoring service to get per-block-group scores
+        scores = self.scoring_service.score_rooms_for_block_group(
+            demanda_id, target_group, semester_id
+        )
+
+        # Convert to dict format for UI
+        result = []
+        for score in scores:
+            result.append({
+                'room_id': score.room_id,
+                'room_name': score.room_name,
+                'room_capacity': score.room_capacity,
+                'room_type': score.room_type,
+                'building_name': score.building_name,
+                'score': score.score,
+                'has_conflict': score.has_conflict,
+                'conflict_details': score.conflict_details,
+                'breakdown': {
+                    'capacity_points': score.breakdown.capacity_points,
+                    'hard_rules_points': score.breakdown.hard_rules_points,
+                    'soft_preference_points': score.breakdown.soft_preference_points,
+                    'historical_frequency_points': score.breakdown.historical_frequency_points,
+                    'capacity_satisfied': score.breakdown.capacity_satisfied,
+                    'hard_rules_satisfied': score.breakdown.hard_rules_satisfied,
+                    'soft_preferences_satisfied': score.breakdown.soft_preferences_satisfied,
+                    'historical_allocations': score.breakdown.historical_allocations,
+                },
+            })
+
+        return result
+
+    def get_allocation_status_for_demand(self, demanda_id: int) -> Dict:
+        """
+        Get comprehensive allocation status for a demand.
+
+        Returns summary of what's allocated, what's pending, and overall progress.
+
+        Args:
+            demanda_id: Demand ID
+
+        Returns:
+            Dict with allocation summary:
+            {
+                'demanda_id': 123,
+                'total_blocks': 4,
+                'allocated_blocks': 2,
+                'pending_blocks': 2,
+                'is_fully_allocated': False,
+                'is_partially_allocated': True,
+                'block_groups': [...],  # From get_block_groups_for_demand
+                'allocated_rooms': [{'room_id': 5, 'room_name': 'AT-01', 'blocks': [...]}],
+            }
+        """
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return {
+                'demanda_id': demanda_id,
+                'error': 'Demanda não encontrada',
+            }
+
+        # Get all atomic blocks
+        all_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        total_blocks = len(all_blocks)
+
+        # Get existing allocations
+        existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        allocated_blocks_set = set()
+        rooms_blocks_map: Dict[int, List[str]] = {}  # room_id -> list of block codes
+
+        for alloc in existing_allocations:
+            allocated_blocks_set.add((alloc.codigo_bloco, alloc.dia_semana_id))
+            if alloc.sala_id not in rooms_blocks_map:
+                rooms_blocks_map[alloc.sala_id] = []
+            rooms_blocks_map[alloc.sala_id].append(f"{alloc.dia_semana_id}{alloc.codigo_bloco}")
+
+        allocated_count = len(allocated_blocks_set)
+        pending_count = total_blocks - allocated_count
+
+        # Build allocated_rooms list
+        allocated_rooms = []
+        for room_id, blocks in rooms_blocks_map.items():
+            room = self.sala_repo.get_by_id(room_id)
+            allocated_rooms.append({
+                'room_id': room_id,
+                'room_name': room.nome if room else "N/A",
+                'blocks': blocks,
+            })
+
+        # Get block groups with status
+        block_groups = self.get_block_groups_for_demand(demanda_id)
+
+        return {
+            'demanda_id': demanda_id,
+            'total_blocks': total_blocks,
+            'allocated_blocks': allocated_count,
+            'pending_blocks': pending_count,
+            'is_fully_allocated': pending_count == 0,
+            'is_partially_allocated': allocated_count > 0 and pending_count > 0,
+            'block_groups': block_groups,
+            'allocated_rooms': allocated_rooms,
+        }
 
     def _check_allocation_conflicts(
         self, sala_id: int, atomic_blocks: List[tuple], semester_id: int

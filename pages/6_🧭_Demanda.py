@@ -7,9 +7,11 @@ acionáveis (professores não cadastrados) e tabela filtrável com colunas
 amigáveis geradas pelo parser Sigaa.
 """
 
-import streamlit as st
 from typing import List
+
 import pandas as pd
+import streamlit as st
+
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -25,15 +27,15 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
+from pages.components.ui import page_footer
 from src.config.database import get_db_session
-from src.repositories.semestre import SemestreRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
+from src.repositories.semestre import SemestreRepository
 from src.schemas.academic import DemandaCreate
-from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
-from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.services.semester_service import sync_semester_from_api
-from pages.components.ui import page_footer
+from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 st.title("🧭 Demanda Semestral")
 
@@ -611,7 +613,7 @@ if st.button(
         set_session_feedback(
             "sync_semestre_result",
             False,
-            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página **Configurações**.",
+            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página ⚙️ Configurações.",
             ttl=6,
         )
         st.rerun()

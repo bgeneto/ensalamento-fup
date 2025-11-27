@@ -4,11 +4,12 @@ Home Page (no login required)
 Displays rooms allocation grids/tables
 """
 
-import streamlit as st
+from typing import Any, Dict, List, Tuple
+
 import pandas as pd
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Tuple
+import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
+
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -25,26 +26,21 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
+from pages.components.ui import page_footer
+from src.config.database import get_db_session
+from src.models.academic import Semestre
+from src.models.inventory import Predio, Sala
 from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.dia_semana import DiaSemanaRepository
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.horario_bloco import HorarioBlocoRepository
+from src.repositories.professor import ProfessorRepository
 from src.repositories.reserva import ReservaRepository
 from src.repositories.sala import SalaRepository
-from src.repositories.professor import ProfessorRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.semestre import SemestreRepository
-from src.repositories.dia_semana import DiaSemanaRepository
-from src.repositories.horario_bloco import HorarioBlocoRepository
-from src.config.database import get_db_session
+from src.utils.cache_helpers import get_sigaa_parser
 from src.utils.ui_feedback import (
     display_session_feedback,
-    set_session_feedback,
 )
-from src.models.inventory import Sala, Predio
-from src.models.academic import Professor, Semestre
-from src.models.allocation import AlocacaoSemestral
-from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
-from src.services.pdf_report_service import PDFReportService
-from src.services.statistics_report_service import StatisticsReportService
-from pages.components.ui import page_footer
 
 # ============================================================================
 # CONFIGURATION OPTIONS
@@ -169,7 +165,7 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
                 current_start = start_time
                 current_end = end_time
 
-        except Exception as e:
+        except Exception:
             # Skip problematic blocks
             continue
 
@@ -353,7 +349,7 @@ try:
         )
         if not active_semester:
             st.warning(
-                "Nenhum semestre ativo encontrado. Configure um semestre ativo nas configurações."
+                "Nenhum semestre ativo encontrado. Configure um semestre ativo na página ⚙️ Configurações."
             )
             st.stop()
 

@@ -4,13 +4,13 @@ Data Transfer Object schemas for Allocation domain.
 Schemas for: Regra, AlocacaoSemestral, ReservaEsporadica
 """
 
-from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from enum import Enum
+from typing import List, Optional, Tuple, Union
+
+from pydantic import BaseModel, Field, field_validator
 
 from src.schemas.academic import DemandaRead
-
 
 # ============================================================================
 # RECURRENCE TYPE ENUMS
@@ -435,3 +435,128 @@ class ReservaOcorrenciaReadWithEvent(ReservaOcorrenciaRead):
 # Forward reference resolution
 ReservaEventoReadWithOccurrences.model_rebuild()
 ReservaOcorrenciaReadWithEvent.model_rebuild()
+
+
+# ============================================================================
+# BLOCK GROUP Schemas (For Partial/Split Allocation)
+# ============================================================================
+
+
+class BlockGroupBase(BaseModel):
+    """Base schema for BlockGroup (group of atomic blocks on the same day).
+
+    Represents a set of time blocks that must be allocated together
+    because they are on the same day. Different days can be allocated
+    to different rooms for hybrid disciplines.
+    """
+
+    day_id: int = Field(..., ge=2, le=7, description="SIGAA day code (2=MON, 3=TUE, ..., 7=SAT)")
+    day_name: str = Field(..., min_length=3, max_length=3, description="Human readable day (SEG, TER, etc.)")
+    blocks: List[str] = Field(default_factory=list, description="Block codes (M1, M2, T1, etc.)")
+
+    @property
+    def block_count(self) -> int:
+        """Number of atomic blocks in this group."""
+        return len(self.blocks)
+
+    def get_atomic_tuples(self) -> List[Tuple[str, int]]:
+        """Get list of (block_code, day_id) tuples for this group."""
+        return [(block, self.day_id) for block in self.blocks]
+
+    class Config:
+        from_attributes = True
+
+
+class BlockGroupRead(BlockGroupBase):
+    """Schema for reading BlockGroup with computed properties."""
+
+    pass
+
+
+class BlockGroupScoringBreakdownSchema(BaseModel):
+    """Detailed scoring breakdown for a specific block group + room combination."""
+
+    total_score: int = Field(default=0, description="Total score for this block group + room")
+    capacity_points: int = Field(default=0, description="Points from capacity check")
+    hard_rules_points: int = Field(default=0, description="Points from hard rules compliance")
+    soft_preference_points: int = Field(default=0, description="Points from professor preferences")
+    historical_frequency_points: int = Field(default=0, description="Points from historical frequency (per day)")
+
+    # Details
+    capacity_satisfied: bool = Field(default=False, description="Whether room capacity is adequate")
+    hard_rules_satisfied: List[str] = Field(default_factory=list, description="List of satisfied hard rules")
+    soft_preferences_satisfied: List[str] = Field(default_factory=list, description="List of satisfied soft preferences")
+    historical_allocations: int = Field(default=0, description="Count of historical allocations for THIS DAY")
+
+    class Config:
+        from_attributes = True
+
+
+class BlockGroupRoomScoreSchema(BaseModel):
+    """Scoring result for a specific block group + room combination.
+
+    Used in the allocation assistant UI to display per-day room suggestions.
+    """
+
+    block_group: BlockGroupBase = Field(..., description="The block group being scored")
+    room_id: int = Field(..., gt=0, description="Room ID")
+    room_name: str = Field(..., min_length=1, description="Room name")
+    room_capacity: int = Field(default=0, ge=0, description="Room capacity")
+    room_type: str = Field(default="N/A", description="Room type name")
+    building_name: str = Field(default="N/A", description="Building name")
+    score: int = Field(default=0, description="Total score")
+    breakdown: BlockGroupScoringBreakdownSchema = Field(
+        default_factory=BlockGroupScoringBreakdownSchema,
+        description="Detailed scoring breakdown"
+    )
+    has_conflict: bool = Field(default=False, description="Whether room has time conflicts")
+    conflict_details: List[str] = Field(default_factory=list, description="List of conflict descriptions")
+
+    class Config:
+        from_attributes = True
+
+
+class PartialAllocationRequest(BaseModel):
+    """Request schema for partial/split allocation.
+
+    Allows allocating specific blocks of a demand to a room,
+    enabling hybrid disciplines to use different rooms for different days.
+    """
+
+    demanda_id: int = Field(..., gt=0, description="Demand ID to allocate")
+    sala_id: int = Field(..., gt=0, description="Room ID to allocate to")
+    block_codes: Optional[List[str]] = Field(
+        default=None,
+        description="Specific block codes to allocate (e.g., ['M1', 'M2']). If None, allocates all blocks."
+    )
+    day_ids: Optional[List[int]] = Field(
+        default=None,
+        description="Specific day IDs to allocate (e.g., [2, 4] for MON, WED). If None, allocates all days."
+    )
+
+    @field_validator('day_ids')
+    @classmethod
+    def validate_day_ids(cls, v):
+        if v is not None:
+            for day_id in v:
+                if day_id < 2 or day_id > 7:
+                    raise ValueError(f"Invalid day_id: {day_id}. Must be 2-7 (MON-SAT)")
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+class PartialAllocationResult(BaseModel):
+    """Result schema for partial allocation operation."""
+
+    success: bool = Field(..., description="Whether allocation succeeded")
+    message: str = Field(..., description="Result message")
+    allocated_blocks: List[str] = Field(default_factory=list, description="Blocks that were allocated")
+    remaining_blocks: List[str] = Field(default_factory=list, description="Blocks still pending allocation")
+    allocation_ids: List[int] = Field(default_factory=list, description="IDs of created allocations")
+    room_id: Optional[int] = Field(default=None, description="Room ID allocated to")
+    room_name: Optional[str] = Field(default=None, description="Room name allocated to")
+
+    class Config:
+        from_attributes = True

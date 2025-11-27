@@ -11,29 +11,27 @@ Used by both ManualAllocationService and AutonomousAllocationService for consist
 """
 
 import logging
-from typing import List, Dict, Optional
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
+from typing import Dict, List, Optional
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from src.config.scoring_config import (
     SCORING_WEIGHTS,
-    SCORING_RULES,
-    get_scoring_breakdown_template,
 )
-
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
 
 logger = logging.getLogger(__name__)
-from src.repositories.regra import RegraRepository
+from src.models.academic import Professor
+from src.models.inventory import Sala
 from src.repositories.professor import ProfessorRepository
+from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.manual_allocation import CompatibilityScore
-from src.models.inventory import Sala
-from src.models.academic import Professor
-from src.utils.sigaa_parser import SigaaScheduleParser
 from src.utils.room_utils import get_room_occupancy
+from src.utils.sigaa_parser import SigaaScheduleParser
 
 
 @dataclass
@@ -76,6 +74,76 @@ class RoomCandidate:
             self.rule_violations = []
         if self.scoring_breakdown is None:
             self.scoring_breakdown = ScoringBreakdown()
+
+
+@dataclass
+class BlockGroup:
+    """Group of atomic blocks on the same day.
+
+    Represents a set of time blocks that must be allocated together
+    because they are on the same day. Different days can be allocated
+    to different rooms for hybrid disciplines.
+    """
+
+    day_id: int  # SIGAA day code (2=MON, 3=TUE, ..., 7=SAT)
+    day_name: str  # Human readable (SEG, TER, etc.)
+    blocks: List[str] = None  # Block codes (M1, M2, etc.)
+
+    def __post_init__(self):
+        if self.blocks is None:
+            self.blocks = []
+
+    @property
+    def block_count(self) -> int:
+        """Number of atomic blocks in this group."""
+        return len(self.blocks)
+
+    def get_atomic_tuples(self) -> List[tuple]:
+        """Get list of (block_code, day_id) tuples for this group."""
+        return [(block, self.day_id) for block in self.blocks]
+
+
+@dataclass
+class BlockGroupScoringBreakdown:
+    """Detailed scoring breakdown for a specific block group + room combination."""
+
+    total_score: int = 0
+    capacity_points: int = 0
+    hard_rules_points: int = 0
+    soft_preference_points: int = 0
+    historical_frequency_points: int = 0
+
+    # Details
+    capacity_satisfied: bool = False
+    hard_rules_satisfied: List[str] = None
+    soft_preferences_satisfied: List[str] = None
+    historical_allocations: int = 0  # Count for THIS DAY specifically
+
+    def __post_init__(self):
+        if self.hard_rules_satisfied is None:
+            self.hard_rules_satisfied = []
+        if self.soft_preferences_satisfied is None:
+            self.soft_preferences_satisfied = []
+
+
+@dataclass
+class BlockGroupRoomScore:
+    """Scoring result for a specific block group + room combination."""
+
+    block_group: BlockGroup
+    room_id: int
+    room_name: str
+    room_capacity: int
+    room_type: str
+    building_name: str
+    score: int
+    breakdown: BlockGroupScoringBreakdown
+    has_conflict: bool = False
+    conflict_details: List[str] = None
+
+    def __post_init__(self):
+        if self.conflict_details is None:
+            self.conflict_details = []
 
 
 class RoomScoringService:
@@ -200,6 +268,306 @@ class RoomScoringService:
                 )
 
         return candidates
+
+    # ========================================================================
+    # BLOCK-GROUP LEVEL SCORING (For Partial/Split Allocation)
+    # ========================================================================
+
+    def group_blocks_by_day(self, horario_sigaa: str) -> List[BlockGroup]:
+        """
+        Group atomic blocks by day for per-day scoring.
+
+        Same-day blocks must stay together; different-day blocks can be split.
+
+        Args:
+            horario_sigaa: SIGAA schedule string (e.g., "24M12 6T34")
+
+        Returns:
+            List of BlockGroup objects, one per distinct day
+        """
+        # Map SIGAA day codes to human-readable names
+        day_names = {
+            2: "SEG",
+            3: "TER",
+            4: "QUA",
+            5: "QUI",
+            6: "SEX",
+            7: "SAB",
+        }
+
+        # Parse to atomic tuples: [(block_code, day_id), ...]
+        atomic_tuples = self.parser.split_to_atomic_tuples(horario_sigaa)
+
+        # Group by day
+        day_blocks: Dict[int, List[str]] = {}
+        for block_code, day_id in atomic_tuples:
+            if day_id not in day_blocks:
+                day_blocks[day_id] = []
+            day_blocks[day_id].append(block_code)
+
+        # Create BlockGroup objects
+        block_groups = []
+        for day_id in sorted(day_blocks.keys()):
+            block_groups.append(
+                BlockGroup(
+                    day_id=day_id,
+                    day_name=day_names.get(day_id, f"DIA{day_id}"),
+                    blocks=sorted(day_blocks[day_id]),
+                )
+            )
+
+        return block_groups
+
+    def score_rooms_for_block_group(
+        self,
+        demanda_id: int,
+        block_group: BlockGroup,
+        semester_id: int,
+        professor_override: Optional[Professor] = None,
+    ) -> List[BlockGroupRoomScore]:
+        """
+        Score all rooms for a specific block group.
+
+        This is the core of per-day scoring: each block group gets its own
+        scoring with day-specific historical frequency bonus.
+
+        Args:
+            demanda_id: Demand ID
+            block_group: The block group to score rooms for
+            semester_id: Semester to check conflicts within
+            professor_override: Optional professor object
+
+        Returns:
+            List of BlockGroupRoomScore objects, sorted by score descending
+        """
+        # Get demand details
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return []
+
+        # Lookup professor if not provided
+        professor = professor_override
+        if not professor:
+            professor_map = self._lookup_professors_for_demands_from_objects([demanda])
+            professor = professor_map.get(demanda_id)
+
+        # Get professor preferences
+        professor_prefs = self._get_professor_preferences_for_professor(professor)
+
+        # Get hard rules for this demand
+        hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+
+        # Get all rooms
+        all_rooms = self.sala_repo.get_all()
+
+        scores = []
+        for room in all_rooms:
+            # Calculate per-block-group scoring breakdown
+            breakdown = self._calculate_block_group_scoring_breakdown(
+                room,
+                demanda,
+                block_group,
+                hard_rules,
+                professor_prefs,
+                semester_id,
+            )
+
+            # Check for conflicts for this block group specifically
+            conflicts = self._check_block_group_conflicts(
+                room.id, block_group, semester_id
+            )
+
+            # Get room metadata
+            predio_name = self._get_building_name(room.predio_id) if room.predio_id else "N/A"
+            tipo_sala_name = self._get_room_type_name_by_id(room.tipo_sala_id) if room.tipo_sala_id else "N/A"
+
+            score = BlockGroupRoomScore(
+                block_group=block_group,
+                room_id=room.id,
+                room_name=room.nome,
+                room_capacity=room.capacidade or 0,
+                room_type=tipo_sala_name,
+                building_name=predio_name,
+                score=breakdown.total_score,
+                breakdown=breakdown,
+                has_conflict=len(conflicts) > 0,
+                conflict_details=conflicts,
+            )
+            scores.append(score)
+
+        # Sort by score descending, then by conflict status
+        scores.sort(key=lambda s: (s.score, not s.has_conflict), reverse=True)
+
+        return scores
+
+    def score_rooms_for_all_block_groups(
+        self,
+        demanda_id: int,
+        semester_id: int,
+        professor_override: Optional[Professor] = None,
+    ) -> Dict[int, List[BlockGroupRoomScore]]:
+        """
+        Score all rooms for all block groups of a demand.
+
+        Convenience method that groups blocks and scores each group independently.
+
+        Args:
+            demanda_id: Demand ID
+            semester_id: Semester to check conflicts within
+            professor_override: Optional professor object
+
+        Returns:
+            Dict mapping day_id to list of BlockGroupRoomScore objects
+        """
+        # Get demand to parse schedule
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda:
+            return {}
+
+        # Group blocks by day
+        block_groups = self.group_blocks_by_day(demanda.horario_sigaa_bruto)
+
+        # Score each group
+        results = {}
+        for block_group in block_groups:
+            scores = self.score_rooms_for_block_group(
+                demanda_id, block_group, semester_id, professor_override
+            )
+            results[block_group.day_id] = scores
+
+        return results
+
+    def _calculate_block_group_scoring_breakdown(
+        self,
+        room: Sala,
+        demanda,
+        block_group: BlockGroup,
+        hard_rules: List,
+        professor_prefs: Dict,
+        semester_id: int,
+    ) -> BlockGroupScoringBreakdown:
+        """
+        Calculate detailed scoring breakdown for a specific block group.
+
+        Similar to _calculate_detailed_scoring_breakdown but uses per-day
+        historical frequency instead of overall frequency.
+        """
+        breakdown = BlockGroupScoringBreakdown()
+
+        # 1. Capacity check (+3 points by default)
+        if room.capacidade and room.capacidade >= demanda.vagas_disciplina:
+            breakdown.capacity_points = SCORING_WEIGHTS.CAPACITY_ADEQUATE
+            breakdown.capacity_satisfied = True
+        else:
+            breakdown.capacity_points = 0
+            breakdown.capacity_satisfied = False
+
+        # 2. Hard rules compliance (+20 points each by default)
+        hard_point_total = 0
+        hard_rules_satisfied_list = []
+
+        for rule in hard_rules:
+            if rule.prioridade == 0:  # Hard rule
+                compliance = self._check_rule_compliance(room, demanda, rule)
+
+                if compliance:
+                    hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
+                    hard_rules_satisfied_list.append(self._get_rule_description(rule))
+                else:
+                    # For hard rules, if any fails, no points
+                    hard_point_total = 0
+                    hard_rules_satisfied_list = []
+                    break
+
+        breakdown.hard_rules_points = hard_point_total
+        breakdown.hard_rules_satisfied = hard_rules_satisfied_list
+
+        # 3. Professor preferences (+4 points each by default, only if hard rules pass)
+        soft_point_total = 0
+        soft_preferences_satisfied_list = []
+
+        if breakdown.hard_rules_satisfied:  # Only check soft prefs if hard rules pass
+            # Room preferences
+            prof_room_prefs = professor_prefs.get("preferred_rooms", [])
+            if room.id in prof_room_prefs:
+                soft_point_total += SCORING_WEIGHTS.PREFERRED_ROOM
+                soft_preferences_satisfied_list.append("Sala preferida pelo professor")
+
+            # Characteristic preferences
+            prof_char_prefs = professor_prefs.get("preferred_characteristics", [])
+            room_chars = self._get_room_characteristics(room.id)
+            for char_id in prof_char_prefs:
+                if char_id in room_chars:
+                    char_name = self._get_characteristic_name(char_id)
+                    soft_point_total += SCORING_WEIGHTS.PREFERRED_CHARACTERISTIC
+                    soft_preferences_satisfied_list.append(
+                        f"Característica preferida: {char_name}"
+                    )
+                    break  # Only one characteristic match needed
+
+        breakdown.soft_preference_points = soft_point_total
+        breakdown.soft_preferences_satisfied = soft_preferences_satisfied_list
+
+        # 4. Historical frequency bonus - PER DAY (key difference!)
+        # This is where hybrid disciplines naturally get different scores per day
+        historical_freq = self._calculate_historical_frequency_bonus_per_day(
+            demanda.codigo_disciplina,
+            room.id,
+            block_group.day_id,  # Day-specific!
+            semester_id,
+        )
+        breakdown.historical_frequency_points = historical_freq
+        breakdown.historical_allocations = (
+            historical_freq // SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
+            if SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION > 0
+            else 0
+        )
+
+        # Calculate total
+        breakdown.total_score = (
+            breakdown.capacity_points
+            + breakdown.hard_rules_points
+            + breakdown.soft_preference_points
+            + breakdown.historical_frequency_points
+        )
+
+        return breakdown
+
+    def _check_block_group_conflicts(
+        self, sala_id: int, block_group: BlockGroup, semester_id: int
+    ) -> List[str]:
+        """
+        Check for conflicts for a specific block group.
+
+        Args:
+            sala_id: Room ID
+            block_group: Block group to check
+            semester_id: Semester to check conflicts within
+
+        Returns:
+            List of conflict descriptions (empty if no conflicts)
+        """
+        conflicts = []
+
+        for block_code in block_group.blocks:
+            has_conflict = self.alocacao_repo.check_conflict(
+                sala_id, block_group.day_id, block_code, semestre_id=semester_id
+            )
+
+            if has_conflict:
+                conflicts.append(
+                    f"{block_group.day_name} {block_code} já alocado"
+                )
+
+        return conflicts
+
+    def _get_building_name(self, predio_id: int) -> str:
+        """Get building name by ID."""
+        if not predio_id:
+            return "N/A"
+        stmt = text("SELECT nome FROM predios WHERE id = :pid")
+        row = self.session.execute(stmt, {"pid": predio_id}).fetchone()
+        return row[0] if row else "N/A"
 
     def _calculate_advanced_compatibility_score(
         self, room: Sala, demanda, hard_rules: List, professor_prefs: Dict
@@ -477,12 +845,15 @@ class RoomScoringService:
         self, disciplina_codigo: str, sala_id: int, exclude_semester_id: int
     ) -> int:
         """
-        Calculate historical frequency bonus (RF-006.6).
+        Calculate historical frequency bonus (RF-006.6) - LEGACY METHOD.
 
         Returns bonus points based on how many times this discipline has been
-        allocated to this room in previous semesters.
+        allocated to this room in previous semesters (any day).
 
         The result is capped at HISTORICAL_FREQUENCY_MAX_CAP points (not allocations).
+
+        Note: This method is kept for backward compatibility. For per-day scoring,
+        use _calculate_historical_frequency_bonus_per_day() instead.
 
         Returns:
             Historical frequency points (already capped at MAX_CAP value)
@@ -490,6 +861,45 @@ class RoomScoringService:
         # Use existing repository method to get frequency count
         frequency = self.alocacao_repo.get_discipline_room_frequency(
             disciplina_codigo, sala_id, exclude_semester_id
+        )
+
+        # Calculate points: frequency (count) × weight (points per allocation)
+        historical_points = (
+            frequency * SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION
+        )
+
+        # Cap at maximum POINTS (not maximum allocations)
+        return min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+
+    def _calculate_historical_frequency_bonus_per_day(
+        self,
+        disciplina_codigo: str,
+        sala_id: int,
+        dia_semana_id: int,
+        exclude_semester_id: int,
+    ) -> int:
+        """
+        Calculate historical frequency bonus per day (Enhanced RF-006.6).
+
+        Returns bonus points based on how many times this discipline has been
+        allocated to this room ON THIS SPECIFIC DAY in previous semesters.
+
+        This enables hybrid disciplines to get different scores for different days,
+        naturally leading to split allocation when historical data shows different
+        rooms were used on different days.
+
+        Args:
+            disciplina_codigo: Discipline code
+            sala_id: Room ID
+            dia_semana_id: Day of week ID (2=MON, 3=TUE, ..., 7=SAT)
+            exclude_semester_id: Semester ID to exclude (current semester)
+
+        Returns:
+            Historical frequency points for this day (capped at MAX_CAP value)
+        """
+        # Use new repository method to get day-specific frequency count
+        frequency = self.alocacao_repo.get_discipline_room_day_frequency(
+            disciplina_codigo, sala_id, dia_semana_id, exclude_semester_id
         )
 
         # Calculate points: frequency (count) × weight (points per allocation)

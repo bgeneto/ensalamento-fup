@@ -4,9 +4,9 @@ Application settings and configuration management.
 Loads configuration from .env file and provides access to all settings.
 """
 
-import os
 import logging
 import logging.handlers
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -134,10 +134,18 @@ class Settings:
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
+        # Create custom filter to exclude SQLAlchemy logs
+        class SQLAlchemyFilter(logging.Filter):
+            def filter(self, record):
+                return not record.name.startswith("sqlalchemy")
+
+        sqlalchemy_filter = SQLAlchemyFilter()
+
         # Console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(log_level)
         console_handler.setFormatter(formatter)
+        console_handler.addFilter(sqlalchemy_filter)
         root_logger.addHandler(console_handler)
 
         # File handler with rotation (rotate daily, keep 7 days)
@@ -150,13 +158,12 @@ class Settings:
         )
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(sqlalchemy_filter)
         root_logger.addHandler(file_handler)
 
-        # Set SQLAlchemy logging level based on DEBUG
-        if self.DEBUG:
-            logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
-        else:
-            logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+        # Disable SQLAlchemy engine logging completely
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
+        logging.getLogger("sqlalchemy").setLevel(logging.CRITICAL)
 
         # Suppress noisy third-party loggers that can cause log file feedback loops
         logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)

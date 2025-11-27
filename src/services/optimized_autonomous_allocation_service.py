@@ -1,24 +1,60 @@
 """
 Optimized Autonomous Allocation Service - Reduced I/O with batch operations and detailed logging
+
+Supports both full allocation (all blocks to one room) and partial allocation
+(different block-groups to different rooms based on per-day scoring).
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
 from sqlalchemy.orm import Session
 
-from src.services.autonomous_allocation_service import (
-    AutonomousAllocationService,
-    PhaseResult,
-    AllocationCandidate,
-)
+from src.config.settings import Settings
 from src.repositories.optimized_allocation_repo import OptimizedAllocationRepository
-from src.utils.allocation_logger import AllocationDecisionLogger
+from src.schemas.allocation import AlocacaoSemestralCreate
 from src.services.autonomous_allocation_report_service import (
     AutonomousAllocationReportService,
 )
-from src.config.scoring_config import SCORING_WEIGHTS
-from src.models.academic import Professor
-from src.schemas.allocation import AlocacaoSemestralCreate
+from src.services.autonomous_allocation_service import (
+    AllocationCandidate,
+    AutonomousAllocationService,
+    PhaseResult,
+)
+from src.utils.allocation_debug_report import AllocationDebugReport
+from src.utils.allocation_logger import AllocationDecisionLogger
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BlockGroupCandidate:
+    """Represents a room candidate for a specific block group (day)."""
+    sala: Any  # SalaRead DTO
+    demanda_id: int
+    day_id: int
+    day_name: str
+    blocks: List[Tuple[str, int]]  # List of (block_code, day_sigaa)
+    score: float
+    professor_id: Optional[int] = None
+    professor_name: Optional[str] = None
+    scoring_breakdown: Optional[Dict[str, Any]] = None
+    has_conflicts: bool = False
+
+
+@dataclass
+class BlockGroupAllocationResult:
+    """Result of allocating a block group."""
+    demanda_id: int
+    day_id: int
+    day_name: str
+    blocks: List[str]
+    allocated: bool
+    sala_id: Optional[int] = None
+    sala_nome: Optional[str] = None
+    score: float = 0.0
+    failure_reason: Optional[str] = None
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +65,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
     - Batch database operations to reduce I/O
     - Detailed decision logging
     - Transaction-based allocations
+    - **Partial allocation support** (different rooms per block-group/day)
     """
 
     def __init__(self, session: Session):
@@ -38,8 +75,424 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         self.decision_logger = AllocationDecisionLogger()
         self.report_service = AutonomousAllocationReportService()
 
-    def execute_autonomous_allocation(
+    # =========================================================================
+    # PARTIAL ALLOCATION METHODS (Block-Group Level Scoring & Allocation)
+    # =========================================================================
+
+    def _group_demand_blocks_by_day(
+        self, horario_sigaa: str
+    ) -> Dict[int, List[Tuple[str, int]]]:
+        """
+        Group atomic blocks by day for a demand's schedule.
+
+        Args:
+            horario_sigaa: Raw SIGAA schedule string (e.g., "24M12 35T34")
+
+        Returns:
+            Dict[day_id, List[(block_code, day_sigaa)]] - blocks grouped by day
+        """
+        atomic_blocks = self.parser.split_to_atomic_tuples(horario_sigaa)
+        groups: Dict[int, List[Tuple[str, int]]] = {}
+
+        for bloco_codigo, dia_sigaa in atomic_blocks:
+            if dia_sigaa not in groups:
+                groups[dia_sigaa] = []
+            groups[dia_sigaa].append((bloco_codigo, dia_sigaa))
+
+        return groups
+
+    def _score_rooms_for_block_group(
+        self,
+        demanda: Any,
+        day_id: int,
+        blocks: List[Tuple[str, int]],
+        semester_id: int,
+        professor: Optional[Any] = None,
+    ) -> List[BlockGroupCandidate]:
+        """
+        Score all rooms for a specific block group (day) of a demand.
+
+        Uses per-day historical scoring from RoomScoringService.
+
+        Args:
+            demanda: The demand object
+            day_id: The day ID (SIGAA format: 2=Mon, 3=Tue, etc.)
+            blocks: List of (block_code, day_sigaa) tuples for this day
+            semester_id: Current semester ID
+            professor: Optional professor object for preference scoring
+
+        Returns:
+            List of BlockGroupCandidate sorted by score (highest first)
+        """
+        from src.services.room_scoring_service import BlockGroup
+
+        day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+        day_name = day_names.get(day_id, f"DIA{day_id}")
+
+        # Create a BlockGroup object for the scoring service
+        block_codes = sorted(set(b[0] for b in blocks))
+        block_group = BlockGroup(
+            day_id=day_id,
+            day_name=day_name,
+            blocks=block_codes,
+        )
+
+        # Get block group scoring from the centralized scoring service
+        block_group_scores = self.scoring_service.score_rooms_for_block_group(
+            demanda_id=demanda.id,
+            block_group=block_group,
+            semester_id=semester_id,
+            professor_override=professor,
+        )
+
+        # Get all rooms to map room_id to room objects
+        all_rooms = self.sala_repo.get_all()
+        room_dict = {room.id: room for room in all_rooms}
+
+        candidates = []
+        for room_score in block_group_scores:
+            sala = room_dict.get(room_score.room_id)
+            if not sala:
+                continue
+
+            candidates.append(BlockGroupCandidate(
+                sala=sala,
+                demanda_id=demanda.id,
+                day_id=day_id,
+                day_name=day_name,
+                blocks=blocks,
+                score=room_score.score,
+                professor_id=professor.id if professor else None,
+                professor_name=demanda.professores_disciplina,
+                scoring_breakdown=room_score.breakdown.__dict__ if room_score.breakdown else None,
+                has_conflicts=room_score.has_conflict,
+            ))
+
+        # Sort by score descending
+        candidates.sort(key=lambda c: c.score, reverse=True)
+        return candidates
+
+    def _allocate_block_group(
+        self,
+        candidate: BlockGroupCandidate,
+        semester_id: int,
+    ) -> bool:
+        """
+        Allocate a single block group to a room.
+
+        Args:
+            candidate: The BlockGroupCandidate to allocate
+            semester_id: Current semester ID
+
+        Returns:
+            True if allocation successful, False otherwise
+        """
+        try:
+            allocation_dtos = []
+            for bloco_codigo, dia_sigaa in candidate.blocks:
+                allocation_dto = AlocacaoSemestralCreate(
+                    semestre_id=semester_id,
+                    demanda_id=candidate.demanda_id,
+                    sala_id=candidate.sala.id,
+                    dia_semana_id=dia_sigaa,
+                    codigo_bloco=bloco_codigo,
+                )
+                allocation_dtos.append(allocation_dto)
+
+            created_allocations = self.optimized_alocacao_repo.create_batch_atomic(
+                allocation_dtos
+            )
+
+            logger.debug(
+                f"Allocated block group {candidate.day_name} ({len(candidate.blocks)} blocks) "
+                f"for demand {candidate.demanda_id} to room {candidate.sala.id}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Block group allocation failed for demand {candidate.demanda_id}, "
+                f"day {candidate.day_name}: {e}"
+            )
+            return False
+
+    def _execute_partial_allocation_phase(
+        self,
+        demands: List[Any],
+        semester_id: int,
+        dry_run: bool,
+    ) -> Tuple[PhaseResult, List[BlockGroupAllocationResult]]:
+        """
+        Execute partial allocation phase: process each demand's block-groups independently.
+
+        This method allows different days of a demand to be allocated to different rooms
+        based on per-day historical scoring. This is useful for hybrid disciplines that
+        need different room types on different days (e.g., lab on Mon, lecture hall on Wed).
+
+        Args:
+            demands: List of demands to process
+            semester_id: Current semester ID
+            dry_run: If True, simulate without actual allocations
+
+        Returns:
+            Tuple of (PhaseResult, List[BlockGroupAllocationResult])
+        """
+        result = PhaseResult()
+        block_group_results: List[BlockGroupAllocationResult] = []
+
+        # Batch: Get professor information for all demands
+        professor_map = self._lookup_professors_for_demands_from_objects(demands)
+
+        logger.info(f"Executing partial allocation phase for {len(demands)} demands")
+
+        for demanda in demands:
+            demanda_id = demanda.id
+            professor = professor_map.get(demanda_id)
+
+            # Group blocks by day
+            block_groups = self._group_demand_blocks_by_day(demanda.horario_sigaa_bruto)
+
+            logger.debug(
+                f"Processing {demanda.codigo_disciplina}: "
+                f"{len(block_groups)} block groups"
+            )
+
+            # Process each block group independently
+            for day_id, blocks in block_groups.items():
+                # Score rooms for this specific block group
+                candidates = self._score_rooms_for_block_group(
+                    demanda, day_id, blocks, semester_id, professor
+                )
+
+                # Filter out candidates with conflicts
+                valid_candidates = [c for c in candidates if not c.has_conflicts]
+
+                if not valid_candidates:
+                    day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+                    day_name = day_names.get(day_id, f"DIA{day_id}")
+
+                    result.conflicts_found += 1
+                    block_group_results.append(BlockGroupAllocationResult(
+                        demanda_id=demanda_id,
+                        day_id=day_id,
+                        day_name=day_name,
+                        blocks=[b[0] for b in blocks],
+                        allocated=False,
+                        failure_reason="All rooms have conflicts for this block group",
+                    ))
+                    logger.debug(
+                        f"No valid rooms for {demanda.codigo_disciplina} day {day_name}"
+                    )
+                    continue
+
+                # Try to allocate to best available room
+                allocated = False
+                for candidate in valid_candidates:
+                    # Fresh conflict check against current DB state
+                    slots = [
+                        (candidate.sala.id, dia_sigaa, bloco_codigo)
+                        for bloco_codigo, dia_sigaa in candidate.blocks
+                    ]
+                    fresh_conflicts = self.optimized_alocacao_repo.check_conflicts_batch(
+                        slots, semester_id
+                    )
+                    has_conflicts = any(fresh_conflicts.get(slot, False) for slot in slots)
+
+                    if has_conflicts:
+                        continue
+
+                    # Allocate this block group
+                    if not dry_run:
+                        success = self._allocate_block_group(candidate, semester_id)
+                        if success:
+                            result.allocations_completed += 1
+                            allocated = True
+                            block_group_results.append(BlockGroupAllocationResult(
+                                demanda_id=demanda_id,
+                                day_id=candidate.day_id,
+                                day_name=candidate.day_name,
+                                blocks=[b[0] for b in candidate.blocks],
+                                allocated=True,
+                                sala_id=candidate.sala.id,
+                                sala_nome=candidate.sala.nome,
+                                score=candidate.score,
+                            ))
+                            break
+                    else:
+                        # Dry run - count as successful
+                        result.allocations_completed += 1
+                        allocated = True
+                        block_group_results.append(BlockGroupAllocationResult(
+                            demanda_id=demanda_id,
+                            day_id=candidate.day_id,
+                            day_name=candidate.day_name,
+                            blocks=[b[0] for b in candidate.blocks],
+                            allocated=True,
+                            sala_id=candidate.sala.id,
+                            sala_nome=candidate.sala.nome,
+                            score=candidate.score,
+                        ))
+                        break
+
+                if not allocated:
+                    day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+                    day_name = day_names.get(day_id, f"DIA{day_id}")
+
+                    result.demands_skipped += 1
+                    block_group_results.append(BlockGroupAllocationResult(
+                        demanda_id=demanda_id,
+                        day_id=day_id,
+                        day_name=day_name,
+                        blocks=[b[0] for b in blocks],
+                        allocated=False,
+                        failure_reason="All candidates failed fresh conflict check",
+                    ))
+
+        result.total_demands_processed = len(demands)
+        return result, block_group_results
+
+    def execute_autonomous_allocation_partial(
         self, semester_id: int, dry_run: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Execute autonomous allocation with PARTIAL allocation support.
+
+        This variant allows different block-groups (days) of a demand to be
+        allocated to different rooms. Useful for:
+        - Hybrid disciplines (lab days vs lecture days)
+        - Maximizing allocation when single-room allocation fails
+        - Better historical pattern matching per day
+
+        Args:
+            semester_id: Semester to allocate for
+            dry_run: If True, only simulate without actual allocations
+
+        Returns:
+            Detailed allocation results including per-block-group breakdown
+        """
+        import time
+        start_time = time.time()
+
+        logger.info(
+            f"Starting PARTIAL autonomous allocation for semester {semester_id}"
+        )
+        self.decision_logger = AllocationDecisionLogger()
+
+        try:
+            # Get unallocated demands
+            unallocated_demands = self.manual_service.get_unallocated_demands(
+                semester_id
+            )
+            logger.info(f"Found {len(unallocated_demands)} unallocated demands")
+
+            # Phase 1: Hard Rules (unchanged - allocates all blocks to one room)
+            logger.info("=== PHASE 1: Hard Rules Allocation ===")
+            phase1_result = self._execute_hard_rules_phase_optimized(
+                unallocated_demands, semester_id, dry_run
+            )
+            self.decision_logger.log_phase_summary("hard_rules", phase1_result.__dict__)
+
+            if not dry_run:
+                self.session.commit()
+                logger.info("Phase 1 allocations committed")
+
+            # Get remaining demands after Phase 1
+            remaining_demands = self.manual_service.get_unallocated_demands(semester_id)
+            logger.info(f"After Phase 1: {len(remaining_demands)} demands remaining")
+
+            # Phase 2+3 COMBINED: Partial Allocation Phase
+            # (Replaces separate soft scoring + atomic allocation phases)
+            logger.info("=== PHASE 2/3: Partial Allocation Phase ===")
+            partial_result, block_group_results = self._execute_partial_allocation_phase(
+                remaining_demands, semester_id, dry_run
+            )
+
+            if not dry_run:
+                self.session.commit()
+                logger.info("Partial allocation phase committed")
+
+            # Compile results
+            execution_time = time.time() - start_time
+            semester = self.semestre_repo.get_by_id(semester_id)
+            semester_name = semester.nome if semester else f"Semestre {semester_id}"
+
+            # Calculate statistics from block group results
+            total_block_groups = len(block_group_results)
+            allocated_block_groups = sum(1 for r in block_group_results if r.allocated)
+
+            # Group results by demand to show which demands got split allocations
+            demands_with_splits = {}
+            for bgr in block_group_results:
+                if bgr.demanda_id not in demands_with_splits:
+                    demands_with_splits[bgr.demanda_id] = []
+                demands_with_splits[bgr.demanda_id].append(bgr)
+
+            # Count demands with multiple rooms (actual splits)
+            split_demands = 0
+            for demand_id, results in demands_with_splits.items():
+                allocated_results = [r for r in results if r.allocated]
+                unique_rooms = set(r.sala_id for r in allocated_results if r.sala_id)
+                if len(unique_rooms) > 1:
+                    split_demands += 1
+
+            final_result = {
+                "success": True,
+                "semester_id": semester_id,
+                "mode": "partial_allocation",
+                "total_demands_initial": len(unallocated_demands),
+                "allocations_completed": (
+                    phase1_result.allocations_completed +
+                    partial_result.allocations_completed
+                ),
+                "block_groups_processed": total_block_groups,
+                "block_groups_allocated": allocated_block_groups,
+                "demands_with_split_rooms": split_demands,
+                "conflicts_found": (
+                    phase1_result.conflicts_found +
+                    partial_result.conflicts_found
+                ),
+                "phase1_hard_rules": {
+                    "allocations": phase1_result.allocations_completed,
+                    "conflicts": phase1_result.conflicts_found,
+                },
+                "phase_partial": {
+                    "block_groups_allocated": allocated_block_groups,
+                    "block_groups_failed": total_block_groups - allocated_block_groups,
+                    "split_allocations": split_demands,
+                },
+                "block_group_details": [
+                    {
+                        "demanda_id": r.demanda_id,
+                        "day": r.day_name,
+                        "blocks": r.blocks,
+                        "allocated": r.allocated,
+                        "sala_nome": r.sala_nome,
+                        "score": r.score,
+                        "failure_reason": r.failure_reason,
+                    }
+                    for r in block_group_results[:50]  # Limit for performance
+                ],
+                "execution_time": execution_time,
+                "progress_percentage": (
+                    (allocated_block_groups / total_block_groups * 100)
+                    if total_block_groups > 0 else 100
+                ),
+            }
+
+            logger.info(
+                f"Partial allocation complete: {allocated_block_groups}/{total_block_groups} "
+                f"block groups allocated, {split_demands} demands split across rooms"
+            )
+
+            return final_result
+
+        except Exception as e:
+            logger.error(f"Partial autonomous allocation failed: {e}")
+            self.session.rollback()
+            raise
+
+    def execute_autonomous_allocation(
+        self, semester_id: int, dry_run: bool = False, generate_debug_report: bool = False
     ) -> Dict[str, Any]:
         """
         Execute optimized autonomous allocation with detailed logging and PDF report generation.
@@ -47,6 +500,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         Args:
             semester_id: Semester to allocate for
             dry_run: If True, only simulate without actual allocations
+            generate_debug_report: If True, generate comprehensive debug log file
 
         Returns:
             Detailed allocation results with PDF report
@@ -60,6 +514,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         )
         self.decision_logger = AllocationDecisionLogger()
 
+        # Initialize debug report if requested and DEBUG is enabled in settings
+        debug_report = None
+        settings = Settings()
+        if generate_debug_report and settings.DEBUG:
+            from src.utils.allocation_debug_report import AllocationDebugReport
+            debug_report = AllocationDebugReport()
+            logger.info(f"Debug report will be saved to: {debug_report.get_report_path()}")
+
         try:
             # Get unallocated demands
             unallocated_demands = self.manual_service.get_unallocated_demands(
@@ -69,10 +531,21 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             # Phase 1: Hard Rules Allocation
             logger.info("=== PHASE 1: Hard Rules Allocation ===")
+            if debug_report:
+                debug_report.log_phase_start("hard_rules", "Allocate demands with hard rules (specific room/type requirements)")
+
             phase1_result = self._execute_hard_rules_phase_optimized(
-                unallocated_demands, semester_id, dry_run
+                unallocated_demands, semester_id, dry_run, debug_report
             )
             self.decision_logger.log_phase_summary("hard_rules", phase1_result.__dict__)
+
+            if debug_report:
+                debug_report.log_phase_end("hard_rules", {
+                    "demands_processed": phase1_result.demands_processed if hasattr(phase1_result, 'demands_processed') else 0,
+                    "allocations_made": phase1_result.allocations_completed,
+                    "conflicts_found": phase1_result.conflicts_found,
+                    "skipped": phase1_result.demands_skipped,
+                })
 
             # ✅ Commit Phase 1 allocations to ensure fresh conflict checks in Phase 3
             if not dry_run:
@@ -87,21 +560,43 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             # Phase 2: Soft Scoring Phase
             logger.info("=== PHASE 2: Soft Scoring Phase ===")
+            if debug_report:
+                debug_report.log_phase_start("soft_scoring", "Score all rooms for remaining demands using soft preferences and historical data")
+
             phase2_result = self._execute_soft_scoring_phase_optimized(
-                remaining_demands, semester_id
+                remaining_demands, semester_id, debug_report
             )
             self.decision_logger.log_phase_summary(
                 "soft_scoring", phase2_result.__dict__
             )
 
+            if debug_report:
+                debug_report.log_phase_end("soft_scoring", {
+                    "demands_processed": len(remaining_demands),
+                    "allocations_made": 0,  # Scoring phase doesn't allocate
+                    "conflicts_found": phase2_result.conflicts_found,
+                    "skipped": phase2_result.demands_skipped,
+                })
+
             # Phase 3: Atomic Allocation Phase
             logger.info("=== PHASE 3: Atomic Allocation Phase ===")
+            if debug_report:
+                debug_report.log_phase_start("atomic_allocation", "Allocate demands to highest-scoring rooms with conflict detection")
+
             phase3_result = self._execute_atomic_allocation_phase_optimized(
-                phase2_result.candidates, semester_id, dry_run
+                phase2_result.candidates, semester_id, dry_run, debug_report
             )
             self.decision_logger.log_phase_summary(
                 "atomic_allocation", phase3_result.__dict__
             )
+
+            if debug_report:
+                debug_report.log_phase_end("atomic_allocation", {
+                    "demands_processed": len(phase2_result.candidates) if hasattr(phase2_result, 'candidates') else 0,
+                    "allocations_made": phase3_result.allocations_completed,
+                    "conflicts_found": phase3_result.conflicts_found,
+                    "skipped": phase3_result.demands_skipped,
+                })
 
             # ✅ Commit Phase 3 allocations
             if not dry_run:
@@ -179,7 +674,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             raise
 
     def _execute_hard_rules_phase_optimized(
-        self, demands: List[Any], semester_id: int, dry_run: bool
+        self, demands: List[Any], semester_id: int, dry_run: bool, debug_report=None
     ) -> PhaseResult:
         """Optimized hard rules phase with batch operations and logging."""
         result = PhaseResult()
@@ -196,7 +691,6 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
         # Batch: Get all rooms
         all_rooms = self.sala_repo.get_all()
-        room_dict = {room.id: room for room in all_rooms}
 
         # Process demands with hard rules
         demands_with_hard_rules = [
@@ -211,6 +705,36 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             demanda_id = demanda.id
             hard_rules = all_hard_rules[demanda.codigo_disciplina]
             professor = professor_map.get(demanda_id)
+
+            # Debug report: Log demand start
+            if debug_report:
+                block_groups = []
+                atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+                day_blocks = {}
+                day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+                for bloco, dia in atomic_blocks:
+                    if dia not in day_blocks:
+                        day_blocks[dia] = []
+                    day_blocks[dia].append(bloco)
+                for dia, blocos in sorted(day_blocks.items()):
+                    block_groups.append({"day_id": dia, "day_name": day_names.get(dia, f"D{dia}"), "blocks": blocos})
+
+                debug_report.log_demand_start(
+                    demanda_id=demanda_id,
+                    codigo=demanda.codigo_disciplina,
+                    nome=demanda.nome_disciplina or "",
+                    turma=demanda.turma_disciplina or "",
+                    professores=demanda.professores_disciplina or "",
+                    vagas=demanda.vagas_disciplina or 0,
+                    horario_sigaa=demanda.horario_sigaa_bruto or "",
+                    block_groups=block_groups,
+                )
+
+                # Log hard rules
+                debug_report.log_hard_rules([
+                    {"tipo_regra": r.tipo_regra, "descricao": r.descricao, "prioridade": r.prioridade}
+                    for r in hard_rules
+                ])
 
             # Find rooms that satisfy hard rules
             suitable_rooms = []
@@ -248,6 +772,27 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                         break
 
             if allocated_room:
+                # Debug report: Log allocation decision
+                if debug_report:
+                    day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+                    atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+                    all_blocks = [b[0] for b in atomic_blocks]
+                    debug_report.log_allocation_decision(
+                        day_name="ALL DAYS",
+                        blocks=all_blocks,
+                        chosen_room=allocated_room.nome,
+                        score=100,
+                        reason=f"Hard rule compliance: {len(hard_rules)} rule(s) satisfied, no conflicts",
+                    )
+                    debug_report.log_demand_summary(
+                        demanda_id=demanda_id,
+                        allocated=True,
+                        rooms_used=[allocated_room.nome],
+                        total_blocks=len(atomic_blocks),
+                        allocated_blocks=len(atomic_blocks),
+                        is_split=False,
+                    )
+
                 # Perform allocation
                 if not dry_run:
                     success = self._allocate_atomic_blocks_optimized(
@@ -339,7 +884,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         return result
 
     def _execute_soft_scoring_phase_optimized(
-        self, demands: List[Any], semester_id: int
+        self, demands: List[Any], semester_id: int, debug_report=None
     ) -> PhaseResult:
         """Optimized soft scoring phase with batch operations and logging."""
         result = PhaseResult()
@@ -353,6 +898,46 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         for demanda in demands:
             demanda_id = demanda.id
 
+            # Debug report: Log demand start
+            if debug_report:
+                atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+                day_blocks = {}
+                day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
+                for bloco, dia in atomic_blocks:
+                    if dia not in day_blocks:
+                        day_blocks[dia] = []
+                    day_blocks[dia].append(bloco)
+                block_groups = []
+                for dia, blocos in sorted(day_blocks.items()):
+                    block_groups.append({"day_id": dia, "day_name": day_names.get(dia, f"D{dia}"), "blocks": blocos})
+
+                debug_report.log_demand_start(
+                    demanda_id=demanda_id,
+                    codigo=demanda.codigo_disciplina,
+                    nome=demanda.nome_disciplina or "",
+                    turma=demanda.turma_disciplina or "",
+                    professores=demanda.professores_disciplina or "",
+                    vagas=demanda.vagas_disciplina or 0,
+                    horario_sigaa=demanda.horario_sigaa_bruto or "",
+                    block_groups=block_groups,
+                )
+
+                # Log soft rules if any
+                soft_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+                soft_rules = [r for r in soft_rules if r.prioridade > 0]
+                debug_report.log_soft_rules([
+                    {"tipo_regra": r.tipo_regra, "descricao": r.descricao, "prioridade": r.prioridade}
+                    for r in soft_rules
+                ])
+
+                # Log professor preferences
+                professor = professor_map.get(demanda_id)
+                if professor:
+                    prof_prefs = self._get_professor_preferences_for_professor(professor)
+                    debug_report.log_professor_preferences(prof_prefs)
+                else:
+                    debug_report.log_professor_preferences({})
+
             # Use shared scoring service
             candidates = self.scoring_service.score_room_candidates_for_demand(
                 demanda_id,
@@ -363,6 +948,32 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             # Filter out candidates with conflicts
             valid_candidates = [c for c in candidates if not c.has_conflicts]
             result.conflicts_found += len(candidates) - len(valid_candidates)
+
+            # Debug report: Log scoring for all candidates (top 10)
+            if debug_report and candidates:
+                room_scores = []
+                for c in candidates[:15]:  # Show top 15
+                    breakdown = c.scoring_breakdown if hasattr(c, 'scoring_breakdown') and c.scoring_breakdown else None
+                    room_scores.append({
+                        'room_name': c.sala.nome if c.sala else 'Unknown',
+                        'room_capacity': c.sala.capacidade if c.sala else 0,
+                        'total_score': c.score,
+                        'capacity_score': breakdown.capacity_score if breakdown else 0,
+                        'hard_rule_score': breakdown.hard_rule_score if breakdown else 0,
+                        'historical_score': breakdown.historical_score if breakdown else 0,
+                        'historical_allocations': breakdown.historical_allocations if breakdown else 0,
+                        'professor_room_score': breakdown.professor_room_score if breakdown else 0,
+                        'professor_char_score': breakdown.professor_char_score if breakdown else 0,
+                        'has_conflict': c.has_conflicts,
+                    })
+
+                debug_report.log_block_group_scoring(
+                    day_id=0,
+                    day_name="ALL BLOCKS (combined)",
+                    blocks=[b[0] for b in self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)],
+                    room_scores=room_scores,
+                    max_rooms_to_show=10,
+                )
 
             if valid_candidates:
                 # Convert to AllocationCandidates
@@ -428,6 +1039,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         phase2_candidates: Dict[int, List[AllocationCandidate]],
         semester_id: int,
         dry_run: bool,
+        debug_report: Optional[AllocationDebugReport] = None,
     ) -> PhaseResult:
         """Optimized atomic allocation phase with FRESH conflict checks.
 
@@ -468,9 +1080,23 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             candidates = demands_with_candidates[demanda_id]
             allocation_success = False
 
+            # Debug report: Log demand start in Phase 3
+            if debug_report:
+                debug_report.log_demand_start(
+                    demanda_id=demanda_id,
+                    codigo=demanda.codigo_disciplina,
+                    nome=demanda.nome_disciplina,
+                    turma=demanda.turma_disciplina,
+                    professores=demanda.professores_disciplina,
+                    vagas=demanda.vagas_disciplina,
+                    horario_sigaa=demanda.horario_sigaa_bruto,
+                    block_groups=[],
+                )
+
             # ✅ CRITICAL FIX: Try ALL candidates for this demand until one succeeds
             # Original version tries multiple candidates; optimized was only trying 1
-            for candidate in candidates:
+            candidates_tried = []
+            for candidate_idx, candidate in enumerate(candidates):
                 # Build slots for this specific candidate
                 slots = [
                     (candidate.sala.id, dia_sigaa, bloco_codigo)
@@ -490,6 +1116,12 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 if has_conflicts:
                     # Try next candidate for this demand
                     result.conflicts_found += 1
+                    candidates_tried.append({
+                        "room": candidate.sala.nome,
+                        "score": candidate.score,
+                        "result": "CONFLICT",
+                        "reason": "Time slot conflicts with existing allocation",
+                    })
                     logger.debug(
                         f"Candidate {candidate.sala.nome} for {demanda.codigo_disciplina} has conflicts, trying next..."
                     )
@@ -504,12 +1136,24 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                         result.allocations_completed += 1
                         allocation_attempts.append((demanda, candidate, True, None))
                         allocation_success = True
+                        candidates_tried.append({
+                            "room": candidate.sala.nome,
+                            "score": candidate.score,
+                            "result": "ALLOCATED",
+                            "reason": f"Successfully allocated (rank #{candidate_idx + 1})",
+                        })
                         logger.debug(
                             f"Successfully allocated {demanda.codigo_disciplina} to room {candidate.sala.nome} (score: {candidate.score})"
                         )
                         break  # Success - move to next demand
                     else:
                         # Allocation failed - try next candidate
+                        candidates_tried.append({
+                            "room": candidate.sala.nome,
+                            "score": candidate.score,
+                            "result": "DB_ERROR",
+                            "reason": "Database allocation failed",
+                        })
                         logger.debug(
                             f"Allocation failed for {candidate.sala.nome}, trying next candidate..."
                         )

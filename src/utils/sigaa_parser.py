@@ -15,7 +15,7 @@ Funções principais:
 """
 
 import re
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
 
 
 class SigaaScheduleParser:
@@ -188,17 +188,104 @@ class SigaaScheduleParser:
 
         return results
 
+    def group_blocks_by_day(self, text: str) -> Dict[int, List[str]]:
+        """
+        Groups atomic blocks by day for per-day scoring.
+
+        Same-day blocks must stay together; different-day blocks can be split.
+        This is essential for hybrid disciplines that may need different rooms
+        on different days (e.g., lab on Monday, lecture hall on Wednesday).
+
+        Args:
+            text: SIGAA schedule string (e.g., "24M12 6T34")
+
+        Returns:
+            Dict mapping day_id to list of block codes.
+            Example: {2: ['M1', 'M2'], 4: ['M1', 'M2'], 6: ['T3', 'T4']}
+        """
+        if not text or not isinstance(text, str):
+            return {}
+
+        # Parse to atomic tuples: [(block_code, day_id), ...]
+        atomic_tuples = self.split_to_atomic_tuples(text)
+
+        # Group by day
+        day_blocks: Dict[int, List[str]] = {}
+        for block_code, day_id in atomic_tuples:
+            if day_id not in day_blocks:
+                day_blocks[day_id] = []
+            if block_code not in day_blocks[day_id]:  # Avoid duplicates
+                day_blocks[day_id].append(block_code)
+
+        # Sort blocks within each day for consistent ordering
+        for day_id in day_blocks:
+            day_blocks[day_id] = sorted(day_blocks[day_id])
+
+        return day_blocks
+
+    def get_block_groups_with_names(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Groups atomic blocks by day with human-readable names.
+
+        Convenience method that returns block groups with day names included,
+        suitable for UI display.
+
+        Args:
+            text: SIGAA schedule string (e.g., "24M12 6T34")
+
+        Returns:
+            List of dicts with day_id, day_name, and blocks.
+            Example: [
+                {'day_id': 2, 'day_name': 'SEG', 'blocks': ['M1', 'M2']},
+                {'day_id': 4, 'day_name': 'QUA', 'blocks': ['M1', 'M2']},
+                {'day_id': 6, 'day_name': 'SEX', 'blocks': ['T3', 'T4']}
+            ]
+        """
+        day_blocks = self.group_blocks_by_day(text)
+
+        result = []
+        for day_id in sorted(day_blocks.keys()):
+            result.append({
+                'day_id': day_id,
+                'day_name': self.MAP_DAYS.get(day_id, f"DIA{day_id}"),
+                'blocks': day_blocks[day_id],
+            })
+
+        return result
+
+    def get_time_range_for_blocks(self, blocks: List[str]) -> str:
+        """
+        Get human-readable time range for a list of blocks.
+
+        Args:
+            blocks: List of block codes (e.g., ['M1', 'M2'])
+
+        Returns:
+            Time range string (e.g., "08:00-09:50")
+        """
+        if not blocks:
+            return ""
+
+        sorted_blocks = sorted(blocks)
+        first_block = sorted_blocks[0]
+        last_block = sorted_blocks[-1]
+
+        start_time = self.MAP_SCHEDULE_TIMES.get(first_block, {}).get('inicio', '??:??')
+        end_time = self.MAP_SCHEDULE_TIMES.get(last_block, {}).get('fim', '??:??')
+
+        return f"{start_time}-{end_time}"
+
     def split_to_atomic_tuples(self, text: str) -> List[Tuple[str, int]]:
         """
         Converte uma string Sigaa bruta em uma lista de tuplas atômicas (bloco, dia).
 
         Ex: "24M12" vira [('M1', 2), ('M2', 2), ('M1', 4), ('M2', 4)]
-        
+
         Returns empty list for invalid input to handle errors gracefully.
         """
         if not text or not isinstance(text, str):
             return []
-            
+
         atomic_array = self.split_to_atomic_array(text)
         results = []
         invalid_blocks = []
@@ -209,24 +296,24 @@ class SigaaScheduleParser:
                 try:
                     day = int(block[0])
                     code = block[1:]  # "M1"
-                    
+
                     # Validate day range (2-7 for Monday-Saturday)
                     if day < 2 or day > 7:
                         invalid_blocks.append(block)
                         continue
-                        
+
                     # Validate shift and slot
                     if code[0] not in ['M', 'T', 'N']:
                         invalid_blocks.append(block)
                         continue
-                        
+
                     slot_num = int(code[1:])
                     if slot_num < 1 or slot_num > 7:
                         invalid_blocks.append(block)
                         continue
-                        
+
                     results.append((code, day))
-                except (ValueError, IndexError) as e:
+                except (ValueError, IndexError):
                     invalid_blocks.append(block)
                     continue
             else:

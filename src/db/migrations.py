@@ -4,26 +4,21 @@ Database initialization and migrations.
 
 import csv
 from pathlib import Path
-from sqlalchemy import text
 
 from src.config.database import _engine
-from src.models.base import Base
-from src.models.inventory import (
-    Campus,
-    Predio,
-    TipoSala,
-    Sala,
-    Caracteristica,
-    sala_caracteristicas,
-)
-from src.models.horario import DiaSemana, HorarioBloco
-from src.models.academic import Semestre, Demanda, Professor, Usuario
+from src.models.academic import Professor, Semestre, Usuario
 from src.models.allocation import (
     Regra,
-    AlocacaoSemestral,
-    ReservaEsporadica,
-    ReservaEvento,
-    ReservaOcorrencia,
+)
+from src.models.base import Base
+from src.models.horario import DiaSemana, HorarioBloco
+from src.models.inventory import (
+    Campus,
+    Caracteristica,
+    Predio,
+    Sala,
+    TipoSala,
+    sala_caracteristicas,
 )
 
 
@@ -637,14 +632,6 @@ def seed_db():
             },
             {
                 "nome": "AT-22/7",
-                "capacidade": 50,
-                "andar": 0,
-                "tipo_sala": "Sala de Aula",
-                "predio_id": 1,
-                "caracteristicas": [],
-            },
-            {
-                "nome": "AT-09/09",
                 "capacidade": 50,
                 "andar": 0,
                 "tipo_sala": "Sala de Aula",

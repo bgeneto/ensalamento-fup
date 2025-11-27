@@ -8,7 +8,7 @@
 
 ### Big Picture
 - **Frontend + Backend:** Multipage Streamlit app (no separate API layer)
-- **Database:** SQLite3 file-based (`data/ensalamento.db`), accessed via SQLAlchemy ORM
+- **Database:** SQLite3 file-based (`./ensalamento.db`), accessed via SQLAlchemy ORM
 - **Authentication:** `streamlit-authenticator` with YAML config (`.streamlit/secrets.yaml`)
 - **Key Constraint:** System uses SIGAA time blocks (atomic scheduling units: M1, M2, T1, etc.) to prevent conflicts
 

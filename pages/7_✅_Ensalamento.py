@@ -5,15 +5,14 @@ Combines demand queue with smart room suggestions and allocation controls.
 """
 
 import streamlit as st
-from typing import Dict, Any
 
-from pages.components.auth import initialize_page
 from pages.components.alloc_queue import render_demand_queue
 from pages.components.allocation_assistant import render_allocation_assistant
-from src.config.database import get_db_session
-from src.utils.ui_feedback import display_session_feedback
-from src.utils.cache_helpers import get_semester_options
+from pages.components.auth import initialize_page
 from pages.components.ui import page_footer
+from src.config.database import get_db_session
+from src.utils.cache_helpers import get_semester_options
+from src.utils.ui_feedback import display_session_feedback
 
 
 def clear_deallocation_selection():
@@ -32,8 +31,8 @@ def show_deallocation_dialog(selected_dealloc_demand_id):
     Show a modal dialog for deallocation confirmation.
     """
     with get_db_session() as session:
-        from src.repositories.disciplina import DisciplinaRepository
         from src.repositories.alocacao import AlocacaoRepository
+        from src.repositories.disciplina import DisciplinaRepository
         from src.repositories.sala import SalaRepository
         from src.services.manual_allocation_service import ManualAllocationService
 
@@ -64,10 +63,19 @@ def show_deallocation_dialog(selected_dealloc_demand_id):
                 st.rerun()
             return
 
-        room_id = allocations[0].sala_id
-        room_info = sala_repo.get_by_id(room_id)
-        room_name = room_info.nome if room_info else f"Sala {room_id}"
-        st.markdown(f"**Sala atual:** {room_name}")
+        # Get ALL unique rooms from allocations
+        unique_room_ids = list(dict.fromkeys(a.sala_id for a in allocations))
+        room_names = []
+        for room_id in unique_room_ids:
+            room_info = sala_repo.get_by_id(room_id)
+            room_name = room_info.nome if room_info else f"Sala {room_id}"
+            room_names.append(room_name)
+
+        # Display room(s) info
+        if len(room_names) > 1:
+            st.markdown(f"**Salas atuais:** {', '.join(room_names)} 🔀")
+        else:
+            st.markdown(f"**Sala atual:** {room_names[0]}")
         st.markdown(f"**Número de alocações:** {len(allocations)}")
 
         st.warning("ℹ️ Esta ação irá remover a alocação da disciplina permanentemente.")
@@ -123,7 +131,7 @@ st.info(
     """
     ℹ️ INSTRUÇÕES
 
-    - Antes de realizar o ensalamento, verifique se a **🧭 Demanda** já foi importada.
+    - Antes de realizar o ensalamento, verifique se a **🧭 Demanda** já foi importada (menu lateral).
     - Selecione o semestre (menu lateral) para o qual deseja realizar o ensalamento.
     - Use **🚀 Executar Alocação Autônoma** para rodar o motor de alocação automática inteligente baseado em regras e histórico.
     - A lista de demandas pendentes será exibida. Se a lista estiver vazia (nenhuma demanda encontrada), verifique se os dados foram previamente importados na página **🧭 Demanda**.
