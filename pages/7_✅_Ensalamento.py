@@ -1,6 +1,6 @@
-"""Manual Allocation Page - Ensalamento FUP/UnB
+"""Room Allocation Page - Ensalamento FUP/UnB
 
-Two-column layout page for manually allocating classroom demands to rooms.
+Two-column layout page for allocating classroom demands to rooms.
 Combines demand queue with smart room suggestions and allocation controls.
 """
 
