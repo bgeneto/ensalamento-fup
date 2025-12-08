@@ -265,3 +265,126 @@ class AllocationDecisionLogger:
             'most_used_rooms': sorted(room_usage.items(), key=lambda x: x[1], reverse=True)[:5],
             'decisions': [asdict(d) for d in decisions_to_analyze[-10:]]  # Last 10 decisions
         }
+
+    # =========================================================================
+    # PHASE 0: HYBRID DETECTION LOGGING
+    # =========================================================================
+
+    def log_hybrid_detection_phase(
+        self,
+        detection_semester_id: int,
+        current_semester_id: int,
+        hybrid_disciplines: list,
+        detection_details: dict
+    ):
+        """Log detailed Phase 0 hybrid detection results."""
+        if not DEBUG_MODE:
+            return
+
+        log_message = {
+            'event': 'phase0_hybrid_detection',
+            'timestamp': datetime.now().isoformat(),
+            'detection_semester_id': detection_semester_id,
+            'current_semester_id': current_semester_id,
+            'total_hybrid_detected': len(hybrid_disciplines),
+            'hybrid_discipline_codes': hybrid_disciplines,
+            'details': {}
+        }
+
+        # Add per-discipline details
+        for codigo, info in detection_details.items():
+            log_message['details'][codigo] = {
+                'lab_days': info.lab_days if hasattr(info, 'lab_days') else [],
+                'classroom_days': info.classroom_days if hasattr(info, 'classroom_days') else [],
+                'lab_room_types': list(info.lab_room_types) if hasattr(info, 'lab_room_types') else [],
+                'historical_lab_rooms': info.historical_lab_rooms if hasattr(info, 'historical_lab_rooms') else {}
+            }
+
+        allocation_logger.info(
+            f"HYBRID_DETECTION_PHASE: {json.dumps(log_message, indent=2, default=str)}"
+        )
+
+    def log_hybrid_discipline_detail(
+        self,
+        codigo_disciplina: str,
+        lab_days: list,
+        classroom_days: list,
+        lab_room_ids: dict
+    ):
+        """Log detailed info for a single hybrid discipline."""
+        if not DEBUG_MODE:
+            return
+
+        log_message = {
+            'event': 'hybrid_discipline_detected',
+            'timestamp': datetime.now().isoformat(),
+            'codigo_disciplina': codigo_disciplina,
+            'lab_days': lab_days,
+            'classroom_days': classroom_days,
+            'lab_room_ids_by_day': lab_room_ids,
+            'day_names': {2: 'SEG', 3: 'TER', 4: 'QUA', 5: 'QUI', 6: 'SEX', 7: 'SAB'}
+        }
+
+        allocation_logger.info(
+            f"HYBRID_DISCIPLINE: {json.dumps(log_message, indent=2, default=str)}"
+        )
+
+    def log_hybrid_scoring_applied(
+        self,
+        demanda_id: int,
+        codigo_disciplina: str,
+        day_id: int,
+        room_id: int,
+        room_name: str,
+        room_type_id: int,
+        is_hybrid: bool,
+        is_lab_day: bool,
+        is_lab_room: bool,
+        hybrid_bonus_applied: int,
+        final_score: int
+    ):
+        """Log when hybrid bonus is applied or not applied during scoring."""
+        if not DEBUG_MODE:
+            return
+
+        day_names = {2: 'SEG', 3: 'TER', 4: 'QUA', 5: 'QUI', 6: 'SEX', 7: 'SAB'}
+
+        log_message = {
+            'event': 'hybrid_scoring',
+            'timestamp': datetime.now().isoformat(),
+            'demanda_id': demanda_id,
+            'codigo_disciplina': codigo_disciplina,
+            'day_id': day_id,
+            'day_name': day_names.get(day_id, str(day_id)),
+            'room_id': room_id,
+            'room_name': room_name,
+            'room_type_id': room_type_id,
+            'is_hybrid_discipline': is_hybrid,
+            'is_lab_day': is_lab_day,
+            'is_lab_room': is_lab_room,
+            'hybrid_bonus_applied': hybrid_bonus_applied,
+            'final_score': final_score,
+            'decision': 'BONUS_APPLIED' if hybrid_bonus_applied > 0 else 'NO_BONUS'
+        }
+
+        if is_hybrid:
+            allocation_logger.info(
+                f"HYBRID_SCORING: {json.dumps(log_message, indent=2, default=str)}"
+            )
+
+    def log_no_hybrid_disciplines_found(self, detection_semester_id: int, reason: str = ""):
+        """Log when no hybrid disciplines are found."""
+        if not DEBUG_MODE:
+            return
+
+        log_message = {
+            'event': 'no_hybrid_disciplines',
+            'timestamp': datetime.now().isoformat(),
+            'detection_semester_id': detection_semester_id,
+            'reason': reason or 'No disciplines found with 2+ rooms including non-classroom'
+        }
+
+        allocation_logger.warning(
+            f"NO_HYBRID_DISCIPLINES: {json.dumps(log_message, indent=2, default=str)}"
+        )
+

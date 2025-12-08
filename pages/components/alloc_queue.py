@@ -301,27 +301,33 @@ def _check_rule_warnings(demanda) -> List[str]:
     """
     Check for rule-related warnings for this demand.
 
-    In a full implementation, this would query rules and check for:
-    - Disciplines requiring specific room types
+    Checks for:
+    - Disciplines requiring specific room types (from hybrid detection)
+    - Laboratory requirements (from discipline name regex)
     - Professor accessibility requirements
-    - Equipment requirements
+    - High enrollment requirements
     """
     warnings = []
 
-    # TODO: replace with actual rule checking
-    # Example placeholder logic
-    # This is simplified for the demonstration
-
     professors = str(getattr(demanda, "professores_disciplina", "")).lower()
     discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()
+    discipline_code = str(getattr(demanda, "codigo_disciplina", ""))
 
     # Check for accessibility needs (simplified)
     if any(term in professors for term in ["baixa mobilidade", "cadeira de rodas"]):
         warnings.append("Professor com restrição de mobilidade")
 
-    # Check for laboratory requirements
-    if any(term in discipline_name for term in ["laboratório", "prático", "prática"]):
-        warnings.append("Disciplina pode necessitar de laboratório")
+    # Check for hybrid discipline detection (from historical data)
+    # This is the CONFIRMED detection from Phase 0
+    is_hybrid_detected = _check_hybrid_discipline(discipline_code)
+    
+    if is_hybrid_detected:
+        # Strong indication - detected from historical allocation data
+        warnings.append("🧪 Disciplina HÍBRIDA - requer laboratório em alguns dias")
+    else:
+        # Soft check for laboratory requirements (regex-based, less certain)
+        if any(term in discipline_name for term in ["laboratório", "prático", "prática"]):
+            warnings.append("Disciplina pode necessitar de laboratório")
 
     # Check for high enrollment (may need larger rooms)
     vagas = getattr(demanda, "vagas_disciplina", 0)
@@ -329,6 +335,38 @@ def _check_rule_warnings(demanda) -> List[str]:
         warnings.append("Alta demanda - verificar capacidade da sala")
 
     return warnings
+
+
+def _check_hybrid_discipline(discipline_code: str) -> bool:
+    """
+    Check if a discipline is detected as hybrid from historical data.
+    
+    Uses cached detection results from the most recent autonomous allocation run,
+    or performs fresh detection if needed.
+    
+    Args:
+        discipline_code: Discipline code to check
+        
+    Returns:
+        True if discipline is detected as hybrid
+    """
+    # Check if we have cached hybrid detection in session state
+    if "hybrid_disciplines_cache" not in st.session_state:
+        # Perform fresh detection
+        try:
+            with get_db_session() as session:
+                from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
+                
+                hybrid_service = HybridDisciplineDetectionService(session)
+                result = hybrid_service.detect_hybrid_disciplines()
+                
+                # Cache the results
+                st.session_state.hybrid_disciplines_cache = set(result.hybrid_disciplines)
+        except Exception:
+            # If detection fails, return empty set
+            st.session_state.hybrid_disciplines_cache = set()
+    
+    return discipline_code in st.session_state.hybrid_disciplines_cache
 
 
 def _sort_demands_by_priority(demandas, allocation_info_map) -> List:

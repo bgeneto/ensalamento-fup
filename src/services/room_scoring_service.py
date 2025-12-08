@@ -112,12 +112,14 @@ class BlockGroupScoringBreakdown:
     hard_rules_points: int = 0
     soft_preference_points: int = 0
     historical_frequency_points: int = 0
+    hybrid_bonus_points: int = 0  # Bonus for hybrid discipline room type match
 
     # Details
     capacity_satisfied: bool = False
     hard_rules_satisfied: List[str] = None
     soft_preferences_satisfied: List[str] = None
     historical_allocations: int = 0  # Count for THIS DAY specifically
+    hybrid_room_type_match: bool = False  # True if room type matches hybrid pattern
 
     def __post_init__(self):
         if self.hard_rules_satisfied is None:
@@ -162,6 +164,18 @@ class RoomScoringService:
         self.prof_repo = ProfessorRepository(session)
         self.sala_repo = SalaRepository(session)
         self.parser = SigaaScheduleParser()
+        
+        # Hybrid discipline detection service (injected via set_hybrid_detection_service)
+        self._hybrid_detection_service = None
+
+    def set_hybrid_detection_service(self, hybrid_service) -> None:
+        """
+        Set the hybrid discipline detection service for hybrid-aware scoring.
+        
+        Args:
+            hybrid_service: HybridDisciplineDetectionService instance
+        """
+        self._hybrid_detection_service = hybrid_service
 
     def score_room_candidates_for_demand(
         self,
@@ -523,15 +537,85 @@ class RoomScoringService:
             else 0
         )
 
+        # 5. Hybrid discipline bonus - NEW!
+        # Apply bonus when room type matches historical pattern for this day
+        hybrid_bonus = self._calculate_hybrid_bonus(
+            demanda.codigo_disciplina,
+            room,
+            block_group.day_id,
+        )
+        breakdown.hybrid_bonus_points = hybrid_bonus
+        breakdown.hybrid_room_type_match = hybrid_bonus > 0
+
         # Calculate total
         breakdown.total_score = (
             breakdown.capacity_points
             + breakdown.hard_rules_points
             + breakdown.soft_preference_points
             + breakdown.historical_frequency_points
+            + breakdown.hybrid_bonus_points
         )
 
         return breakdown
+
+    def _calculate_hybrid_bonus(
+        self,
+        codigo_disciplina: str,
+        room: Sala,
+        day_id: int,
+    ) -> int:
+        """
+        Calculate hybrid discipline bonus for room type matching.
+
+        For hybrid disciplines (detected in Phase 0), this applies bonus points when:
+        - Room is a lab/specialized room AND day is a historical lab day
+        - Room is a regular classroom AND day is a historical classroom-only day
+
+        Args:
+            codigo_disciplina: Discipline code
+            room: Room to score
+            day_id: Day ID (2=MON, 3=TUE, etc.)
+
+        Returns:
+            Bonus points if room type matches historical pattern, 0 otherwise
+        """
+        # Check if hybrid detection service is available
+        if self._hybrid_detection_service is None:
+            return 0
+
+        # Check if this discipline is hybrid
+        if not self._hybrid_detection_service.is_hybrid(codigo_disciplina):
+            return 0
+
+        # Get hybrid info
+        hybrid_info = self._hybrid_detection_service.get_hybrid_info(codigo_disciplina)
+        if not hybrid_info:
+            return 0
+
+        # Regular classroom type ID (Sala de Aula = 2)
+        REGULAR_CLASSROOM_TYPE_ID = 2
+
+        is_lab_room = room.tipo_sala_id != REGULAR_CLASSROOM_TYPE_ID
+        is_lab_day = day_id in hybrid_info.lab_days
+        is_classroom_day = day_id in hybrid_info.classroom_days
+
+        # Apply bonus if room type matches the historical pattern for this day
+        if is_lab_day and is_lab_room:
+            # Lab room on a lab day - perfect match!
+            logger.debug(
+                f"Hybrid bonus for {codigo_disciplina}: lab room {room.nome} on lab day {day_id}"
+            )
+            return SCORING_WEIGHTS.HYBRID_ROOM_TYPE_MATCH
+
+        if is_classroom_day and not is_lab_room:
+            # Regular classroom on a classroom-only day - perfect match!
+            logger.debug(
+                f"Hybrid bonus for {codigo_disciplina}: classroom {room.nome} on classroom day {day_id}"
+            )
+            return SCORING_WEIGHTS.HYBRID_ROOM_TYPE_MATCH
+
+        # No match - could be lab room on classroom day or vice versa
+        return 0
 
     def _check_block_group_conflicts(
         self, sala_id: int, block_group: BlockGroup, semester_id: int

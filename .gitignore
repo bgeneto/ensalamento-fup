@@ -168,8 +168,8 @@ logs/
 
 # Configuration files with sensitive data
 config.ini
-secrets.yaml
-secrets.yml
+**/secrets.yaml
+**/secrets.yml
 
 # Certificates and keys
 *.pem

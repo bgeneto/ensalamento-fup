@@ -22,6 +22,10 @@ from src.services.autonomous_allocation_service import (
     AutonomousAllocationService,
     PhaseResult,
 )
+from src.services.hybrid_discipline_service import (
+    HybridDisciplineDetectionService,
+    HybridDetectionResult,
+)
 from src.utils.allocation_debug_report import AllocationDebugReport
 from src.utils.allocation_logger import AllocationDecisionLogger
 
@@ -74,6 +78,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         self.optimized_alocacao_repo = OptimizedAllocationRepository(session)
         self.decision_logger = AllocationDecisionLogger()
         self.report_service = AutonomousAllocationReportService()
+        
+        # Hybrid discipline detection service (Phase 0)
+        self.hybrid_detection_service = HybridDisciplineDetectionService(session)
 
     # =========================================================================
     # PARTIAL ALLOCATION METHODS (Block-Group Level Scoring & Allocation)
@@ -385,6 +392,13 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             )
             logger.info(f"Found {len(unallocated_demands)} unallocated demands")
 
+            # Phase 0: Hybrid Discipline Detection (NEW!)
+            logger.info("=== PHASE 0: Hybrid Discipline Detection ===")
+            phase0_result = self._execute_hybrid_detection_phase(semester_id)
+            logger.info(
+                f"Detected {phase0_result.detected_count} hybrid disciplines"
+            )
+
             # Phase 1: Hard Rules (unchanged - allocates all blocks to one room)
             logger.info("=== PHASE 1: Hard Rules Allocation ===")
             phase1_result = self._execute_hard_rules_phase_optimized(
@@ -491,6 +505,124 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             self.session.rollback()
             raise
 
+    # =========================================================================
+    # PHASE 0: HYBRID DISCIPLINE DETECTION
+    # =========================================================================
+
+    def _execute_hybrid_detection_phase(
+        self, current_semester_id: int, debug_report=None
+    ) -> HybridDetectionResult:
+        """
+        Phase 0: Detect hybrid disciplines from historical allocations.
+
+        A hybrid discipline is one that has been allocated to both:
+        - Regular classrooms (tipo_sala_id = 2)
+        - Specialized rooms (labs, auditoriums, etc. - tipo_sala_id != 2)
+        
+        This phase analyzes the most recent historical semester to identify
+        disciplines that need split allocation (lab on some days, classroom on others).
+
+        After detection, the hybrid service is injected into the scoring service
+        so that per-day scoring can apply the hybrid room type match bonus.
+
+        Args:
+            current_semester_id: The semester we're allocating for (NOT used for detection)
+            debug_report: Optional debug report for logging
+
+        Returns:
+            HybridDetectionResult with detection details
+        """
+        logger.info("Starting Phase 0: Hybrid Discipline Detection")
+
+        # Get the most recent semester WITH ALLOCATIONS for detection
+        # CRITICAL: We need to use a semester that has historical data, NOT the current
+        # empty semester we're about to allocate. This was the bug - we were using
+        # get_most_recent_semester_id() which returned semester 5 (empty), instead of
+        # semester 4 (which has historical allocations).
+        detection_semester_id = self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations(
+            exclude_semester_id=current_semester_id  # Exclude current semester
+        )
+        
+        if not detection_semester_id:
+            # Fallback: maybe we're reallocating an existing semester that has data
+            detection_semester_id = self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations()
+            
+        if not detection_semester_id:
+            logger.warning("No historical semesters with allocations found for hybrid detection")
+            self.decision_logger.log_no_hybrid_disciplines_found(
+                detection_semester_id=0,
+                reason="No semesters with allocation data found in database"
+            )
+            return HybridDetectionResult()
+
+        logger.info(
+            f"Using semester {detection_semester_id} for hybrid detection "
+            f"(current semester: {current_semester_id})"
+        )
+
+        # Execute detection
+        result = self.hybrid_detection_service.detect_hybrid_disciplines(
+            detection_semester_id
+        )
+
+        logger.info(
+            f"Phase 0 complete: Detected {result.detected_count} hybrid disciplines "
+            f"from semester {result.detection_semester_id}"
+        )
+
+        # Log detected hybrid disciplines
+        if result.hybrid_disciplines:
+            for codigo in result.hybrid_disciplines[:5]:  # Log first 5
+                info = result.details.get(codigo)
+                if info:
+                    logger.info(
+                        f"  - {codigo}: lab_days={info.lab_days}, classroom_days={info.classroom_days}"
+                    )
+            if len(result.hybrid_disciplines) > 5:
+                logger.info(f"  ... and {len(result.hybrid_disciplines) - 5} more")
+
+        # Inject hybrid detection service into scoring service for hybrid-aware scoring
+        self.scoring_service.set_hybrid_detection_service(self.hybrid_detection_service)
+        logger.debug("Hybrid detection service injected into scoring service")
+
+        # ===== DETAILED DEBUG LOGGING =====
+        # Log Phase 0 results to the allocation decisions log file
+        self.decision_logger.log_hybrid_detection_phase(
+            detection_semester_id=detection_semester_id,
+            current_semester_id=current_semester_id,
+            hybrid_disciplines=result.hybrid_disciplines,
+            detection_details=result.details
+        )
+
+        # Log each hybrid discipline in detail
+        for codigo, info in result.details.items():
+            self.decision_logger.log_hybrid_discipline_detail(
+                codigo_disciplina=codigo,
+                lab_days=info.lab_days,
+                classroom_days=info.classroom_days,
+                lab_room_ids=info.historical_lab_rooms
+            )
+
+        # Log if no hybrid disciplines found
+        if not result.hybrid_disciplines:
+            self.decision_logger.log_no_hybrid_disciplines_found(
+                detection_semester_id=detection_semester_id,
+                reason="Detection query returned 0 disciplines with 2+ rooms including non-classroom"
+            )
+
+        # Log to debug report
+        if debug_report:
+            debug_report.log_section_header("phase0_hybrid_detection")
+            debug_report.log_kv("detection_semester_id", detection_semester_id)
+            debug_report.log_kv("hybrid_disciplines_count", result.detected_count)
+            for codigo, info in result.details.items():
+                debug_report.log_kv(
+                    f"hybrid_{codigo}",
+                    f"lab_days={info.lab_days}, classroom_days={info.classroom_days}"
+                )
+
+        return result
+
     def execute_autonomous_allocation(
         self, semester_id: int, dry_run: bool = False, generate_debug_report: bool = False
     ) -> Dict[str, Any]:
@@ -528,6 +660,20 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 semester_id
             )
             logger.info(f"Found {len(unallocated_demands)} unallocated demands")
+
+            # Phase 0: Hybrid Discipline Detection (NEW!)
+            logger.info("=== PHASE 0: Hybrid Discipline Detection ===")
+            if debug_report:
+                debug_report.log_phase_start("hybrid_detection", "Detect hybrid disciplines from historical allocations")
+            
+            phase0_result = self._execute_hybrid_detection_phase(semester_id, debug_report)
+            
+            if debug_report:
+                debug_report.log_phase_end("hybrid_detection", {
+                    "hybrid_disciplines_detected": phase0_result.detected_count,
+                    "detection_semester": phase0_result.detection_semester_id,
+                    "hybrid_codes": phase0_result.hybrid_disciplines[:10],  # First 10 for logging
+                })
 
             # Phase 1: Hard Rules Allocation
             logger.info("=== PHASE 1: Hard Rules Allocation ===")

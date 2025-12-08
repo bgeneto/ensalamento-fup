@@ -67,6 +67,11 @@ class ScoringWeights:
     HISTORICAL_FREQUENCY_PER_ALLOCATION: int = 2  # Changed from 1 → 2 (100% increase)
     HISTORICAL_FREQUENCY_MAX_CAP: int = 12
 
+    # Hybrid discipline scoring (Phase 0 detection)
+    # Bonus when room type matches historical pattern for day
+    # (lab room on lab day, classroom on classroom day)
+    HYBRID_ROOM_TYPE_MATCH: int = 15
+
     # Priority constants for autonomous allocation demand ordering
     PRIORITY_SPECIFIC_ROOM_REQUIRED: int = 50
     PRIORITY_MOBILITY_CONSTRAINTS: int = 30
@@ -139,6 +144,7 @@ def _create_scoring_weights_from_config(config: Dict[str, Any]) -> ScoringWeight
             "HISTORICAL_FREQUENCY_PER_ALLOCATION", 2
         ),
         HISTORICAL_FREQUENCY_MAX_CAP=weights.get("HISTORICAL_FREQUENCY_MAX_CAP", 12),
+        HYBRID_ROOM_TYPE_MATCH=weights.get("HYBRID_ROOM_TYPE_MATCH", 15),
         PRIORITY_SPECIFIC_ROOM_REQUIRED=weights.get(
             "PRIORITY_SPECIFIC_ROOM_REQUIRED", 50
         ),
@@ -202,6 +208,7 @@ def validate_scoring_config(config: Dict[str, Any]) -> bool:
             "PREFERRED_CHARACTERISTIC",
             "HISTORICAL_FREQUENCY_PER_ALLOCATION",
             "HISTORICAL_FREQUENCY_MAX_CAP",
+            "HYBRID_ROOM_TYPE_MATCH",
             "PRIORITY_SPECIFIC_ROOM_REQUIRED",
             "PRIORITY_MOBILITY_CONSTRAINTS",
             "PRIORITY_ROOM_PREFERENCES",

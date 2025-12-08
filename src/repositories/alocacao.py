@@ -495,3 +495,189 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             results[(row.sala_id, row.dia_semana_id)] = row.count
 
         return results
+
+    # ========================================================================
+    # HYBRID DISCIPLINE DETECTION (Phase 0)
+    # ========================================================================
+
+    def detect_hybrid_disciplines(
+        self, semester_id: int, regular_classroom_type_id: int = 2
+    ) -> List[str]:
+        """
+        Detect hybrid disciplines from historical allocations.
+
+        A hybrid discipline is one that:
+        1. Has allocations in 2+ different rooms in the same semester
+        2. At least one of those rooms is NOT a regular classroom (tipo_sala_id != 2)
+
+        This indicates the discipline uses both classrooms and specialized rooms
+        (labs, auditoriums, etc.) on different days.
+
+        Args:
+            semester_id: Semester to analyze for detection
+            regular_classroom_type_id: tipo_sala_id for regular classrooms (default: 2)
+
+        Returns:
+            List of discipline codes (codigo_disciplina) classified as hybrid
+        """
+        from sqlalchemy import case, func
+
+        from src.models.academic import Demanda
+        from src.models.inventory import Sala
+
+        # Query to find disciplines with:
+        # 1. 2+ different rooms in the semester
+        # 2. At least one room that is NOT a regular classroom
+        query = (
+            self.session.query(Demanda.codigo_disciplina)
+            .join(AlocacaoSemestral, AlocacaoSemestral.demanda_id == Demanda.id)
+            .join(Sala, AlocacaoSemestral.sala_id == Sala.id)
+            .filter(AlocacaoSemestral.semestre_id == semester_id)
+            .group_by(Demanda.codigo_disciplina)
+            .having(
+                and_(
+                    # At least 2 different rooms
+                    func.count(func.distinct(AlocacaoSemestral.sala_id)) >= 2,
+                    # At least one non-classroom room
+                    func.max(
+                        case(
+                            (Sala.tipo_sala_id != regular_classroom_type_id, 1),
+                            else_=0,
+                        )
+                    )
+                    == 1,
+                )
+            )
+        )
+
+        results = [row[0] for row in query.all()]
+        return results
+
+    def get_hybrid_discipline_day_room_types(
+        self,
+        codigo_disciplina: str,
+        semester_id: int,
+        regular_classroom_type_id: int = 2,
+    ) -> Dict[int, Dict[str, any]]:
+        """
+        Get room type usage per day for a hybrid discipline.
+
+        For each day of the week, returns which room types were used
+        and whether it's primarily a lab day or classroom day.
+
+        Args:
+            codigo_disciplina: Discipline code
+            semester_id: Semester to analyze
+            regular_classroom_type_id: tipo_sala_id for regular classrooms (default: 2)
+
+        Returns:
+            Dict[day_id, {
+                'room_types': [tipo_sala_ids used],
+                'room_ids': [sala_ids used],
+                'is_lab_day': bool,  # True if any non-classroom room used
+                'lab_room_ids': [sala_ids that are labs/specialized]
+            }]
+        """
+        from src.models.academic import Demanda
+        from src.models.inventory import Sala
+
+        # Get all allocations for this discipline in the semester
+        query = (
+            self.session.query(
+                AlocacaoSemestral.dia_semana_id,
+                Sala.id.label("sala_id"),
+                Sala.tipo_sala_id,
+            )
+            .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
+            .join(Sala, AlocacaoSemestral.sala_id == Sala.id)
+            .filter(
+                and_(
+                    Demanda.codigo_disciplina == codigo_disciplina,
+                    AlocacaoSemestral.semestre_id == semester_id,
+                )
+            )
+            .distinct()
+        )
+
+        # Organize by day
+        day_info: Dict[int, Dict[str, any]] = {}
+        for row in query.all():
+            day_id = row.dia_semana_id
+            sala_id = row.sala_id
+            tipo_sala_id = row.tipo_sala_id
+
+            if day_id not in day_info:
+                day_info[day_id] = {
+                    "room_types": set(),
+                    "room_ids": set(),
+                    "lab_room_ids": set(),
+                }
+
+            day_info[day_id]["room_types"].add(tipo_sala_id)
+            day_info[day_id]["room_ids"].add(sala_id)
+
+            # Track non-classroom rooms as "lab" rooms
+            if tipo_sala_id != regular_classroom_type_id:
+                day_info[day_id]["lab_room_ids"].add(sala_id)
+
+        # Convert sets to lists and add is_lab_day flag
+        result = {}
+        for day_id, info in day_info.items():
+            result[day_id] = {
+                "room_types": list(info["room_types"]),
+                "room_ids": list(info["room_ids"]),
+                "lab_room_ids": list(info["lab_room_ids"]),
+                "is_lab_day": len(info["lab_room_ids"]) > 0,
+            }
+
+        return result
+
+    def get_most_recent_semester_id(self) -> Optional[int]:
+        """
+        Get the most recent semester ID (highest ID value).
+
+        Returns:
+            Most recent semester_id, or None if no semesters exist
+        """
+        from sqlalchemy import func
+
+        from src.models.academic import Semestre
+
+        result = self.session.query(func.max(Semestre.id)).scalar()
+        return result
+
+    def get_most_recent_semester_with_allocations(
+        self, exclude_semester_id: Optional[int] = None
+    ) -> Optional[int]:
+        """
+        Get the most recent semester ID that has actual allocations.
+
+        This is important for hybrid detection because we need a semester
+        with existing allocation data, not an empty semester we're about to allocate.
+
+        Args:
+            exclude_semester_id: Optional semester to exclude (e.g., current semester)
+
+        Returns:
+            Most recent semester_id with allocations, or None if none exist
+        """
+        from sqlalchemy import func
+
+        # Find semesters that have allocations
+        query = (
+            self.session.query(AlocacaoSemestral.semestre_id)
+            .group_by(AlocacaoSemestral.semestre_id)
+            .having(func.count(AlocacaoSemestral.id) > 0)
+        )
+
+        if exclude_semester_id:
+            query = query.filter(AlocacaoSemestral.semestre_id != exclude_semester_id)
+
+        # Get all semesters with allocations, then return the max
+        semester_ids = [row[0] for row in query.all()]
+
+        if not semester_ids:
+            return None
+
+        return max(semester_ids)
+
