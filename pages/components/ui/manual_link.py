@@ -51,5 +51,3 @@ def render_manual_sidebar():
             use_container_width=True,
             icon="🔗",
         )
-
-        st.caption("ℹ️ Para ver o manual online, execute `mkdocs serve` no terminal.")
