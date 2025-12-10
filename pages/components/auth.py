@@ -41,8 +41,23 @@ def initialize_page(
     """
 
     # ============================================================================
+    # PAGE CONFIG (MUST BE FIRST STREAMLIT COMMAND)
+    # ============================================================================
+    try:
+        st.set_page_config(
+            page_title=page_title,
+            page_icon=page_icon,
+            layout=layout,
+        )
+    except Exception:
+        # Ignore error if config was already set (e.g. by a parent script)
+        pass
+
+    # ============================================================================
     # AUTHENTICATION CHECK (only if required)
     # ============================================================================
+    auth_success = True
+
     if requires_auth:
         # Retrieve authenticator from session state (set by 0_🔓_Login.py)
         authenticator = st.session_state.get("authenticator")
@@ -55,7 +70,7 @@ def initialize_page(
         auth_key = f"authenticator-{key_suffix}"
         logout_key = f"logout-{key_suffix}"
 
-        # Call login with unrendered location to maintain session (required for page refresh fix)
+        # Call login with unrendered location to maintain session
         try:
             authenticator.login(location="unrendered", key=auth_key)
         except Exception as exc:
@@ -70,9 +85,10 @@ def initialize_page(
 
             show_semester_badge()
 
-            # st.sidebar.markdown("---")
-
             # Show logout button in sidebar
+            # Note: We put logout high up or let it float.
+            # Authenticator usually handles its own placement if location='sidebar'.
+            # But we can explicit put it here.
             authenticator.logout(
                 location="sidebar", key=logout_key, use_container_width=True
             )
@@ -82,14 +98,11 @@ def initialize_page(
             return False
 
     # ============================================================================
-    # PAGE CONFIG
+    # COMMON SIDEBAR ELEMENTS (User Manual)
     # ============================================================================
+    from pages.components.ui.manual_link import render_manual_sidebar
 
-    st.set_page_config(
-        page_title=page_title,
-        page_icon=page_icon,
-        layout=layout,
-    )
+    render_manual_sidebar()
 
     # Authentication successful (or not required)
     return True

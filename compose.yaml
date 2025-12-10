@@ -22,7 +22,7 @@ services:
       - ./static:/app/static
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8501/_stcore/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -45,6 +45,21 @@ services:
     # Run container as host user for correct volume permissions
     # Replace 1000 with your actual host user UID (run 'id -u' on host)
     user: "${HOST_UID:-1000}:${HOST_UID:-1000}"
+    environment:
+      - DOCS_URL=http://localhost:8000
+
+  # Documentation Server
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: docs
+    container_name: ensalamento-docs
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    networks:
+      - proxy
 
 networks:
   proxy:

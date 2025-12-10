@@ -229,6 +229,9 @@ class AutonomousAllocationReportService:
             self._build_critical_insights(allocation_results, allocation_decisions)
         )
 
+        # Hybrid disciplines summary (Phase 0 detection results)
+        story.extend(self._build_hybrid_discipline_summary(allocation_results))
+
         # Phase-by-phase analysis with success metrics
         story.extend(self._build_phase_analysis(allocation_results))
 
@@ -320,6 +323,16 @@ class AutonomousAllocationReportService:
                 "Demandas Não Alocadas",
                 str(results.get("demands_skipped", 0)),
                 "Intervenção manual",
+            ],
+            [
+                "🔀 Disciplinas Híbridas Detectadas",
+                str(results.get("hybrid_summary", {}).get("detected_count", 0)),
+                "Lab + Sala de aula",
+            ],
+            [
+                "🔄 Alocações com Salas Divididas",
+                str(results.get("demands_with_split_rooms", 0)),
+                "Dias diferentes → Salas diferentes",
             ],
         ]
 
@@ -511,6 +524,115 @@ class AutonomousAllocationReportService:
                 )
             )
 
+        content.append(Spacer(1, 15))
+
+        return content
+
+    def _build_hybrid_discipline_summary(self, results: Dict[str, Any]) -> List[Any]:
+        """Build hybrid discipline summary section from Phase 0 detection results."""
+        content = []
+
+        hybrid_summary = results.get("hybrid_summary", {})
+        detected_count = hybrid_summary.get("detected_count", 0)
+
+        # Only show section if hybrid disciplines were detected
+        if detected_count == 0:
+            return content
+
+        content.append(
+            Paragraph(
+                "🔀 RESUMO DE DISCIPLINAS HÍBRIDAS",
+                self.styles["SectionHeader"],
+            )
+        )
+
+        # Introduction text
+        detection_semester = hybrid_summary.get("detection_semester_id", "N/A")
+        intro_text = f"""
+        <b>Disciplinas híbridas</b> são aquelas que historicamente foram alocadas em 
+        <b>tipos diferentes de sala</b> em dias diferentes da semana (ex: laboratório na segunda, 
+        sala de aula na quarta). A detecção foi baseada no semestre {detection_semester}.<br/><br/>
+        <b>Total detectado:</b> {detected_count} disciplina(s) híbrida(s)
+        """
+        content.append(Paragraph(intro_text, self.styles["Normal"]))
+        content.append(Spacer(1, 10))
+
+        # Build table with hybrid disciplines
+        hybrid_details = hybrid_summary.get("details", {})
+
+        if hybrid_details:
+            table_data = [["CÓDIGO", "DIAS DE LAB", "DIAS DE SALA"]]
+
+            for codigo, info in list(hybrid_details.items())[
+                :15
+            ]:  # Limit to 15 for readability
+                lab_days_str = ", ".join(info.get("lab_days_names", []))
+                classroom_days_str = ", ".join(info.get("classroom_days_names", []))
+
+                table_data.append(
+                    [
+                        codigo,
+                        lab_days_str if lab_days_str else "—",
+                        classroom_days_str if classroom_days_str else "—",
+                    ]
+                )
+
+            hybrid_table = Table(table_data, colWidths=[50 * mm, 50 * mm, 50 * mm])
+            hybrid_table.setStyle(
+                TableStyle(
+                    [
+                        # Header styling
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, 0),
+                            colors.HexColor("#6366f1"),
+                        ),  # Indigo
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("FONTNAME", (0, 0), (-1, 0), get_table_header_font()),
+                        ("FONTSIZE", (0, 0), (-1, 0), 9),
+                        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                        # Data rows
+                        ("FONTNAME", (0, 1), (-1, -1), get_table_cell_font()),
+                        ("FONTSIZE", (0, 1), (-1, -1), 8),
+                        ("ALIGN", (0, 1), (-1, -1), "CENTER"),
+                        # Borders and alternating colors
+                        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [
+                                colors.white,
+                                colors.HexColor("#f0f0ff"),
+                            ],  # Light indigo alternating
+                        ),
+                    ]
+                )
+            )
+
+            content.append(hybrid_table)
+
+            if len(hybrid_details) > 15:
+                content.append(Spacer(1, 5))
+                content.append(
+                    Paragraph(
+                        f"<i>... e mais {len(hybrid_details) - 15} disciplinas híbridas</i>",
+                        self.styles["Normal"],
+                    )
+                )
+
+        content.append(Spacer(1, 10))
+
+        # Interpretation
+        interpretation = """
+        <b>💡 Como a alocação híbrida funciona:</b><br/>
+        O sistema tenta alocar cada dia da semana para o tipo de sala mais adequado 
+        conforme o padrão histórico. Por exemplo, se uma disciplina usava LAB02 às segundas 
+        e sala de aula às quartas, o sistema tentará manter esse padrão ao alocar cada dia 
+        separadamente (alocação parcial).
+        """
+        content.append(Paragraph(interpretation, self.styles["Normal"]))
         content.append(Spacer(1, 15))
 
         return content
@@ -1171,6 +1293,11 @@ class AutonomousAllocationReportService:
                             f"{scoring_breakdown.get('historical_allocations', 0)} alocações anteriores nesta sala",
                         ],
                         [
+                            "🔀 Bônus Híbrido",
+                            str(scoring_breakdown.get("hybrid_bonus_points", 0)),
+                            self._format_hybrid_bonus_explanation(scoring_breakdown),
+                        ],
+                        [
                             "TOTAL",
                             str(final_score),
                             "Pontuação final que determinou esta alocação",
@@ -1273,6 +1400,31 @@ class AutonomousAllocationReportService:
             return f"Preferência atendida: {soft_preferences_satisfied[0]}"
         else:
             return f"{len(soft_preferences_satisfied)} preferências atendidas"
+
+    def _format_hybrid_bonus_explanation(self, scoring_breakdown: Dict) -> str:
+        """Format explanation for hybrid discipline bonus."""
+        hybrid_bonus = scoring_breakdown.get("hybrid_bonus_points", 0)
+        is_hybrid = scoring_breakdown.get("is_hybrid_discipline", False)
+        is_lab_day = scoring_breakdown.get("is_lab_day", False)
+        is_lab_room = scoring_breakdown.get("is_lab_room", False)
+
+        if not is_hybrid:
+            return "Não é disciplina híbrida"
+
+        if hybrid_bonus > 0:
+            if is_lab_day and is_lab_room:
+                return "✓ Dia de lab → Sala de lab (padrão correto)"
+            elif not is_lab_day and not is_lab_room:
+                return "✓ Dia de aula → Sala de aula (padrão correto)"
+            else:
+                return f"Bônus aplicado: +{hybrid_bonus} pts"
+        else:
+            if is_lab_day and not is_lab_room:
+                return "⚠️ Dia de lab mas sala não é lab"
+            elif not is_lab_day and is_lab_room:
+                return "⚠️ Dia de aula mas sala é lab"
+            else:
+                return "Sem bônus híbrido aplicado"
 
     def _generate_decision_reasoning(
         self, decision: Dict, scoring_breakdown: Dict

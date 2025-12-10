@@ -57,9 +57,7 @@ Dockerfile*
 docker-compose*.yml
 .dockerignore
 
-# Documentation and README files
-*.md
-docs/
+
 
 # Test files
 .coverage
@@ -99,5 +97,4 @@ yarn-error.log*
 .env.development
 .env.test
 
-# MkDocs documentation site
-docs-manual/
+

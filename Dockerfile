@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Pint of Science Certificate System
+# Multi-stage Dockerfile for Ensalamento FUP/UnB System
 # Base image: Python 3.13 slim
 # Optimized for caching and production deployment
 
@@ -20,6 +20,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     sqlite3 \
     curl \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -43,6 +48,10 @@ RUN groupadd -r streamlit && \
 # Copy application code
 COPY --chown=streamlit:streamlit . .
 
+# Build documentation (HTML + PDF)
+ENV ENABLE_PDF_EXPORT=1
+RUN mkdocs build
+
 # Create necessary directories and set permissions
 RUN mkdir -p /app/data /app/static && \
     chown -R streamlit:streamlit /app
@@ -58,10 +67,16 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
 # Default command to run Streamlit
-CMD ["streamlit", "run", "home.py", \
-     "--server.port=8501", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true", \
-     "--server.enableCORS=false", \
-     "--server.enableXsrfProtection=false", \
-     "--browser.gatherUsageStats=false"]
+CMD ["streamlit", "run", "0_🔓_Login.py", \
+    "--server.port=8501", \
+    "--server.address=0.0.0.0", \
+    "--server.headless=true", \
+    "--server.enableCORS=false", \
+    "--server.enableXsrfProtection=false", \
+    "--browser.gatherUsageStats=false"]
+
+# Stage 4: Documentation Server (Nginx)
+FROM nginx:alpine AS docs
+COPY --from=production /app/docs-site /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

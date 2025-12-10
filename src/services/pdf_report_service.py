@@ -29,11 +29,44 @@ from src.utils.cache_helpers import get_sigaa_parser
 class PDFReportService:
     """Service for generating PDF reports of room allocations."""
 
+    # Arial Narrow font names
+    FONT_REGULAR = "ArialNarrow"
+    FONT_BOLD = "ArialNarrow-Bold"
+
     def __init__(self):
         """Initialize PDF report service."""
         self.parser = get_sigaa_parser()
+        self._register_narrow_fonts()
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
+
+    def _register_narrow_fonts(self):
+        """Register Arial Narrow fonts from the static folder."""
+        import os
+
+        # Get the project root directory (where static folder is located)
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        static_dir = os.path.join(project_root, "static")
+
+        try:
+            pdfmetrics.registerFont(
+                TTFont(self.FONT_REGULAR, os.path.join(static_dir, "arialnarrow.ttf"))
+            )
+            pdfmetrics.registerFont(
+                TTFont(self.FONT_BOLD, os.path.join(static_dir, "arialnarrow_bold.ttf"))
+            )
+            # Register font family so ReportLab can map between regular/bold variants
+            pdfmetrics.registerFontFamily(
+                self.FONT_REGULAR,
+                normal=self.FONT_REGULAR,
+                bold=self.FONT_BOLD,
+            )
+        except Exception:
+            # Fallback to Helvetica if Arial Narrow not available
+            type(self).FONT_REGULAR = "Helvetica"
+            type(self).FONT_BOLD = "Helvetica-Bold"
 
     def _setup_custom_styles(self):
         """Setup custom paragraph styles for the report."""
@@ -47,7 +80,7 @@ class PDFReportService:
                 spaceAfter=3,
                 spaceBefore=0,
                 alignment=TA_CENTER,
-                fontName="Helvetica-Bold",
+                fontName=self.FONT_BOLD,
             )
         )
 
@@ -59,7 +92,7 @@ class PDFReportService:
                 fontSize=8,
                 leading=9,
                 alignment=TA_LEFT,
-                fontName="Helvetica",
+                fontName=self.FONT_REGULAR,
                 leftIndent=1,
                 rightIndent=1,
             )
@@ -73,7 +106,7 @@ class PDFReportService:
                 fontSize=8,
                 leading=9,
                 alignment=TA_CENTER,
-                fontName="Helvetica-Bold",
+                fontName=self.FONT_BOLD,
             )
         )
 
@@ -84,7 +117,7 @@ class PDFReportService:
                 parent=self.styles["Normal"],
                 fontSize=9,
                 alignment=TA_CENTER,
-                fontName="Helvetica-Bold",
+                fontName=self.FONT_BOLD,
                 textColor=colors.white,
             )
         )
@@ -112,20 +145,20 @@ class PDFReportService:
         # Set page size and margins based on orientation
         if portrait_mode:
             page_size = A4  # Portrait A4
-            # Portrait A4 = 210mm width - 16mm margins = 194mm available (same as landscape)
-            # Time column: 20mm (increased for better time display), Day columns: (194-20)/6 = 29mm each
-            right_margin = 8 * mm
-            left_margin = 8 * mm
-            time_col_width = 20 * mm
-            day_col_width = 29 * mm
+            # Portrait A4 = 210mm width - 12mm margins = 198mm available (same as landscape)
+            # Time column: 18mm (increased for better time display), Day columns: (198-18)/6 = 30mm each
+            right_margin = 6 * mm
+            left_margin = 6 * mm
+            time_col_width = 18 * mm
+            day_col_width = 30 * mm
         else:
             page_size = landscape(A4)  # Landscape A4 (default)
-            # Landscape A4 = 297mm width - 16mm margins = 281mm available
-            # Time column: 17mm, Day columns: (281-17)/6 = 44.0mm each
-            right_margin = 8 * mm
-            left_margin = 8 * mm
-            time_col_width = 17 * mm
-            day_col_width = 44.0 * mm
+            # Landscape A4 = 297mm width - 12mm margins = 285mm available
+            # Time column: 18mm, Day columns: (285-18)/6 = 44.5mm each
+            right_margin = 6 * mm
+            left_margin = 6 * mm
+            time_col_width = 18 * mm
+            day_col_width = 44.5 * mm
 
         # Create PDF document
         doc = SimpleDocTemplate(
@@ -133,8 +166,8 @@ class PDFReportService:
             pagesize=page_size,
             rightMargin=right_margin,
             leftMargin=left_margin,
-            topMargin=5 * mm,
-            bottomMargin=5 * mm,
+            topMargin=4 * mm,
+            bottomMargin=4 * mm,
             title=f"Ensalamento {semester_name}",
             author="Sistema de Ensalamento FUP/UnB",
         )
@@ -165,7 +198,7 @@ class PDFReportService:
             title_text = f"Sala: {formatted_room_name}"
             title = Paragraph(title_text, self.styles["RoomTitle"])
             story.append(title)
-            story.append(Spacer(1, 2))
+            story.append(Spacer(1, 0))
 
             # Build schedule table
             table_data = self._build_schedule_table(allocations)
@@ -191,14 +224,14 @@ class PDFReportService:
                             ),
                             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("FONTNAME", (0, 0), (-1, 0), self.FONT_BOLD),
                             ("FONTSIZE", (0, 0), (-1, 0), 9),
                             ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
                             ("TOPPADDING", (0, 0), (-1, 0), 4),
                             # Time column styling (first column)
                             ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#e8eaf6")),
                             ("ALIGN", (0, 1), (0, -1), "CENTER"),
-                            ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+                            ("FONTNAME", (0, 1), (0, -1), self.FONT_BOLD),
                             ("FONTSIZE", (0, 1), (0, -1), 8),
                             # All cells - minimal padding
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -354,7 +387,8 @@ class PDFReportService:
         formatted_items = []
 
         for alloc in allocations:
-            codigo = alloc.get("codigo", "N/A")
+            # codigo = alloc.get("codigo", "N/A")
+            codigo = None
             nome = alloc.get("nome", "")
             turma = alloc.get("turma", "")
             professor = alloc.get("professor", "")
@@ -362,23 +396,21 @@ class PDFReportService:
             # Build formatted text
             lines = []
 
-            # Line 1: Course code + name on same line (bold code, regular name)
+            # Line 1: Course code + name on same line
             # Let Paragraph handle word wrapping naturally
             if codigo and nome:
                 # Truncate only if extremely long (>80 chars) to prevent overflow
                 nome_display = nome if len(nome) <= 80 else nome[:77] + "..."
-                lines.append(f"{codigo} - {nome_display}")
+                lines.append(f"{codigo} - <b>{nome_display}</b>")
             elif codigo:
                 lines.append(f"{codigo}")
             elif nome:
                 nome_display = nome if len(nome) <= 80 else nome[:77] + "..."
-                lines.append(nome_display)
+                lines.append(f"<b>{nome_display}</b>")
 
-            # Line 2: Professor (let Paragraph wrap naturally, truncate only if very long)
+            # Line 2: Professor (shortened name for space savings)
             if professor:
-                prof_display = (
-                    professor if len(professor) <= 70 else professor[:67] + "..."
-                )
+                prof_display = self._shorten_professor_name(professor)
                 lines.append(f"Prof(a). {prof_display}")
 
             formatted_items.append("<br/>".join(lines))
@@ -404,3 +436,38 @@ class PDFReportService:
             return hours * 60 + minutes
         except (ValueError, AttributeError):
             return 0
+
+    def _shorten_professor_name(self, full_name: str) -> str:
+        """
+        Shorten professor name: keep first name, abbreviate rest.
+
+        Examples:
+            "Maria José da Silva Santos" -> "Maria J.S.S."
+            "João Carlos" -> "João C."
+            "Pedro" -> "Pedro"
+
+        Args:
+            full_name: Full professor name
+
+        Returns:
+            Shortened name with initials
+        """
+        if not full_name:
+            return ""
+
+        # Common Portuguese connectors to skip
+        connectors = {"da", "de", "do", "das", "dos", "e", "Jr"}
+
+        parts = full_name.strip().split()
+        if len(parts) <= 1:
+            return full_name
+
+        # Keep first name, abbreviate the rest
+        result = [parts[0]]
+        for part in parts[1:]:
+            if part.lower() in connectors:
+                continue  # Skip connectors
+            if part:
+                result.append(f"{part[0].upper()}.")
+
+        return " ".join(result)

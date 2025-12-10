@@ -206,7 +206,9 @@ with col1:
                 )
 
                 autonomous_service = AutonomousAllocationService(session)
-                result = autonomous_service.execute_autonomous_allocation(
+                # Use partial allocation to enable per-day scoring and split room
+                # allocation for hybrid disciplines (e.g., lab on Mon, classroom on Wed)
+                result = autonomous_service.execute_autonomous_allocation_partial(
                     selected_semester
                 )
 
@@ -250,18 +252,23 @@ with col1:
                             # Log successful save
                             print(f"PDF report saved to: {pdf_path}")
 
-                        # Full allocation results
+                        # Full allocation results (partial mode)
                         allocations_done = result["allocations_completed"]
-                        total_real_conflicts = (
-                            result["phase1_hard_rules"]["conflicts"]
-                            + result["phase3_atomic_allocation"]["conflicts"]
-                        )
+                        split_demands = result.get("demands_with_split_rooms", 0)
+                        total_conflicts = result["phase1_hard_rules"][
+                            "conflicts"
+                        ] + result.get("conflicts_found", 0)
                         execution_time = result.get("execution_time", 0)
+
+                        # Build feedback message including split allocation info
+                        msg = f"Alocação autônoma concluída: {allocations_done} alocações em {execution_time:.2f}s"
+                        if split_demands > 0:
+                            msg += f" ({split_demands} disciplinas híbridas com salas divididas)"
 
                         set_session_feedback(
                             "autonomous_allocation_result",
                             True,
-                            f"Alocação autônoma concluída: {allocations_done} alocações realizadas em {execution_time:.2f}s",
+                            msg,
                             ttl=10,
                         )
 

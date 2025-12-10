@@ -521,6 +521,14 @@ try:
         col1, col2 = st.columns(2)
 
         with col1:
+            # Portrait mode checkbox - must be defined before the button that uses it
+            portrait_mode = st.checkbox(
+                "📄 Modo Retrato",
+                value=True,
+                help="Gera relatório em orientação retrato A4 (padrão: paisagem)",
+                key="portrait_mode_checkbox",
+            )
+
             # PDF Report Generation
             if st.button(
                 "📊 Gerar Relatório PDF",
@@ -593,14 +601,6 @@ try:
 
                     with st.expander("🔍 Detalhes do erro"):
                         st.code(traceback.format_exc())
-
-            # Portrait mode checkbox
-            portrait_mode = st.checkbox(
-                "📄 Modo Retrato",
-                value=False,
-                help="Gera relatório em orientação retrato A4 (padrão: paisagem)",
-                key="portrait_mode_checkbox",
-            )
 
         with col2:
             # Statistics Report Generation

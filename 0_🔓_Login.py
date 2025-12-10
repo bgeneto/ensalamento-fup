@@ -13,6 +13,8 @@ Features:
 
 import streamlit as st
 import streamlit_authenticator as stauth
+
+
 from yaml.loader import SafeLoader
 import yaml
 from pathlib import Path
@@ -167,8 +169,8 @@ def render_home():
     st.markdown(
         f"""
     <div class="header-section">
-        <h1>🎓 Ensalamento FUP - Painel Administrativo</h1>
-        <p>{settings.APP_NAME}</p>
+        <h1><img src="app/static/unb-logo.png" alt="UnB Logo" width="50"> Ensalamento FUP (LOGIN)</h1>
+        <h3>{settings.APP_NAME}</h3>
     </div>
     """,
         unsafe_allow_html=True,
@@ -404,8 +406,8 @@ def main():
         st.markdown(
             f"""
         <div class="header-section">
-            <h1>🎓 Ensalamento FUP - Painel Administrativo</h1>
-            <p>{settings.APP_NAME}</p>
+            <h1><img src="app/static/unb-logo.png" alt="UnB Logo" width="50"> Ensalamento FUP/UnB (LOGIN)</h1>
+            <h3>{settings.APP_NAME}</h3>
         </div>
         """,
             unsafe_allow_html=True,
@@ -418,6 +420,15 @@ def main():
 
     elif st.session_state.get("authentication_status") is False:
         st.error("❌ Usuário ou senha inválidos")
+
+    # Display footer and manual link
+    from pages.components.ui import page_footer
+
+    page_footer.show()
+
+    from pages.components.ui.manual_link import render_manual_sidebar
+
+    render_manual_sidebar()
 
 
 if __name__ == "__main__":

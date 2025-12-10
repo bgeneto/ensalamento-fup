@@ -78,7 +78,7 @@ plugins:
       two_columns_level: 3
       render_js: false
       headless_chrome_path: chromium-browser
-      output_path: pdf/manual-usuario-pint-of-science.pdf
+      output_path: pdf/manual-usuario-ensalamento-fup.pdf
       enabled_if_env: ENABLE_PDF_EXPORT
       verbose: false
       debug_html: false
@@ -131,37 +131,18 @@ markdown_extensions:
 nav:
   - Início:
       - Bem-vindo: index.md
-      - Guia Rápido: guia-rapido.md
-      - Sobre o Sistema: sobre-sistema.md
-  - Para Participantes:
-      - Visão Geral: participantes/index.md
-      - Como se Inscrever: participantes/como-se-inscrever.md
-      - Baixar Certificado: participantes/baixar-certificado.md
-      - Validar Certificado: participantes/validar-certificado.md
-      - Perguntas Frequentes: participantes/faq.md
-  - Para Coordenadores:
-      - Visão Geral: coordenadores/index.md
-      - Acesso ao Sistema: coordenadores/acesso-sistema.md
-      - Validar Participantes: coordenadores/validar-participantes.md
-      - Gerenciar Participantes: coordenadores/gerenciar-participantes.md
-      - Enviar Certificados: coordenadores/enviar-certificados.md
-      - Relatórios e Estatísticas: coordenadores/relatorios.md
-  - Para Administradores:
-      - Visão Geral: administradores/index.md
-      - Gestão de Coordenadores: administradores/gestao-coordenadores.md
-      - Gestão de Cidades: administradores/gestao-cidades.md
-      - Gestão de Eventos: administradores/gestao-eventos.md
-      - Gestão de Funções: administradores/gestao-funcoes.md
-      - Logs de Auditoria: administradores/auditoria.md
-  - Configuração do Sistema:
-      - Visão Geral: configuracao/index.md
-      - Imagens do Certificado: configuracao/imagens-certificado.md
-      - Carga Horária: configuracao/carga-horaria.md
-      - Cores e Personalização: configuracao/cores-fontes.md
-      - Configurações Avançadas: configuracao/avancadas.md
-  - Solução de Problemas:
-      - Problemas Comuns: solucao-problemas.md
-      - Contato e Suporte: suporte.md
+      - Acesso ao Sistema: login.md
+      - Visão Geral (Home): home.md
+  - Gerenciamento:
+      - Configurações: configuracoes.md
+      - Inventário (Salas): inventario.md
+      - Professores: professores.md
+      - Regras e Preferências: regras.md
+      - Demandas (Disciplinas): demanda.md
+  - Processo de Alocação:
+      - Ensalamento: ensalamento.md
+      - Visualização de Resultados: visualizacao.md
+      - Reservas Esporádicas: reservas.md
 
 # Additional CSS (apenas para o site HTML)
 # extra_css:
@@ -171,7 +152,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/bgeneto/pint-of-science-brasil
+      link: https://github.com/bgeneto/ensalamento-fup
       name: GitHub Repository
   version:
     provider: mike
