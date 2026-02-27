@@ -165,6 +165,7 @@ class SalaBase(BaseModel):
     tipo_sala_id: int = Field(..., gt=0)
     capacidade: int = Field(default=30, ge=1)
     andar: Optional[int] = Field(default=None)
+    active: bool = Field(default=True)
 
 
 class SalaCreate(SalaBase):
@@ -182,6 +183,7 @@ class SalaUpdate(BaseModel):
     tipo_sala_id: Optional[int] = Field(None, gt=0)
     capacidade: Optional[int] = Field(None, ge=1)
     andar: Optional[int] = Field(None)
+    active: Optional[bool] = Field(None)
 
 
 class SalaRead(SalaBase):

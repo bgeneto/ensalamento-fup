@@ -432,7 +432,7 @@ def _render_manual_selection_partial(
         )
 
         # Get all rooms for selection
-        all_rooms = sala_repo.get_all()
+        all_rooms = sala_repo.get_available_for_allocation()
         room_options = {}
 
         for room in all_rooms:
@@ -692,7 +692,7 @@ def _render_manual_selection(
             "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
         )
 
-        all_rooms = sala_repo.get_all()
+        all_rooms = sala_repo.get_available_for_allocation()
         room_options = {}
 
         for room in all_rooms:

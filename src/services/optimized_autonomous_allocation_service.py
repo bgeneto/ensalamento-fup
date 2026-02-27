@@ -156,7 +156,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         )
 
         # Get all rooms to map room_id to room objects
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
         room_dict = {room.id: room for room in all_rooms}
 
         candidates = []
@@ -916,7 +916,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         professor_map = self._lookup_professors_for_demands_from_objects(demands)
 
         # Batch: Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
 
         # Process demands with hard rules
         demands_with_hard_rules = [

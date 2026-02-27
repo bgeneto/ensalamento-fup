@@ -662,7 +662,7 @@ class AutonomousAllocationService:
         """
         Find rooms that satisfy ALL hard rules for a demand.
         """
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
         compatible_rooms = []
 
         for room in all_rooms:
@@ -756,7 +756,7 @@ class AutonomousAllocationService:
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
         # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
 
         for room in all_rooms:
             candidate = AllocationCandidate(

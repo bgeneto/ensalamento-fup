@@ -3,6 +3,7 @@ Domain models for inventory management (Campus, Building, Room, etc.)
 """
 
 from sqlalchemy import (
+    Boolean,
     Column,
     ForeignKey,
     Integer,
@@ -107,6 +108,7 @@ class Sala(BaseModel):
     tipo_sala_id = Column(Integer, ForeignKey("tipos_sala.id"), nullable=False)
     capacidade = Column(Integer, default=0)
     andar = Column(Integer, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
 
     # Relationships
     predio = relationship("Predio", back_populates="salas")

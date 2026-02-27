@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS salas (
     tipo_sala_id INTEGER NOT NULL,
     capacidade INTEGER DEFAULT 0,
     andar INTEGER,
+    active BOOLEAN NOT NULL DEFAULT 1,
 
     UNIQUE (nome, predio_id),
     FOREIGN KEY (predio_id) REFERENCES predios (id),

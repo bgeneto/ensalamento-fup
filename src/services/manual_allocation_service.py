@@ -69,6 +69,23 @@ class ManualAllocationService:
                 error_message="Semestre da demanda não encontrado",
             )
 
+        # Room must exist and be active for allocation
+        room = self.sala_repo.get_by_id(sala_id)
+        if not room:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                error_message="Sala não encontrada",
+            )
+        if not room.active:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                error_message="Sala inativa/desabilitada para alocação",
+            )
+
         # Parse schedule into atomic blocks
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
         if not atomic_blocks:
@@ -183,9 +200,23 @@ class ManualAllocationService:
                 remaining_blocks=[],
             )
 
-        # Get room for result
+        # Room must exist and be active for allocation
         room = self.sala_repo.get_by_id(sala_id)
-        room_name = room.nome if room else "N/A"
+        if not room:
+            return PartialAllocationResult(
+                success=False,
+                message="Sala não encontrada",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+        if not room.active:
+            return PartialAllocationResult(
+                success=False,
+                message="Sala inativa/desabilitada para alocação",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+        room_name = room.nome
 
         # Parse all atomic blocks for this demand
         all_atomic_blocks = self.parser.split_to_atomic_tuples(

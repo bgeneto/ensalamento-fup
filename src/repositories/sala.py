@@ -42,6 +42,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=orm_obj.tipo_sala_id,
             capacidade=orm_obj.capacidade,
             andar=orm_obj.andar,
+            active=orm_obj.active,
             descricao=orm_obj.descricao,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
@@ -62,6 +63,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=dto.tipo_sala_id,
             capacidade=dto.capacidade,
             andar=dto.andar,
+            active=dto.active,
             descricao=dto.descricao,
         )
 
@@ -276,12 +278,21 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         """Get all rooms available for allocation (active rooms).
 
         Returns:
-            List of all SalaRead DTOs
+            List of active SalaRead DTOs
         """
-        return self.get_all()
+        orm_objs = (
+            self.session.query(Sala)
+            .filter(Sala.active.is_(True))
+            .order_by(Sala.nome)
+            .all()
+        )
+        return [self.orm_to_dto(obj) for obj in orm_objs]
 
-    def get_with_predio_info(self) -> List[dict]:
+    def get_with_predio_info(self, active_only: bool = False) -> List[dict]:
         """Get all rooms with their building information included.
+
+        Args:
+            active_only: If True, return only active rooms.
 
         Returns:
             List of dictionaries with 'sala' and 'predio' keys
@@ -290,9 +301,10 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         from src.schemas.inventory import PredioRead
 
         # Query rooms with eager loading of predio
-        orm_objs = (
-            self.session.query(Sala).join(Predio).order_by(Predio.nome, Sala.nome).all()
-        )
+        query = self.session.query(Sala).join(Predio)
+        if active_only:
+            query = query.filter(Sala.active.is_(True))
+        orm_objs = query.order_by(Predio.nome, Sala.nome).all()
 
         result = []
         for sala in orm_objs:

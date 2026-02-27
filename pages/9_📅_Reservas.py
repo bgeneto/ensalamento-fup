@@ -588,12 +588,13 @@ with get_db_session() as session:
     reserva_service = ReservaEventoService(session)
     alocacao_repo = AlocacaoRepository(session)
 
-    # Load available rooms with building info for both display and form
+    # Keep full list for historical display and active-only list for new reservations
     salas_com_predio = sala_repo.get_with_predio_info()
+    salas_ativas_com_predio = sala_repo.get_with_predio_info(active_only=True)
 
-    # Create room options for selectbox - use sala/predio objects
+    # Create room options for selectbox - active rooms only
     sala_options = {}
-    for item in salas_com_predio:
+    for item in salas_ativas_com_predio:
         sala = item["sala"]
         predio = item["predio"]
         predio_nome = predio.nome if predio else "N/A"

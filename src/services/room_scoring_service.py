@@ -218,7 +218,7 @@ class RoomScoringService:
         hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
 
         # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
 
         candidates = []
         for room in all_rooms:
@@ -372,7 +372,7 @@ class RoomScoringService:
         hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
 
         # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
 
         scores = []
         for room in all_rooms:

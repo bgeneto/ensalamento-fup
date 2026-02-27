@@ -13,7 +13,8 @@ from src.repositories.sala import SalaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.repositories.caracteristica import CaracteristicaRepository
 from src.schemas.inventory import (
-    SalaRead,
+    SalaCreate,
+    SalaUpdate,
     TipoSalaCreate,
     CaracteristicaCreate,
 )
@@ -58,6 +59,10 @@ def render_rooms_tab():
             if salas:
                 # Display summary
                 st.markdown(f"**Total de salas encontradas: {len(salas)}**")
+                total_active = sum(1 for sala in salas if sala.active)
+                st.caption(
+                    f"Ativas: {total_active} | Inativas: {len(salas) - total_active}"
+                )
 
                 # Create DataFrame with editable columns
                 sala_data = []
@@ -71,6 +76,7 @@ def render_rooms_tab():
                             "Prédio": sala.predio_id,
                             "Capacidade": sala.capacidade,
                             "Andar": sala.andar,  # Integer field
+                            "Ativa": bool(sala.active),
                         }
                     )
 
@@ -118,6 +124,11 @@ def render_rooms_tab():
                         "Andar": st.column_config.NumberColumn(
                             "Andar",
                             help="Andar onde a sala está localizada (opcional)",
+                        ),
+                        "Ativa": st.column_config.CheckboxColumn(
+                            "Ativa",
+                            default=True,
+                            help="Desmarque para desabilitar esta sala para alocação",
                         ),
                         "Tipo Assento": st.column_config.TextColumn(
                             "Tipo Assento",
@@ -178,6 +189,11 @@ def render_rooms_tab():
                                     tipo_sala_id = row["Tipo Sala"]
                                     capacidade = row["Capacidade"]
                                     andar = row["Andar"]
+                                    active = (
+                                        bool(row["Ativa"])
+                                        if "Ativa" in row and not pd.isna(row["Ativa"])
+                                        else True
+                                    )
 
                                     if not nome:
                                         set_session_feedback(
@@ -233,13 +249,14 @@ def render_rooms_tab():
                                         descricao = None
 
                                     # Create room - repository should validate foreign keys
-                                    sala_dto = SalaRead(
+                                    sala_dto = SalaCreate(
                                         nome=nome,
                                         predio_id=int(predio_id),
                                         tipo_sala_id=int(tipo_sala_id),
                                         capacidade=int(capacidade),
                                         andar=andar,
                                         descricao=descricao,
+                                        active=active,
                                     )
                                     sala_repo_create.create(sala_dto)
                                     created += 1
@@ -336,6 +353,7 @@ def render_rooms_tab():
                             descricao_changed = (
                                 row["Descrição"] != original_row["Descrição"]
                             )
+                            active_changed = row["Ativa"] != original_row["Ativa"]
 
                             if any(
                                 [
@@ -345,6 +363,7 @@ def render_rooms_tab():
                                     capacidade_changed,
                                     andar_changed,
                                     descricao_changed,
+                                    active_changed,
                                 ]
                             ):
                                 nome = str(row["Nome"]).strip()
@@ -353,6 +372,11 @@ def render_rooms_tab():
                                 capacidade = row["Capacidade"]
                                 andar = row["Andar"]
                                 descricao = str(row["Descrição"]).strip()
+                                active = (
+                                    bool(row["Ativa"])
+                                    if "Ativa" in row and not pd.isna(row["Ativa"])
+                                    else True
+                                )
 
                                 if not nome:
                                     set_session_feedback(
@@ -438,8 +462,6 @@ def render_rooms_tab():
                                                     continue
 
                                             # Update fields
-                                            from src.schemas.inventory import SalaUpdate
-
                                             sala_update_dto = SalaUpdate(
                                                 nome=nome,
                                                 predio_id=int(predio_id),
@@ -447,6 +469,7 @@ def render_rooms_tab():
                                                 capacidade=int(capacidade),
                                                 andar=andar,
                                                 descricao=descricao,
+                                                active=active,
                                             )
                                             sala_repo_update.update(
                                                 sala_id, sala_update_dto
