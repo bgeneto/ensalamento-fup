@@ -9,7 +9,7 @@ services:
     hostname: ensalamento
     restart: unless-stopped
     ports:
-      - "8503:8501"
+      - "8504:8501"
     env_file:
       - .env
     networks:
