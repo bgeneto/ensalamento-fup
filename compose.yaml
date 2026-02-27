@@ -20,8 +20,6 @@ services:
       - ./data:/app/data
       # Static files (logo, etc.)
       - ./static:/app/static
-      # Logs (if needed)
-      - ./logs:/app/logs
 
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8501/_stcore/health" ]
@@ -47,8 +45,6 @@ services:
     # Run container as host user for correct volume permissions
     # Replace 1000 with your actual host user UID (run 'id -u' on host)
     user: "${HOST_UID:-1000}:${HOST_UID:-1000}"
-    environment:
-      - DOCS_URL=http://localhost:8000
 
   # Documentation Server
   docs:

@@ -97,7 +97,7 @@ class Settings:
 
         # Project Paths
         self.PROJECT_ROOT = Path(__file__).parent.parent.parent
-        self.LOGS_DIR = self.PROJECT_ROOT / "logs"
+        self.LOGS_DIR = Path(os.getenv("LOGS_DIR", str(self.PROJECT_ROOT / "data")))
 
         # Create necessary directories
         self.LOGS_DIR.mkdir(exist_ok=True)
