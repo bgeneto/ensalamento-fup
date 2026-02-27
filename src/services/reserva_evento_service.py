@@ -240,7 +240,9 @@ class ReservaEventoService:
             self.alocacao_repo.get_most_recent_semester_with_allocations()
         )
         if latest_alloc_semester_id is None:
-            logger.info("No semester with allocations found; skipping allocation conflict check")
+            logger.info(
+                "No semester with allocations found; skipping allocation conflict check"
+            )
         else:
             logger.info(
                 f"Using latest semester with allocations for conflict check: {latest_alloc_semester_id}"

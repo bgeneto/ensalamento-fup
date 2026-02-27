@@ -61,6 +61,32 @@ url = "app/static/SpaceMono-Regular.ttf"
 style = "normal"
 weight = 400
 
+[[theme.fontFaces]]
+family = "arialnarrow"
+url = "app/static/arialnarrow.ttf"
+style = "normal"
+weight = 400
+
+
+[[theme.fontFaces]]
+family = "arialnarrow"
+url = "app/static/arialnarrow_bold.ttf"
+style = "normal"
+weight = 700
+
+[[theme.fontFaces]]
+family = "arialnarrow"
+url = "app/static/arialnarrow_italic.ttf"
+style = "italic"
+weight = 400
+
+[[theme.fontFaces]]
+family = "arialnarrow"
+url = "app/static/arialnarrow_bolditalic.ttf"
+style = "italic"
+weight = 700
+
+
 [theme]
 primaryColor = "#cb785c"
 backgroundColor = "#fdfdf8"
@@ -85,3 +111,5 @@ backgroundColor = "#f0f0ec"
 secondaryBackgroundColor = "#ecebe3"
 headingFontSizes = ["1.6rem", "1.4rem", "1.2rem"]
 dataframeHeaderBackgroundColor = "#e4e4e0"
+widgetBackgroundColor = "#ecebe3"
+widgetBorderColor = "#d3d2ca"

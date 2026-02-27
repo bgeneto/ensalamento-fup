@@ -232,9 +232,7 @@ def main():
 
             # Verificar se tem apenas 1 sala (problema!)
             if len(rooms_used) == 1:
-                print(
-                    "\n   ⚠️ PROBLEMA: Apenas 1 sala alocada para disciplina híbrida!"
-                )
+                print("\n   ⚠️ PROBLEMA: Apenas 1 sala alocada para disciplina híbrida!")
                 print("      Esperado: 2 salas (1 lab + 1 sala de aula)")
         else:
             print(f"❌ {DISCIPLINA_CODIGO} NÃO foi alocada!")

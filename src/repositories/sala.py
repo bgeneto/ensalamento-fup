@@ -215,11 +215,14 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
     def set_room_allowed_turnos(self, sala_id: int, allowed_turnos: Set[str]) -> bool:
         """Enable/disable room availability by shift (M/T/N)."""
         valid_turnos = {"M", "T", "N"}
-        allowed_turnos = {t.upper() for t in allowed_turnos if t and t.upper() in valid_turnos}
+        allowed_turnos = {
+            t.upper() for t in allowed_turnos if t and t.upper() in valid_turnos
+        }
 
         try:
             room_exists = (
-                self.session.query(Sala.id).filter(Sala.id == sala_id).first() is not None
+                self.session.query(Sala.id).filter(Sala.id == sala_id).first()
+                is not None
             )
             if not room_exists:
                 return False
@@ -267,7 +270,9 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             return True
 
         enabled_count = (
-            self.session.query(func.count(distinct(SalaDisponibilidadeBloco.codigo_bloco)))
+            self.session.query(
+                func.count(distinct(SalaDisponibilidadeBloco.codigo_bloco))
+            )
             .filter(
                 SalaDisponibilidadeBloco.sala_id == sala_id,
                 SalaDisponibilidadeBloco.enabled.is_(True),

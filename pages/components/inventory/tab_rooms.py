@@ -66,7 +66,9 @@ def render_rooms_tab():
                 st.caption(
                     f"Ativas: {total_active} | Inativas: {len(salas) - total_active}"
                 )
-                turnos_map = sala_repo.get_allowed_turnos_map([sala.id for sala in salas])
+                turnos_map = sala_repo.get_allowed_turnos_map(
+                    [sala.id for sala in salas]
+                )
 
                 # Create DataFrame with editable columns
                 sala_data = []
@@ -81,9 +83,12 @@ def render_rooms_tab():
                             "Capacidade": sala.capacidade,
                             "Andar": sala.andar,  # Integer field
                             "Ativa": bool(sala.active),
-                            "Manhã (M)": "M" in turnos_map.get(sala.id, {"M", "T", "N"}),
-                            "Tarde (T)": "T" in turnos_map.get(sala.id, {"M", "T", "N"}),
-                            "Noite (N)": "N" in turnos_map.get(sala.id, {"M", "T", "N"}),
+                            "Manhã (M)": "M"
+                            in turnos_map.get(sala.id, {"M", "T", "N"}),
+                            "Tarde (T)": "T"
+                            in turnos_map.get(sala.id, {"M", "T", "N"}),
+                            "Noite (N)": "N"
+                            in turnos_map.get(sala.id, {"M", "T", "N"}),
                         }
                     )
 
@@ -339,9 +344,15 @@ def render_rooms_tab():
                                 row["Descrição"] != original_row["Descrição"]
                             )
                             active_changed = row["Ativa"] != original_row["Ativa"]
-                            turno_m_changed = row["Manhã (M)"] != original_row["Manhã (M)"]
-                            turno_t_changed = row["Tarde (T)"] != original_row["Tarde (T)"]
-                            turno_n_changed = row["Noite (N)"] != original_row["Noite (N)"]
+                            turno_m_changed = (
+                                row["Manhã (M)"] != original_row["Manhã (M)"]
+                            )
+                            turno_t_changed = (
+                                row["Tarde (T)"] != original_row["Tarde (T)"]
+                            )
+                            turno_n_changed = (
+                                row["Noite (N)"] != original_row["Noite (N)"]
+                            )
 
                             if any(
                                 [

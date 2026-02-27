@@ -4,11 +4,13 @@ Room Allocation Visualization Page
 Display and manage semester allocations.
 """
 
-import streamlit as st
-import pandas as pd
 from datetime import datetime
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
+
+import pandas as pd
+import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
+
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -24,22 +26,22 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
+from pages.components.ui import page_footer
+from src.config.database import get_db_session
+from src.models.inventory import Predio, Sala
 from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.dia_semana import DiaSemanaRepository
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.horario_bloco import HorarioBlocoRepository
+from src.repositories.professor import ProfessorRepository
 from src.repositories.reserva import ReservaRepository
 from src.repositories.sala import SalaRepository
-from src.repositories.professor import ProfessorRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.dia_semana import DiaSemanaRepository
-from src.repositories.horario_bloco import HorarioBlocoRepository
-from src.config.database import get_db_session
+from src.services.pdf_report_service import PDFReportService
+from src.services.statistics_report_service import StatisticsReportService
+from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
 from src.utils.ui_feedback import (
     display_session_feedback,
 )
-from src.models.inventory import Sala, Predio
-from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
-from src.services.pdf_report_service import PDFReportService
-from src.services.statistics_report_service import StatisticsReportService
-from pages.components.ui import page_footer
 
 # ============================================================================
 # CONFIGURATION OPTIONS
@@ -48,6 +50,22 @@ from pages.components.ui import page_footer
 # Control advanced grid features (enterprise modules, sidebar, export)
 # Set to False for faster loading, True for full feature set
 USE_ADVANCED_GRID_FEATURES = False
+AGGRID_CUSTOM_CSS = {
+    ".ag-root-wrapper": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+    },
+    ".ag-root-wrapper .ag-cell": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+    },
+    ".ag-root-wrapper .ag-header-cell-text": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+        "font-weight": "600 !important",
+        "letter-spacing": "0.2px",
+    },
+}
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -677,13 +695,16 @@ try:
                     st.write(f"🏢 **{room_name}**")
 
                     # Configure and display interactive grid
-                    grid_options = create_grid_options(room_grid)
+                    # AgGrid expects regular columns; convert index ("Horário") to a column.
+                    room_grid_display = room_grid.reset_index()
+                    grid_options = create_grid_options(room_grid_display)
                     aggrid_kwargs = {
                         "gridOptions": grid_options,
                         "height": 400,
                         "width": "100%",
                         "fit_columns_on_grid_load": True,
                         "theme": "streamlit",  # Use streamlit theme for consistency
+                        "custom_css": AGGRID_CUSTOM_CSS,
                         "key": f"room_grid_{room_id}_{selected_semestre}",
                         "allow_unsafe_jscode": True,
                     }
@@ -691,7 +712,7 @@ try:
                     # Enable enterprise modules only for advanced features
                     if USE_ADVANCED_GRID_FEATURES:
                         aggrid_kwargs["enable_enterprise_modules"] = True
-                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
+                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
 
                         # Add CSV export button for this room
                         col1, col2 = st.columns([1, 5])  # Small column for button
@@ -711,7 +732,7 @@ try:
                                 )
                     else:
                         # Simple mode without enterprise features
-                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
+                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
 
         # Display feedback
         display_session_feedback("allocation_view")

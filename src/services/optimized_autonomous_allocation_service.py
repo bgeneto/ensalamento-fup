@@ -933,7 +933,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             demanda_id = demanda.id
             hard_rules = all_hard_rules[demanda.codigo_disciplina]
             professor = professor_map.get(demanda_id)
-            atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+            atomic_blocks = self.parser.split_to_atomic_tuples(
+                demanda.horario_sigaa_bruto
+            )
             required_blocks = [block_code for block_code, _ in atomic_blocks]
             allocated_room = None
 
@@ -981,7 +983,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             # Find rooms that satisfy hard rules
             suitable_rooms = []
             for room in all_rooms:
-                if not self.sala_repo.is_room_enabled_for_blocks(room.id, required_blocks):
+                if not self.sala_repo.is_room_enabled_for_blocks(
+                    room.id, required_blocks
+                ):
                     continue
                 if self._check_hard_rules_compliance(room, demanda, hard_rules):
                     suitable_rooms.append(room)

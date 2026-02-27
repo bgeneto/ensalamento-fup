@@ -319,8 +319,7 @@ class AutonomousAllocationService:
             # Convert Pydantic object to dict for compatibility with existing methods
             demanda_dict = demanda.model_dump()
             required_blocks = [
-                block_code
-                for block_code, _ in demand_blocks.get(demanda_id, [])
+                block_code for block_code, _ in demand_blocks.get(demanda_id, [])
             ]
             compatible_rooms = self._find_hard_rules_compatible_rooms(
                 demanda_dict,

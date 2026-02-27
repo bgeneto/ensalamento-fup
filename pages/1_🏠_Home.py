@@ -49,6 +49,22 @@ from src.utils.ui_feedback import (
 # Control advanced grid features (enterprise modules, sidebar, export)
 # Set to False for faster loading, True for full feature set
 USE_ADVANCED_GRID_FEATURES = False
+AGGRID_CUSTOM_CSS = {
+    ".ag-root-wrapper": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+    },
+    ".ag-root-wrapper .ag-cell": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+    },
+    ".ag-root-wrapper .ag-header-cell-text": {
+        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-stretch": "condensed",
+        "font-weight": "600 !important",
+        "letter-spacing": "0.2px",
+    },
+}
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -563,13 +579,16 @@ try:
                     st.write(f"🏢 **{room_name}**")
 
                     # Configure and display interactive grid
-                    grid_options = create_grid_options(room_grid)
+                    # AgGrid expects regular columns; convert index ("Horário") to a column.
+                    room_grid_display = room_grid.reset_index()
+                    grid_options = create_grid_options(room_grid_display)
                     aggrid_kwargs = {
                         "gridOptions": grid_options,
                         "height": 400,
                         "width": "100%",
                         "fit_columns_on_grid_load": True,
                         "theme": "streamlit",  # Use streamlit theme for consistency
+                        "custom_css": AGGRID_CUSTOM_CSS,
                         "key": f"room_grid_{room_id}_{active_semester_id}",
                         "allow_unsafe_jscode": True,
                     }
@@ -577,7 +596,7 @@ try:
                     # Enable enterprise modules only for advanced features
                     if USE_ADVANCED_GRID_FEATURES:
                         aggrid_kwargs["enable_enterprise_modules"] = True
-                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
+                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
 
                         # Add CSV export button for this room
                         col1, col2 = st.columns([1, 5])  # Small column for button
@@ -597,7 +616,7 @@ try:
                                 )
                     else:
                         # Simple mode without enterprise features
-                        grid_response = AgGrid(room_grid, **aggrid_kwargs)
+                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
 
         # Display feedback
         display_session_feedback("allocation_view")

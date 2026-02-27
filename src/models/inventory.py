@@ -143,7 +143,9 @@ class SalaDisponibilidadeBloco(BaseModel):
 
     __tablename__ = "sala_disponibilidade_blocos"
 
-    sala_id = Column(Integer, ForeignKey("salas.id", ondelete="CASCADE"), nullable=False)
+    sala_id = Column(
+        Integer, ForeignKey("salas.id", ondelete="CASCADE"), nullable=False
+    )
     codigo_bloco = Column(
         String(10),
         ForeignKey("horarios_bloco.codigo_bloco"),

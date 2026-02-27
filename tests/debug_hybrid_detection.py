@@ -99,9 +99,7 @@ def main():
             elif has_non_classroom and len(room_ids) == 1:
                 print(f"   {codigo}: Has non-classroom room but only 1 room total")
 
-        print(
-            "\n5. Hybrid discipline candidates (2+ rooms, at least 1 non-classroom):"
-        )
+        print("\n5. Hybrid discipline candidates (2+ rooms, at least 1 non-classroom):")
         if candidates:
             for c in candidates:
                 print(f"   ✅ {c['codigo']}: rooms={c['room_ids']}, types={c['types']}")
