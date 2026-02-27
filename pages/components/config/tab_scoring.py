@@ -6,9 +6,7 @@ Allows users to configure scoring weights and rules for the allocation algorithm
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
 
-from src.config.database import get_db_session
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 

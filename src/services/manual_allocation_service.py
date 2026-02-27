@@ -188,7 +188,9 @@ class ManualAllocationService:
         room_name = room.nome if room else "N/A"
 
         # Parse all atomic blocks for this demand
-        all_atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        all_atomic_blocks = self.parser.split_to_atomic_tuples(
+            demanda.horario_sigaa_bruto
+        )
         if not all_atomic_blocks:
             return PartialAllocationResult(
                 success=False,
@@ -329,7 +331,9 @@ class ManualAllocationService:
             return []
 
         # Get block groups using parser
-        block_groups = self.parser.get_block_groups_with_names(demanda.horario_sigaa_bruto)
+        block_groups = self.parser.get_block_groups_with_names(
+            demanda.horario_sigaa_bruto
+        )
 
         # Get existing allocations for this demand
         existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
@@ -342,15 +346,15 @@ class ManualAllocationService:
                 # Get room info
                 room = self.sala_repo.get_by_id(alloc.sala_id)
                 allocation_map[key] = {
-                    'sala_id': alloc.sala_id,
-                    'sala_nome': room.nome if room else "N/A",
+                    "sala_id": alloc.sala_id,
+                    "sala_nome": room.nome if room else "N/A",
                 }
 
         # Enrich block groups with allocation status
         result = []
         for group in block_groups:
-            day_id = group['day_id']
-            blocks = group['blocks']
+            day_id = group["day_id"]
+            blocks = group["blocks"]
 
             # Check if ALL blocks in this day are allocated (and to the same room)
             allocated_rooms = set()
@@ -358,7 +362,7 @@ class ManualAllocationService:
             for block in blocks:
                 key = (day_id, block)
                 if key in allocation_map:
-                    allocated_rooms.add(allocation_map[key]['sala_id'])
+                    allocated_rooms.add(allocation_map[key]["sala_id"])
                 else:
                     all_allocated = False
 
@@ -374,16 +378,18 @@ class ManualAllocationService:
                 room = self.sala_repo.get_by_id(room_id)
                 allocated_room_name = room.nome if room else "N/A"
 
-            result.append({
-                'day_id': day_id,
-                'day_name': group['day_name'],
-                'blocks': blocks,
-                'time_range': self.parser.get_time_range_for_blocks(blocks),
-                'is_allocated': is_allocated,
-                'is_partial': is_partial,
-                'allocated_room_id': allocated_room_id,
-                'allocated_room_name': allocated_room_name,
-            })
+            result.append(
+                {
+                    "day_id": day_id,
+                    "day_name": group["day_name"],
+                    "blocks": blocks,
+                    "time_range": self.parser.get_time_range_for_blocks(blocks),
+                    "is_allocated": is_allocated,
+                    "is_partial": is_partial,
+                    "allocated_room_id": allocated_room_id,
+                    "allocated_room_name": allocated_room_name,
+                }
+            )
 
         return result
 
@@ -412,16 +418,18 @@ class ManualAllocationService:
             return []
 
         # Get block groups for this demand
-        block_groups_raw = self.parser.get_block_groups_with_names(demanda.horario_sigaa_bruto)
+        block_groups_raw = self.parser.get_block_groups_with_names(
+            demanda.horario_sigaa_bruto
+        )
 
         # Find the specific block group for this day
         target_group = None
         for group in block_groups_raw:
-            if group['day_id'] == day_id:
+            if group["day_id"] == day_id:
                 target_group = BlockGroup(
-                    day_id=group['day_id'],
-                    day_name=group['day_name'],
-                    blocks=group['blocks'],
+                    day_id=group["day_id"],
+                    day_name=group["day_name"],
+                    blocks=group["blocks"],
                 )
                 break
 
@@ -436,26 +444,28 @@ class ManualAllocationService:
         # Convert to dict format for UI
         result = []
         for score in scores:
-            result.append({
-                'room_id': score.room_id,
-                'room_name': score.room_name,
-                'room_capacity': score.room_capacity,
-                'room_type': score.room_type,
-                'building_name': score.building_name,
-                'score': score.score,
-                'has_conflict': score.has_conflict,
-                'conflict_details': score.conflict_details,
-                'breakdown': {
-                    'capacity_points': score.breakdown.capacity_points,
-                    'hard_rules_points': score.breakdown.hard_rules_points,
-                    'soft_preference_points': score.breakdown.soft_preference_points,
-                    'historical_frequency_points': score.breakdown.historical_frequency_points,
-                    'capacity_satisfied': score.breakdown.capacity_satisfied,
-                    'hard_rules_satisfied': score.breakdown.hard_rules_satisfied,
-                    'soft_preferences_satisfied': score.breakdown.soft_preferences_satisfied,
-                    'historical_allocations': score.breakdown.historical_allocations,
-                },
-            })
+            result.append(
+                {
+                    "room_id": score.room_id,
+                    "room_name": score.room_name,
+                    "room_capacity": score.room_capacity,
+                    "room_type": score.room_type,
+                    "building_name": score.building_name,
+                    "score": score.score,
+                    "has_conflict": score.has_conflict,
+                    "conflict_details": score.conflict_details,
+                    "breakdown": {
+                        "capacity_points": score.breakdown.capacity_points,
+                        "hard_rules_points": score.breakdown.hard_rules_points,
+                        "soft_preference_points": score.breakdown.soft_preference_points,
+                        "historical_frequency_points": score.breakdown.historical_frequency_points,
+                        "capacity_satisfied": score.breakdown.capacity_satisfied,
+                        "hard_rules_satisfied": score.breakdown.hard_rules_satisfied,
+                        "soft_preferences_satisfied": score.breakdown.soft_preferences_satisfied,
+                        "historical_allocations": score.breakdown.historical_allocations,
+                    },
+                }
+            )
 
         return result
 
@@ -484,8 +494,8 @@ class ManualAllocationService:
         demanda = self.demanda_repo.get_by_id(demanda_id)
         if not demanda:
             return {
-                'demanda_id': demanda_id,
-                'error': 'Demanda não encontrada',
+                "demanda_id": demanda_id,
+                "error": "Demanda não encontrada",
             }
 
         # Get all atomic blocks
@@ -501,7 +511,9 @@ class ManualAllocationService:
             allocated_blocks_set.add((alloc.codigo_bloco, alloc.dia_semana_id))
             if alloc.sala_id not in rooms_blocks_map:
                 rooms_blocks_map[alloc.sala_id] = []
-            rooms_blocks_map[alloc.sala_id].append(f"{alloc.dia_semana_id}{alloc.codigo_bloco}")
+            rooms_blocks_map[alloc.sala_id].append(
+                f"{alloc.dia_semana_id}{alloc.codigo_bloco}"
+            )
 
         allocated_count = len(allocated_blocks_set)
         pending_count = total_blocks - allocated_count
@@ -510,24 +522,26 @@ class ManualAllocationService:
         allocated_rooms = []
         for room_id, blocks in rooms_blocks_map.items():
             room = self.sala_repo.get_by_id(room_id)
-            allocated_rooms.append({
-                'room_id': room_id,
-                'room_name': room.nome if room else "N/A",
-                'blocks': blocks,
-            })
+            allocated_rooms.append(
+                {
+                    "room_id": room_id,
+                    "room_name": room.nome if room else "N/A",
+                    "blocks": blocks,
+                }
+            )
 
         # Get block groups with status
         block_groups = self.get_block_groups_for_demand(demanda_id)
 
         return {
-            'demanda_id': demanda_id,
-            'total_blocks': total_blocks,
-            'allocated_blocks': allocated_count,
-            'pending_blocks': pending_count,
-            'is_fully_allocated': pending_count == 0,
-            'is_partially_allocated': allocated_count > 0 and pending_count > 0,
-            'block_groups': block_groups,
-            'allocated_rooms': allocated_rooms,
+            "demanda_id": demanda_id,
+            "total_blocks": total_blocks,
+            "allocated_blocks": allocated_count,
+            "pending_blocks": pending_count,
+            "is_fully_allocated": pending_count == 0,
+            "is_partially_allocated": allocated_count > 0 and pending_count > 0,
+            "block_groups": block_groups,
+            "allocated_rooms": allocated_rooms,
         }
 
     def _check_allocation_conflicts(

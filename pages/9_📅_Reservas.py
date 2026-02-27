@@ -7,8 +7,8 @@ Supports recurring reservations using Parent/Instance design pattern.
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -25,18 +25,9 @@ if not initialize_page(
 # ============================================================================
 
 from src.config.database import get_db_session
-from src.models.allocation import ReservaEvento, ReservaOcorrencia
 from src.schemas.allocation import (
     ReservaEventoCreate,
-    ReservaEventoUpdate,
     ReservaEventoRead,
-    ReservaOcorrenciaRead,
-    RegraUnica,
-    RegraDiaria,
-    RegraSemanal,
-    RegraMensalDia,
-    RegraMensalPosicao,
-    RegraRecorrencia,
 )
 from src.repositories.reserva_evento import ReservaEventoRepository
 from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
@@ -46,8 +37,6 @@ from src.repositories.alocacao import AlocacaoRepository
 from src.services.reserva_evento_service import ReservaEventoService
 from src.utils.ui_feedback import set_session_feedback, display_session_feedback
 from src.utils.cache_helpers import (
-    get_predio_options,
-    get_tipo_sala_options,
     get_sigaa_parser,
 )
 from pages.components.ui import page_footer
@@ -429,7 +418,7 @@ def create_reservations_editor(data: List[Dict]) -> None:
                             st.rerun()
                         else:
                             st.write(
-                                f"DEBUG: No events were actually deleted"
+                                "DEBUG: No events were actually deleted"
                             )  # Debug output
                 except Exception as e:
                     st.write(

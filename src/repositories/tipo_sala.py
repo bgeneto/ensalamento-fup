@@ -4,7 +4,6 @@ Repository for TipoSala operations.
 Provides data access methods for room type queries.
 """
 
-from typing import List, Optional
 
 from sqlalchemy.orm import Session
 

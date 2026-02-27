@@ -4,7 +4,7 @@ Repository for Predio (Building) operations.
 Provides data access methods for building queries.
 """
 
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
 

@@ -4,10 +4,9 @@ Repository for Regra operations.
 Provides data access methods for allocation rules (hard and soft constraints for disciplines).
 """
 
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from src.models.allocation import Regra
 from src.schemas.allocation import RegraRead, RegraCreate

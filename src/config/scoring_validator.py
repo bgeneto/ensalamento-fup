@@ -67,12 +67,12 @@ def print_scoring_configuration():
     # Validate and show any issues
     errors, warnings = validate_scoring_configuration()
     if errors:
-        print(f"\n--- ERRORS ---")
+        print("\n--- ERRORS ---")
         for error in errors:
             print(f"❌ {error}")
 
     if warnings:
-        print(f"\n--- WARNINGS ---")
+        print("\n--- WARNINGS ---")
         for warning in warnings:
             print(f"⚠️  {warning}")
 

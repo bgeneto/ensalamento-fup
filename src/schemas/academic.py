@@ -4,8 +4,8 @@ Data Transfer Object schemas for Academic domain.
 Schemas for: Semestre, Demanda, Professor, Usuario
 """
 
-from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
+from typing import Optional
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 

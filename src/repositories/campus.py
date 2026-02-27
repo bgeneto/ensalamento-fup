@@ -4,7 +4,6 @@ Repository for Campus operations.
 Provides data access methods for campus queries.
 """
 
-from typing import List, Optional
 
 from sqlalchemy.orm import Session
 

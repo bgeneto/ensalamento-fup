@@ -3,7 +3,6 @@ Mapa Visual de Conflitos e Dependências de Alocação
 Mostra a cadeia de decisões que levou FUP0518 a não ser alocada na AT-42/12
 """
 
-import sys
 from sqlalchemy import text
 from src.config.database import get_db_session
 from src.utils.sigaa_parser import SigaaScheduleParser

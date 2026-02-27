@@ -6,7 +6,6 @@ to eliminate code duplication and ensure consistency.
 """
 
 import logging
-from typing import Optional
 
 from src.repositories.alocacao import AlocacaoRepository
 

@@ -1,5 +1,8 @@
 import os
+
 import streamlit as st
+
+from src.config import settings
 
 
 def render_manual_sidebar():
@@ -42,7 +45,7 @@ def render_manual_sidebar():
 
         # 2. Online Link
         # Default to localhost:8000 for local dev, or use env var for production
-        docs_url = os.getenv("DOCS_URL", "http://localhost:8000")
+        docs_url = os.getenv("DOCS_URL", f"{settings.BASE_URL}/docs/")
 
         st.link_button(
             label="🌐 Manual Online",

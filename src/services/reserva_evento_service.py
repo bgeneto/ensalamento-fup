@@ -19,11 +19,9 @@ from src.schemas.allocation import (
     ReservaEventoRead,
     ReservaOcorrenciaCreate,
     ReservaOcorrenciaRead,
-    RegraRecorrencia,
     RegraUnica,
 )
 from src.utils.recurrence_calculator import RecurrenceCalculator
-from src.utils.ui_feedback import set_session_feedback
 
 logger = logging.getLogger(__name__)
 
@@ -155,13 +153,11 @@ class ReservaEventoService:
         """
         # Import here to avoid circular imports
         from src.schemas.allocation import (
-            RegraUnica,
             RegraDiaria,
             RegraSemanal,
             RegraMensalDia,
             RegraMensalPosicao,
         )
-        import json
 
         # Create appropriate rule object based on type
         tipo = rule_dict.get("tipo")

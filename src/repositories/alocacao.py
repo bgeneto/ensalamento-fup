@@ -680,4 +680,3 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             return None
 
         return max(semester_ids)
-

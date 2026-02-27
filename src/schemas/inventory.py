@@ -4,7 +4,7 @@ Data Transfer Object schemas for Inventory domain.
 Schemas for: Campus, Predio, TipoSala, Sala, Caracteristica
 """
 
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 

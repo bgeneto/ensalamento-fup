@@ -90,21 +90,23 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[d
 
         # Get allocation status and block groups
         alloc_status = alloc_service.get_allocation_status_for_demand(demanda_id)
-        block_groups = alloc_status.get('block_groups', [])
+        block_groups = alloc_status.get("block_groups", [])
 
         # Show allocation progress if partially allocated
-        if alloc_status.get('is_partially_allocated'):
-            allocated = alloc_status.get('allocated_blocks', 0)
-            total = alloc_status.get('total_blocks', 0)
+        if alloc_status.get("is_partially_allocated"):
+            allocated = alloc_status.get("allocated_blocks", 0)
+            total = alloc_status.get("total_blocks", 0)
             st.warning(
                 f"⚠️ **Alocação Parcial:** {allocated}/{total} blocos alocados. "
                 f"Continue selecionando blocos para completar a alocação."
             )
-        elif alloc_status.get('is_fully_allocated'):
+        elif alloc_status.get("is_fully_allocated"):
             st.success("✅ **Totalmente Alocada:** Todos os blocos já estão alocados.")
             # Show allocated rooms
-            for room_info in alloc_status.get('allocated_rooms', []):
-                st.caption(f"📍 {room_info['room_name']}: {', '.join(room_info['blocks'])}")
+            for room_info in alloc_status.get("allocated_rooms", []):
+                st.caption(
+                    f"📍 {room_info['room_name']}: {', '.join(room_info['blocks'])}"
+                )
 
             # Cancel button
             if st.button(
@@ -157,8 +159,8 @@ def _render_block_group_selection(
     st.subheader("📅 Selecionar Blocos para Alocação")
 
     # Filter to show only unallocated block groups
-    unallocated_groups = [g for g in block_groups if not g.get('is_allocated')]
-    allocated_groups = [g for g in block_groups if g.get('is_allocated')]
+    unallocated_groups = [g for g in block_groups if not g.get("is_allocated")]
+    allocated_groups = [g for g in block_groups if g.get("is_allocated")]
 
     if not unallocated_groups:
         st.info("Todos os blocos já estão alocados.")
@@ -166,12 +168,14 @@ def _render_block_group_selection(
 
     # Show allocated groups (read-only)
     if allocated_groups:
-        with st.expander(f"✅ Blocos já alocados ({len(allocated_groups)})", expanded=False):
+        with st.expander(
+            f"✅ Blocos já alocados ({len(allocated_groups)})", expanded=False
+        ):
             for group in allocated_groups:
-                day_name = group.get('day_name', 'N/A')
-                blocks = ', '.join(group.get('blocks', []))
-                time_range = group.get('time_range', '')
-                room_name = group.get('allocated_room_name', 'N/A')
+                day_name = group.get("day_name", "N/A")
+                blocks = ", ".join(group.get("blocks", []))
+                time_range = group.get("time_range", "")
+                room_name = group.get("allocated_room_name", "N/A")
                 st.caption(f"📍 **{day_name}** ({blocks}) {time_range} → {room_name}")
 
     # Block group checkboxes for unallocated groups
@@ -181,7 +185,7 @@ def _render_block_group_selection(
     session_key = f"selected_block_groups_{demanda_id}"
     if session_key not in st.session_state:
         # Default: select all unallocated groups
-        st.session_state[session_key] = {g['day_id']: True for g in unallocated_groups}
+        st.session_state[session_key] = {g["day_id"]: True for g in unallocated_groups}
 
     selected_day_ids = []
 
@@ -189,10 +193,10 @@ def _render_block_group_selection(
     cols = st.columns(min(len(unallocated_groups), 4))
 
     for idx, group in enumerate(unallocated_groups):
-        day_id = group.get('day_id')
-        day_name = group.get('day_name', 'N/A')
-        blocks = group.get('blocks', [])
-        time_range = group.get('time_range', '')
+        day_id = group.get("day_id")
+        day_name = group.get("day_name", "N/A")
+        blocks = group.get("blocks", [])
+        time_range = group.get("time_range", "")
         block_count = len(blocks)
 
         col_idx = idx % len(cols)
@@ -221,9 +225,11 @@ def _render_block_group_selection(
         return None
 
     # Show count of selected blocks
-    selected_groups = [g for g in unallocated_groups if g['day_id'] in selected_day_ids]
-    total_selected_blocks = sum(len(g.get('blocks', [])) for g in selected_groups)
-    st.info(f"📊 **Selecionados:** {len(selected_day_ids)} dia(s), {total_selected_blocks} bloco(s)")
+    selected_groups = [g for g in unallocated_groups if g["day_id"] in selected_day_ids]
+    total_selected_blocks = sum(len(g.get("blocks", [])) for g in selected_groups)
+    st.info(
+        f"📊 **Selecionados:** {len(selected_day_ids)} dia(s), {total_selected_blocks} bloco(s)"
+    )
 
     # ================================================================
     # Room Suggestions for Selected Blocks
@@ -244,7 +250,7 @@ def _render_block_group_selection(
         st.warning("Nenhuma sugestão encontrada para os blocos selecionados.")
     else:
         # Render top suggestions (top 5)
-        top_suggestions = [s for s in suggestions if not s.get('has_conflict')][:5]
+        top_suggestions = [s for s in suggestions if not s.get("has_conflict")][:5]
 
         if top_suggestions:
             for suggestion in top_suggestions:
@@ -259,9 +265,11 @@ def _render_block_group_selection(
                     return result
 
         # Show conflicting rooms in expander
-        conflicting = [s for s in suggestions if s.get('has_conflict')]
+        conflicting = [s for s in suggestions if s.get("has_conflict")]
         if conflicting:
-            with st.expander(f"⚠️ Salas com Conflitos ({len(conflicting)})", expanded=False):
+            with st.expander(
+                f"⚠️ Salas com Conflitos ({len(conflicting)})", expanded=False
+            ):
                 for room in conflicting[:5]:
                     _render_conflicting_room_brief(room)
 
@@ -291,11 +299,11 @@ def _render_block_group_room_card(
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            room_name = suggestion.get('room_name', 'N/A')
-            building = suggestion.get('building_name', 'N/A')
-            capacity = suggestion.get('room_capacity', 0)
-            room_type = suggestion.get('room_type', 'N/A')
-            score = suggestion.get('score', 0)
+            room_name = suggestion.get("room_name", "N/A")
+            building = suggestion.get("building_name", "N/A")
+            capacity = suggestion.get("room_capacity", 0)
+            room_type = suggestion.get("room_type", "N/A")
+            score = suggestion.get("score", 0)
 
             st.markdown(f"**{building}: {room_name}** (Cap: {capacity})")
             st.caption(f"Tipo: {room_type} | Andar: 0")
@@ -305,44 +313,60 @@ def _render_block_group_room_card(
             st.caption(f"{score_color} Pontuação: {score}")
 
             # Detailed breakdown
-            breakdown = suggestion.get('breakdown', {})
+            breakdown = suggestion.get("breakdown", {})
             if breakdown:
                 with st.expander("📊 Detalhes da Pontuação", expanded=False):
                     col_a, col_b = st.columns(2)
 
                     with col_a:
                         st.markdown("**Capacidade:**")
-                        if breakdown.get('capacity_satisfied', False):
-                            st.success(f"✅ Adequada (+{breakdown.get('capacity_points', 0)})")
+                        if breakdown.get("capacity_satisfied", False):
+                            st.success(
+                                f"✅ Adequada (+{breakdown.get('capacity_points', 0)})"
+                            )
                         else:
-                            st.error(f"❌ Insuficiente (+{breakdown.get('capacity_points', 0)})")
+                            st.error(
+                                f"❌ Insuficiente (+{breakdown.get('capacity_points', 0)})"
+                            )
 
                         st.markdown("**Regras Obrigatórias:**")
-                        hard_rules = breakdown.get('hard_rules_satisfied', [])
+                        hard_rules = breakdown.get("hard_rules_satisfied", [])
                         if hard_rules:
-                            st.success(f"✅ Atendidas (+{breakdown.get('hard_rules_points', 0)})")
+                            st.success(
+                                f"✅ Atendidas (+{breakdown.get('hard_rules_points', 0)})"
+                            )
                         else:
-                            st.error(f"❌ Não atendidas (+{breakdown.get('hard_rules_points', 0)})")
+                            st.error(
+                                f"❌ Não atendidas (+{breakdown.get('hard_rules_points', 0)})"
+                            )
 
                     with col_b:
                         st.markdown("**Preferências Professor:**")
-                        soft_prefs = breakdown.get('soft_preferences_satisfied', [])
+                        soft_prefs = breakdown.get("soft_preferences_satisfied", [])
                         if soft_prefs:
-                            st.success(f"✅ Atendidas (+{breakdown.get('soft_preference_points', 0)})")
+                            st.success(
+                                f"✅ Atendidas (+{breakdown.get('soft_preference_points', 0)})"
+                            )
                         else:
-                            st.info(f"⏸️ Não verificadas (+{breakdown.get('soft_preference_points', 0)})")
+                            st.info(
+                                f"⏸️ Não verificadas (+{breakdown.get('soft_preference_points', 0)})"
+                            )
 
                         st.markdown("**Frequência Histórica:**")
-                        hist_count = breakdown.get('historical_allocations', 0)
+                        hist_count = breakdown.get("historical_allocations", 0)
                         if hist_count > 0:
-                            st.info(f"📈 Alocada {hist_count}x aqui (+{breakdown.get('historical_frequency_points', 0)})")
+                            st.info(
+                                f"📈 Alocada {hist_count}x aqui (+{breakdown.get('historical_frequency_points', 0)})"
+                            )
                         else:
-                            st.info(f"📉 Nunca alocada (+{breakdown.get('historical_frequency_points', 0)})")
+                            st.info(
+                                f"📉 Nunca alocada (+{breakdown.get('historical_frequency_points', 0)})"
+                            )
 
                     st.markdown(f"**Total: {score} pontos**")
 
         with col2:
-            room_id = suggestion.get('room_id')
+            room_id = suggestion.get("room_id")
             button_key = f"alloc_partial_{demanda_id}_{room_id}"
 
             if st.button(
@@ -366,11 +390,11 @@ def _render_block_group_room_card(
                 room_display = f"{suggestion.get('building_name', '')}: {suggestion.get('room_name', '')}"
 
                 if result.success:
-                    feedback_message = (
-                        f"✅ Alocação parcial realizada! {len(result.allocated_blocks)} blocos alocados em '{room_display}'"
-                    )
+                    feedback_message = f"✅ Alocação parcial realizada! {len(result.allocated_blocks)} blocos alocados em '{room_display}'"
                     if result.remaining_blocks:
-                        feedback_message += f". Restam {len(result.remaining_blocks)} blocos pendentes."
+                        feedback_message += (
+                            f". Restam {len(result.remaining_blocks)} blocos pendentes."
+                        )
                 else:
                     feedback_message = f"❌ Falha na alocação: {result.message}"
 
@@ -385,9 +409,9 @@ def _render_block_group_room_card(
 
 def _render_conflicting_room_brief(room: Dict):
     """Render a brief view of a conflicting room."""
-    room_name = room.get('room_name', 'N/A')
-    building = room.get('building_name', 'N/A')
-    conflicts = room.get('conflict_details', [])
+    room_name = room.get("room_name", "N/A")
+    building = room.get("building_name", "N/A")
+    conflicts = room.get("conflict_details", [])
 
     st.caption(f"**{building}: {room_name}** - {', '.join(conflicts[:2])}")
 
@@ -460,9 +484,7 @@ def _render_manual_selection_partial(
                     )
 
                     if result.success:
-                        feedback_message = (
-                            f"✅ Alocação manual realizada! {len(result.allocated_blocks)} blocos em '{predio_name}: {selected_room.nome}'"
-                        )
+                        feedback_message = f"✅ Alocação manual realizada! {len(result.allocated_blocks)} blocos em '{predio_name}: {selected_room.nome}'"
                         if result.remaining_blocks:
                             feedback_message += f". Restam {len(result.remaining_blocks)} blocos pendentes."
                     else:
@@ -480,6 +502,7 @@ def _render_manual_selection_partial(
 # ================================================================
 # LEGACY FUNCTIONS (kept for backward compatibility)
 # ================================================================
+
 
 def _render_suggestions_section(
     title: str,
@@ -520,9 +543,7 @@ def _render_room_suggestion_card(
 
                 # Show detailed breakdown if available
                 if suggestion.scoring_breakdown:
-                    with st.expander(
-                        "📊 Detalhes da Pontuação", expanded=False
-                    ):
+                    with st.expander("📊 Detalhes da Pontuação", expanded=False):
                         breakdown = suggestion.scoring_breakdown
 
                         col1, col2 = st.columns(2)

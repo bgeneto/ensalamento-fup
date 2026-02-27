@@ -581,9 +581,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
         if not detection_semester_id:
             # Fallback: maybe we're reallocating an existing semester that has data
-            detection_semester_id = (
-                self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations()
-            )
+            detection_semester_id = self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations()
 
         if not detection_semester_id:
             logger.warning(

@@ -9,7 +9,7 @@ the sidebar and main panel select boxes to become desynchronized.
 """
 
 import streamlit as st
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple, Optional
 from src.utils.cache_helpers import get_semester_options
 
 

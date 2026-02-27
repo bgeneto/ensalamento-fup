@@ -9,7 +9,6 @@ from src.models.base import BaseModel
 
 
 # Create Base for models that don't need BaseModel fields but use same metadata registry
-from src.models.base import BaseModel
 
 Base = declarative_base(metadata=BaseModel.registry.metadata)
 

@@ -28,7 +28,9 @@ class HybridDisciplineInfo:
     """Information about a detected hybrid discipline."""
 
     codigo_disciplina: str
-    lab_days: List[int] = field(default_factory=list)  # Days that historically used labs
+    lab_days: List[int] = field(
+        default_factory=list
+    )  # Days that historically used labs
     classroom_days: List[int] = field(
         default_factory=list
     )  # Days that only used classrooms
@@ -187,7 +189,9 @@ class HybridDisciplineDetectionService:
             True if discipline is hybrid, False otherwise
         """
         if not self._is_initialized:
-            logger.warning("Hybrid detection not initialized - call detect_hybrid_disciplines() first")
+            logger.warning(
+                "Hybrid detection not initialized - call detect_hybrid_disciplines() first"
+            )
             return False
 
         return codigo_disciplina in self._cache

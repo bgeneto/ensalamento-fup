@@ -15,7 +15,7 @@ Implements RF-006 requirements:
 - RF-006.7: Atomic block allocation to database
 """
 
-from typing import List, Dict, Tuple, Optional, Set, NamedTuple, Any
+from typing import List, Dict, Tuple, Optional, NamedTuple, Any
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -895,7 +895,6 @@ class AutonomousAllocationService:
 
         Creates a detailed log file with comprehensive statistics about the allocation process.
         """
-        from pathlib import Path
 
         log_file = settings.LOGS_DIR / "autonomous_allocation.log"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -905,9 +904,9 @@ class AutonomousAllocationService:
 
         # Format detailed log content
         log_content = f"""
-{'='*80}
+{"=" * 80}
 AUTONOMOUS ALLOCATION DETAILED LOG - {timestamp}
-{'='*80}
+{"=" * 80}
 
 SEMESTER INFORMATION
 Semester ID: {semester_id}
@@ -915,23 +914,23 @@ Execution Timestamp: {timestamp}
 
 INITIAL STATE
 Total Unallocated Demands: {len(unallocated_demands)}
-Total Demands Processed: {stats['total_demands_in_semester']}
-Allocated Demands (Before): {stats['previously_allocated']}
+Total Demands Processed: {stats["total_demands_in_semester"]}
+Allocated Demands (Before): {stats["previously_allocated"]}
 Unallocated Demands (Before): {len(unallocated_demands)}
 
 RULES STATISTICS
 Hard Rules (Prioridade=0):
-  - Total Hard Rules: {stats['total_hard_rules']}
-  - Discipline-Specific Rules: {stats['discipline_specific_rules']}
-  - Room-Specific Rules: {stats['room_specific_rules']}
-  - Type-Specific Rules: {stats['type_specific_rules']}
-  - Characteristic-Specific Rules: {stats['characteristic_specific_rules']}
+  - Total Hard Rules: {stats["total_hard_rules"]}
+  - Discipline-Specific Rules: {stats["discipline_specific_rules"]}
+  - Room-Specific Rules: {stats["room_specific_rules"]}
+  - Type-Specific Rules: {stats["type_specific_rules"]}
+  - Characteristic-Specific Rules: {stats["characteristic_specific_rules"]}
 
 PROFESSOR STATISTICS
-Total Professors in Demands: {stats['total_professors_in_demands']}
-Professors with Reduced Mobility: {stats['professors_with_reduced_mobility']}
-Professors with Room Preferences: {stats['professors_with_room_prefs']}
-Professors with Characteristic Preferences: {stats['professors_with_char_prefs']}
+Total Professors in Demands: {stats["total_professors_in_demands"]}
+Professors with Reduced Mobility: {stats["professors_with_reduced_mobility"]}
+Professors with Room Preferences: {stats["professors_with_room_prefs"]}
+Professors with Characteristic Preferences: {stats["professors_with_char_prefs"]}
 
 ALLOCATION PHASES
 
@@ -963,33 +962,33 @@ Details:
 {chr(10).join(f"  - {detail}" for detail in phase3_result.details) if phase3_result.details else "  No details available"}
 
 FINAL RESULTS
-Total Allocations Completed: {final_result['allocations_completed']}
-Total Conflicts Found: {final_result['conflicts_found']}
-Demands Still Unallocated: {final_result['demands_skipped']}
-Allocation Success Rate: {final_result.get('progress_percentage', 0):.1f}%
+Total Allocations Completed: {final_result["allocations_completed"]}
+Total Conflicts Found: {final_result["conflicts_found"]}
+Demands Still Unallocated: {final_result["demands_skipped"]}
+Allocation Success Rate: {final_result.get("progress_percentage", 0):.1f}%
 
 CURRENT ALLOCATION STATUS
-Allocated Demands (Final): {stats['previously_allocated'] + final_result['allocations_completed']}
-Unallocated Demands (Final): {final_result['demands_skipped']}
-Total Allocation Percentage: {((stats['previously_allocated'] + final_result['allocations_completed']) / stats['total_demands_in_semester'] * 100):.1f}%
+Allocated Demands (Final): {stats["previously_allocated"] + final_result["allocations_completed"]}
+Unallocated Demands (Final): {final_result["demands_skipped"]}
+Total Allocation Percentage: {((stats["previously_allocated"] + final_result["allocations_completed"]) / stats["total_demands_in_semester"] * 100):.1f}%
 
 DATABASE STATISTICS
-Total Database Allocations: {stats['total_db_allocations']}
-Total Database Conflicts: {stats['total_db_conflicts']}
-Average Allocations per Room: {stats['avg_allocations_per_room']:.1f}
+Total Database Allocations: {stats["total_db_allocations"]}
+Total Database Conflicts: {stats["total_db_conflicts"]}
+Average Allocations per Room: {stats["avg_allocations_per_room"]:.1f}
 
 EXECUTION PERFORMANCE
-Total Execution Time: {final_result.get('performance', {}).get('total_execution_time', 'N/A')} seconds
+Total Execution Time: {final_result.get("performance", {}).get("total_execution_time", "N/A")} seconds
 Phase Breakdown:
-  - Schedule Parsing: {final_result.get('performance', {}).get('schedule_parsing_time', 'N/A')}s
-  - Phase 1 (Hard Rules): {final_result.get('performance', {}).get('phase1_time', 'N/A')}s
-  - Phase 2 (Soft Scoring): {final_result.get('performance', {}).get('phase2_time', 'N/A')}s
-  - Phase 3 (Atomic Allocation): {final_result.get('performance', {}).get('phase3_time', 'N/A')}s
-Throughput: {final_result.get('performance', {}).get('allocations_per_second', 'N/A')} allocations/second
+  - Schedule Parsing: {final_result.get("performance", {}).get("schedule_parsing_time", "N/A")}s
+  - Phase 1 (Hard Rules): {final_result.get("performance", {}).get("phase1_time", "N/A")}s
+  - Phase 2 (Soft Scoring): {final_result.get("performance", {}).get("phase2_time", "N/A")}s
+  - Phase 3 (Atomic Allocation): {final_result.get("performance", {}).get("phase3_time", "N/A")}s
+Throughput: {final_result.get("performance", {}).get("allocations_per_second", "N/A")} allocations/second
 
-{'='*80}
+{"=" * 80}
 END OF AUTONOMOUS ALLOCATION LOG
-{'='*80}
+{"=" * 80}
 
 """
 

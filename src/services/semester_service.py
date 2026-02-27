@@ -12,8 +12,6 @@ from src.models.academic import Semestre
 from src.schemas.academic import (
     DemandaCreate,
     ProfessorCreate,
-    SemestreCreate,
-    SemestreUpdate,
 )
 from src.utils.sigaa_parser import SigaaScheduleParser
 
@@ -77,7 +75,7 @@ def sync_semester_from_api(
     """
     try:
         payload = fetch_ofertas(cod_semestre)
-    except OfertaAPIError as e:
+    except OfertaAPIError:
         raise
 
     semestre_name = payload.get("semestre", cod_semestre)
@@ -307,7 +305,8 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
 
             # Create the new semester as active (it will have the highest ID)
             new_semester_orm = Semestre(
-                nome=clean_name, status=True  # Explicitly set to True
+                nome=clean_name,
+                status=True,  # Explicitly set to True
             )
             session.add(new_semester_orm)
             session.commit()  # Force commit

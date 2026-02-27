@@ -18,7 +18,6 @@ Example usage:
     font_bold = get_default_font(bold=True)  # Returns "HankenGrotesk-SemiBold"
 """
 
-import os
 import logging
 from pathlib import Path
 from reportlab.pdfbase import pdfmetrics

@@ -320,13 +320,15 @@ def _check_rule_warnings(demanda) -> List[str]:
     # Check for hybrid discipline detection (from historical data)
     # This is the CONFIRMED detection from Phase 0
     is_hybrid_detected = _check_hybrid_discipline(discipline_code)
-    
+
     if is_hybrid_detected:
         # Strong indication - detected from historical allocation data
         warnings.append("🧪 Disciplina HÍBRIDA - requer laboratório em alguns dias")
     else:
         # Soft check for laboratory requirements (regex-based, less certain)
-        if any(term in discipline_name for term in ["laboratório", "prático", "prática"]):
+        if any(
+            term in discipline_name for term in ["laboratório", "prático", "prática"]
+        ):
             warnings.append("Disciplina pode necessitar de laboratório")
 
     # Check for high enrollment (may need larger rooms)
@@ -340,13 +342,13 @@ def _check_rule_warnings(demanda) -> List[str]:
 def _check_hybrid_discipline(discipline_code: str) -> bool:
     """
     Check if a discipline is detected as hybrid from historical data.
-    
+
     Uses cached detection results from the most recent autonomous allocation run,
     or performs fresh detection if needed.
-    
+
     Args:
         discipline_code: Discipline code to check
-        
+
     Returns:
         True if discipline is detected as hybrid
     """
@@ -355,17 +357,21 @@ def _check_hybrid_discipline(discipline_code: str) -> bool:
         # Perform fresh detection
         try:
             with get_db_session() as session:
-                from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
-                
+                from src.services.hybrid_discipline_service import (
+                    HybridDisciplineDetectionService,
+                )
+
                 hybrid_service = HybridDisciplineDetectionService(session)
                 result = hybrid_service.detect_hybrid_disciplines()
-                
+
                 # Cache the results
-                st.session_state.hybrid_disciplines_cache = set(result.hybrid_disciplines)
+                st.session_state.hybrid_disciplines_cache = set(
+                    result.hybrid_disciplines
+                )
         except Exception:
             # If detection fails, return empty set
             st.session_state.hybrid_disciplines_cache = set()
-    
+
     return discipline_code in st.session_state.hybrid_disciplines_cache
 
 

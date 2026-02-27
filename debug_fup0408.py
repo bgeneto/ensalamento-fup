@@ -2,13 +2,8 @@
 Script para investigar por que FUP0408 não foi alocada nas salas com histórico.
 """
 
-import sys
 from sqlalchemy import text
 from src.config.database import get_db_session
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.sala import SalaRepository
-from src.repositories.alocacao import AlocacaoRepository
-from src.services.room_scoring_service import RoomScoringService
 from src.utils.sigaa_parser import SigaaScheduleParser
 
 
@@ -46,7 +41,7 @@ def main():
             return
 
         demanda_id, codigo, nome, turma, vagas, horario = result
-        print(f"📚 Demanda FUP0408:")
+        print("📚 Demanda FUP0408:")
         print(f"   ID: {demanda_id}")
         print(f"   Código: {codigo}")
         print(f"   Nome: {nome}")
@@ -61,9 +56,9 @@ def main():
         print()
 
         # 2. Buscar TODAS as salas onde FUP0408 já foi alocada historicamente
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"📜 HISTÓRICO COMPLETO DE ALOCAÇÕES DE {codigo}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         historical_rooms = session.execute(
             text(
@@ -121,9 +116,9 @@ def main():
         print()
 
         # 3. Verificar alocação ATUAL de FUP0408 em 2026-1
-        print(f"\n{'='*80}")
-        print(f"📍 ALOCAÇÃO ATUAL (2026-1)")
-        print(f"{'='*80}\n")
+        print(f"\n{'=' * 80}")
+        print("📍 ALOCAÇÃO ATUAL (2026-1)")
+        print(f"{'=' * 80}\n")
 
         result = session.execute(
             text(
@@ -170,21 +165,21 @@ def main():
         print()
 
         # 4. Verificar disponibilidade das salas com histórico
-        print(f"\n{'='*80}")
-        print(f"🔍 ANÁLISE DE DISPONIBILIDADE DAS SALAS COM HISTÓRICO")
-        print(f"{'='*80}\n")
+        print(f"\n{'=' * 80}")
+        print("🔍 ANÁLISE DE DISPONIBILIDADE DAS SALAS COM HISTÓRICO")
+        print(f"{'=' * 80}\n")
 
         if not salas_historico:
             print("Nenhuma sala com histórico para analisar.")
             return
 
         for sala_nome, info in salas_historico.items():
-            print(f"\n{'─'*80}")
+            print(f"\n{'─' * 80}")
             print(f"🏢 Sala: {sala_nome} (ID: {info['id']}, Cap: {info['capacidade']})")
             print(
                 f"   Histórico: {len(info['semestres'])} alocação(ões) - {info['semestres']}"
             )
-            print(f"{'─'*80}")
+            print(f"{'─' * 80}")
 
             # Verificar conflitos
             conflitos = []
@@ -226,13 +221,13 @@ def main():
             if conflitos:
                 print(f"   ❌ SALA INVIÁVEL: {len(conflitos)} conflito(s)")
             else:
-                print(f"   ✅✅ SALA VIÁVEL E COM HISTÓRICO!")
-                print(f"   🎯 Esta sala deveria ter sido escolhida!")
+                print("   ✅✅ SALA VIÁVEL E COM HISTÓRICO!")
+                print("   🎯 Esta sala deveria ter sido escolhida!")
 
         # 5. Comparar pontuação esperada
-        print(f"\n\n{'='*80}")
-        print(f"🎯 COMPARAÇÃO DE PONTUAÇÃO (ESPERADO)")
-        print(f"{'='*80}\n")
+        print(f"\n\n{'=' * 80}")
+        print("🎯 COMPARAÇÃO DE PONTUAÇÃO (ESPERADO)")
+        print(f"{'=' * 80}\n")
 
         print("Pontuação base (capacidade adequada): 4 pontos")
         print()

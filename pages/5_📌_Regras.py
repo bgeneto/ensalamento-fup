@@ -298,7 +298,6 @@ with tab1:
                             type="primary",
                             width="content",
                         ):
-
                             # Update room preferences
                             # Get current room objects
                             new_salas = []
@@ -540,7 +539,6 @@ with tab2:
                     with st.expander(
                         f"{regra.id}: {format_rule_display(regra, salas_dict, tipos_sala_dict, {})}"
                     ):
-
                         col1, col2 = st.columns([3, 1])
 
                         with col1:
@@ -553,7 +551,9 @@ with tab2:
                                 )
                                 cod_disc = config.get("codigo_disciplina", "")
                                 if cod_disc and cod_disc in disc_options:
-                                    st.markdown(f"**Disciplina:** {disc_options[cod_disc]}")
+                                    st.markdown(
+                                        f"**Disciplina:** {disc_options[cod_disc]}"
+                                    )
                                 elif cod_disc:
                                     st.markdown(f"**Disciplina:** {cod_disc}")
                             except (json.JSONDecodeError, TypeError):

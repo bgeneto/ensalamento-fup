@@ -450,9 +450,18 @@ class BlockGroupBase(BaseModel):
     to different rooms for hybrid disciplines.
     """
 
-    day_id: int = Field(..., ge=2, le=7, description="SIGAA day code (2=MON, 3=TUE, ..., 7=SAT)")
-    day_name: str = Field(..., min_length=3, max_length=3, description="Human readable day (SEG, TER, etc.)")
-    blocks: List[str] = Field(default_factory=list, description="Block codes (M1, M2, T1, etc.)")
+    day_id: int = Field(
+        ..., ge=2, le=7, description="SIGAA day code (2=MON, 3=TUE, ..., 7=SAT)"
+    )
+    day_name: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Human readable day (SEG, TER, etc.)",
+    )
+    blocks: List[str] = Field(
+        default_factory=list, description="Block codes (M1, M2, T1, etc.)"
+    )
 
     @property
     def block_count(self) -> int:
@@ -476,17 +485,33 @@ class BlockGroupRead(BlockGroupBase):
 class BlockGroupScoringBreakdownSchema(BaseModel):
     """Detailed scoring breakdown for a specific block group + room combination."""
 
-    total_score: int = Field(default=0, description="Total score for this block group + room")
+    total_score: int = Field(
+        default=0, description="Total score for this block group + room"
+    )
     capacity_points: int = Field(default=0, description="Points from capacity check")
-    hard_rules_points: int = Field(default=0, description="Points from hard rules compliance")
-    soft_preference_points: int = Field(default=0, description="Points from professor preferences")
-    historical_frequency_points: int = Field(default=0, description="Points from historical frequency (per day)")
+    hard_rules_points: int = Field(
+        default=0, description="Points from hard rules compliance"
+    )
+    soft_preference_points: int = Field(
+        default=0, description="Points from professor preferences"
+    )
+    historical_frequency_points: int = Field(
+        default=0, description="Points from historical frequency (per day)"
+    )
 
     # Details
-    capacity_satisfied: bool = Field(default=False, description="Whether room capacity is adequate")
-    hard_rules_satisfied: List[str] = Field(default_factory=list, description="List of satisfied hard rules")
-    soft_preferences_satisfied: List[str] = Field(default_factory=list, description="List of satisfied soft preferences")
-    historical_allocations: int = Field(default=0, description="Count of historical allocations for THIS DAY")
+    capacity_satisfied: bool = Field(
+        default=False, description="Whether room capacity is adequate"
+    )
+    hard_rules_satisfied: List[str] = Field(
+        default_factory=list, description="List of satisfied hard rules"
+    )
+    soft_preferences_satisfied: List[str] = Field(
+        default_factory=list, description="List of satisfied soft preferences"
+    )
+    historical_allocations: int = Field(
+        default=0, description="Count of historical allocations for THIS DAY"
+    )
 
     class Config:
         from_attributes = True
@@ -507,10 +532,14 @@ class BlockGroupRoomScoreSchema(BaseModel):
     score: int = Field(default=0, description="Total score")
     breakdown: BlockGroupScoringBreakdownSchema = Field(
         default_factory=BlockGroupScoringBreakdownSchema,
-        description="Detailed scoring breakdown"
+        description="Detailed scoring breakdown",
     )
-    has_conflict: bool = Field(default=False, description="Whether room has time conflicts")
-    conflict_details: List[str] = Field(default_factory=list, description="List of conflict descriptions")
+    has_conflict: bool = Field(
+        default=False, description="Whether room has time conflicts"
+    )
+    conflict_details: List[str] = Field(
+        default_factory=list, description="List of conflict descriptions"
+    )
 
     class Config:
         from_attributes = True
@@ -527,14 +556,14 @@ class PartialAllocationRequest(BaseModel):
     sala_id: int = Field(..., gt=0, description="Room ID to allocate to")
     block_codes: Optional[List[str]] = Field(
         default=None,
-        description="Specific block codes to allocate (e.g., ['M1', 'M2']). If None, allocates all blocks."
+        description="Specific block codes to allocate (e.g., ['M1', 'M2']). If None, allocates all blocks.",
     )
     day_ids: Optional[List[int]] = Field(
         default=None,
-        description="Specific day IDs to allocate (e.g., [2, 4] for MON, WED). If None, allocates all days."
+        description="Specific day IDs to allocate (e.g., [2, 4] for MON, WED). If None, allocates all days.",
     )
 
-    @field_validator('day_ids')
+    @field_validator("day_ids")
     @classmethod
     def validate_day_ids(cls, v):
         if v is not None:
@@ -552,9 +581,15 @@ class PartialAllocationResult(BaseModel):
 
     success: bool = Field(..., description="Whether allocation succeeded")
     message: str = Field(..., description="Result message")
-    allocated_blocks: List[str] = Field(default_factory=list, description="Blocks that were allocated")
-    remaining_blocks: List[str] = Field(default_factory=list, description="Blocks still pending allocation")
-    allocation_ids: List[int] = Field(default_factory=list, description="IDs of created allocations")
+    allocated_blocks: List[str] = Field(
+        default_factory=list, description="Blocks that were allocated"
+    )
+    remaining_blocks: List[str] = Field(
+        default_factory=list, description="Blocks still pending allocation"
+    )
+    allocation_ids: List[int] = Field(
+        default_factory=list, description="IDs of created allocations"
+    )
     room_id: Optional[int] = Field(default=None, description="Room ID allocated to")
     room_name: Optional[str] = Field(default=None, description="Room name allocated to")
 

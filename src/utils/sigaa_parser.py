@@ -245,11 +245,13 @@ class SigaaScheduleParser:
 
         result = []
         for day_id in sorted(day_blocks.keys()):
-            result.append({
-                'day_id': day_id,
-                'day_name': self.MAP_DAYS.get(day_id, f"DIA{day_id}"),
-                'blocks': day_blocks[day_id],
-            })
+            result.append(
+                {
+                    "day_id": day_id,
+                    "day_name": self.MAP_DAYS.get(day_id, f"DIA{day_id}"),
+                    "blocks": day_blocks[day_id],
+                }
+            )
 
         return result
 
@@ -270,8 +272,8 @@ class SigaaScheduleParser:
         first_block = sorted_blocks[0]
         last_block = sorted_blocks[-1]
 
-        start_time = self.MAP_SCHEDULE_TIMES.get(first_block, {}).get('inicio', '??:??')
-        end_time = self.MAP_SCHEDULE_TIMES.get(last_block, {}).get('fim', '??:??')
+        start_time = self.MAP_SCHEDULE_TIMES.get(first_block, {}).get("inicio", "??:??")
+        end_time = self.MAP_SCHEDULE_TIMES.get(last_block, {}).get("fim", "??:??")
 
         return f"{start_time}-{end_time}"
 
@@ -303,7 +305,7 @@ class SigaaScheduleParser:
                         continue
 
                     # Validate shift and slot
-                    if code[0] not in ['M', 'T', 'N']:
+                    if code[0] not in ["M", "T", "N"]:
                         invalid_blocks.append(block)
                         continue
 
@@ -322,8 +324,11 @@ class SigaaScheduleParser:
         # Log warnings for invalid blocks (if any)
         if invalid_blocks:
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.warning(f"Invalid SIGAA blocks detected and skipped: {invalid_blocks}")
+            logger.warning(
+                f"Invalid SIGAA blocks detected and skipped: {invalid_blocks}"
+            )
 
         return results
 

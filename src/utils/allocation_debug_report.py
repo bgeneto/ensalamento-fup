@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BlockScore:
     """Detailed scoring breakdown for a single block."""
+
     block_code: str
     day_id: int
     day_name: str
@@ -47,6 +48,7 @@ class BlockScore:
 @dataclass
 class DemandAllocationDecision:
     """Complete allocation decision record for a demand."""
+
     demanda_id: int
     codigo_disciplina: str
     nome_disciplina: str
@@ -115,6 +117,7 @@ class AllocationDebugReport:
         """Load scoring configuration for reference."""
         try:
             from src.config.scoring_config import SCORING_WEIGHTS
+
             return {
                 "CAPACITY_ADEQUATE": SCORING_WEIGHTS.CAPACITY_ADEQUATE,
                 "HARD_RULE_COMPLIANCE": SCORING_WEIGHTS.HARD_RULE_COMPLIANCE,
@@ -135,7 +138,7 @@ class AllocationDebugReport:
 
     def _init_report(self):
         """Initialize the report file with header."""
-        with open(self.report_file, 'w', encoding='utf-8') as f:
+        with open(self.report_file, "w", encoding="utf-8") as f:
             f.write("=" * 100 + "\n")
             f.write("AUTONOMOUS ALLOCATION DEBUG REPORT\n")
             f.write("=" * 100 + "\n")
@@ -150,7 +153,9 @@ class AllocationDebugReport:
                 f.write(f"  {key}: {value} points\n")
             f.write("\n")
             f.write("SCORING FORMULA:\n")
-            f.write("  Total = Capacity + HardRules + SoftPreferences + Historical + ProfPrefs\n")
+            f.write(
+                "  Total = Capacity + HardRules + SoftPreferences + Historical + ProfPrefs\n"
+            )
             f.write("  - Capacity: +3 if room fits demand\n")
             f.write("  - HardRules: +20 per satisfied hard rule\n")
             f.write("  - Historical: +2 per past allocation (max 20)\n")
@@ -160,7 +165,7 @@ class AllocationDebugReport:
 
     def _write(self, text: str):
         """Append text to report file."""
-        with open(self.report_file, 'a', encoding='utf-8') as f:
+        with open(self.report_file, "a", encoding="utf-8") as f:
             f.write(text)
 
     def log_phase_start(self, phase: str, description: str):
@@ -199,8 +204,8 @@ class AllocationDebugReport:
         self._write("  Block Groups:\n")
 
         for bg in block_groups:
-            day_name = bg.get('day_name', f"Day{bg.get('day_id', '?')}")
-            blocks = bg.get('blocks', [])
+            day_name = bg.get("day_name", f"Day{bg.get('day_id', '?')}")
+            blocks = bg.get("blocks", [])
             self._write(f"    • {day_name}: {', '.join(blocks)}\n")
 
         self._write("\n")
@@ -210,8 +215,8 @@ class AllocationDebugReport:
         if rules:
             self._write("  HARD RULES (must satisfy):\n")
             for rule in rules:
-                tipo = rule.get('tipo_regra', 'UNKNOWN')
-                desc = rule.get('descricao', 'No description')
+                tipo = rule.get("tipo_regra", "UNKNOWN")
+                desc = rule.get("descricao", "No description")
                 self._write(f"    🔒 [{tipo}] {desc}\n")
         else:
             self._write("  HARD RULES: None\n")
@@ -222,9 +227,9 @@ class AllocationDebugReport:
         if rules:
             self._write("  SOFT PREFERENCES:\n")
             for rule in rules:
-                tipo = rule.get('tipo_regra', 'UNKNOWN')
-                desc = rule.get('descricao', 'No description')
-                prio = rule.get('prioridade', 1)
+                tipo = rule.get("tipo_regra", "UNKNOWN")
+                desc = rule.get("descricao", "No description")
+                prio = rule.get("prioridade", 1)
                 self._write(f"    ⭐ [{tipo}] P{prio}: {desc}\n")
         else:
             self._write("  SOFT PREFERENCES: None\n")
@@ -234,11 +239,11 @@ class AllocationDebugReport:
         """Log professor preferences."""
         if prefs:
             self._write("  PROFESSOR PREFERENCES:\n")
-            if prefs.get('preferred_rooms'):
-                rooms = prefs['preferred_rooms']
+            if prefs.get("preferred_rooms"):
+                rooms = prefs["preferred_rooms"]
                 self._write(f"    🏢 Preferred Rooms: {rooms}\n")
-            if prefs.get('preferred_characteristics'):
-                chars = prefs['preferred_characteristics']
+            if prefs.get("preferred_characteristics"):
+                chars = prefs["preferred_characteristics"]
                 self._write(f"    ✨ Preferred Characteristics: {chars}\n")
         else:
             self._write("  PROFESSOR PREFERENCES: None\n")
@@ -257,37 +262,43 @@ class AllocationDebugReport:
         self._write("  " + "-" * 70 + "\n")
 
         # Header
-        self._write(f"  {'Rank':<5} {'Room':<20} {'Cap':<6} {'Score':<7} {'Breakdown':<40}\n")
+        self._write(
+            f"  {'Rank':<5} {'Room':<20} {'Cap':<6} {'Score':<7} {'Breakdown':<40}\n"
+        )
         self._write("  " + "-" * 70 + "\n")
 
         for i, rs in enumerate(room_scores[:max_rooms_to_show], 1):
-            room_name = rs.get('room_name', 'Unknown')[:18]
-            capacity = rs.get('room_capacity', 0)
-            total = rs.get('total_score', 0)
+            room_name = rs.get("room_name", "Unknown")[:18]
+            capacity = rs.get("room_capacity", 0)
+            total = rs.get("total_score", 0)
 
             # Build breakdown string
             breakdown_parts = []
-            if rs.get('capacity_score', 0) > 0:
+            if rs.get("capacity_score", 0) > 0:
                 breakdown_parts.append(f"Cap:{rs['capacity_score']}")
-            if rs.get('hard_rule_score', 0) > 0:
+            if rs.get("hard_rule_score", 0) > 0:
                 breakdown_parts.append(f"Hard:{rs['hard_rule_score']}")
-            if rs.get('historical_score', 0) > 0:
-                hist_allocs = rs.get('historical_allocations', 0)
+            if rs.get("historical_score", 0) > 0:
+                hist_allocs = rs.get("historical_allocations", 0)
                 breakdown_parts.append(f"Hist:{rs['historical_score']}({hist_allocs}x)")
-            if rs.get('professor_room_score', 0) > 0:
+            if rs.get("professor_room_score", 0) > 0:
                 breakdown_parts.append(f"PrfR:{rs['professor_room_score']}")
-            if rs.get('professor_char_score', 0) > 0:
+            if rs.get("professor_char_score", 0) > 0:
                 breakdown_parts.append(f"PrfC:{rs['professor_char_score']}")
 
             breakdown = " + ".join(breakdown_parts) if breakdown_parts else "No bonus"
 
             # Conflict indicator
-            conflict = "⚠️CONFLICT" if rs.get('has_conflict') else ""
+            conflict = "⚠️CONFLICT" if rs.get("has_conflict") else ""
 
-            self._write(f"  {i:<5} {room_name:<20} {capacity:<6} {total:<7} {breakdown:<40} {conflict}\n")
+            self._write(
+                f"  {i:<5} {room_name:<20} {capacity:<6} {total:<7} {breakdown:<40} {conflict}\n"
+            )
 
         if len(room_scores) > max_rooms_to_show:
-            self._write(f"  ... and {len(room_scores) - max_rooms_to_show} more rooms\n")
+            self._write(
+                f"  ... and {len(room_scores) - max_rooms_to_show} more rooms\n"
+            )
 
         self._write("\n")
 
@@ -304,31 +315,33 @@ class AllocationDebugReport:
 
         # Capacity check
         cap_ok = room_capacity >= demand_vagas
-        cap_score = scoring_breakdown.get('capacity_score', 0)
+        cap_score = scoring_breakdown.get("capacity_score", 0)
         self._write(f"      Capacity Check: {room_capacity} >= {demand_vagas}? ")
         self._write(f"{'✓ YES' if cap_ok else '✗ NO'} → +{cap_score} pts\n")
 
         # Hard rules
-        hard_rules = scoring_breakdown.get('hard_rules_satisfied', [])
-        hard_score = scoring_breakdown.get('hard_rule_score', 0)
-        self._write(f"      Hard Rules: {len(hard_rules)} satisfied → +{hard_score} pts\n")
+        hard_rules = scoring_breakdown.get("hard_rules_satisfied", [])
+        hard_score = scoring_breakdown.get("hard_rule_score", 0)
+        self._write(
+            f"      Hard Rules: {len(hard_rules)} satisfied → +{hard_score} pts\n"
+        )
         for rule in hard_rules:
             self._write(f"        • {rule}\n")
 
         # Historical
-        hist_count = scoring_breakdown.get('historical_allocations', 0)
-        hist_score = scoring_breakdown.get('historical_score', 0)
+        hist_count = scoring_breakdown.get("historical_allocations", 0)
+        hist_score = scoring_breakdown.get("historical_score", 0)
         self._write(f"      Historical: {hist_count} past allocations × 2 pts = ")
         self._write(f"{hist_count * 2} (capped at 20) → +{hist_score} pts\n")
 
         # Professor preferences
-        prof_room = scoring_breakdown.get('professor_room_score', 0)
-        prof_char = scoring_breakdown.get('professor_char_score', 0)
+        prof_room = scoring_breakdown.get("professor_room_score", 0)
+        prof_char = scoring_breakdown.get("professor_char_score", 0)
         self._write(f"      Professor Room Pref: +{prof_room} pts\n")
         self._write(f"      Professor Char Pref: +{prof_char} pts\n")
 
         # Total
-        total = scoring_breakdown.get('total_score', 0)
+        total = scoring_breakdown.get("total_score", 0)
         self._write("      ─────────────────────────────\n")
         self._write(f"      TOTAL SCORE: {total} pts\n")
         self._write("\n")
@@ -391,11 +404,15 @@ class AllocationDebugReport:
         if allocated:
             self._write(f"    Blocks: {allocated_blocks}/{total_blocks} allocated\n")
             if is_split:
-                self._write(f"    🔀 SPLIT ALLOCATION across {len(rooms_used)} rooms:\n")
+                self._write(
+                    f"    🔀 SPLIT ALLOCATION across {len(rooms_used)} rooms:\n"
+                )
                 for room in rooms_used:
                     self._write(f"       • {room}\n")
             else:
-                self._write(f"    Single room: {rooms_used[0] if rooms_used else 'N/A'}\n")
+                self._write(
+                    f"    Single room: {rooms_used[0] if rooms_used else 'N/A'}\n"
+                )
 
         self._write("\n")
 
@@ -429,7 +446,9 @@ class AllocationDebugReport:
         self._write("-" * 50 + "\n")
         self._write(f"  Total Demands: {total_stats.get('total_demands', 0)}\n")
         self._write(f"  Fully Allocated: {total_stats.get('fully_allocated', 0)}\n")
-        self._write(f"  Partially Allocated: {total_stats.get('partially_allocated', 0)}\n")
+        self._write(
+            f"  Partially Allocated: {total_stats.get('partially_allocated', 0)}\n"
+        )
         self._write(f"  Not Allocated: {total_stats.get('not_allocated', 0)}\n")
         self._write(f"  Split Allocations: {total_stats.get('split_allocations', 0)}\n")
         self._write(f"  Total Conflicts: {total_stats.get('total_conflicts', 0)}\n")

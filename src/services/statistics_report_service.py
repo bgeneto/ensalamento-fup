@@ -4,14 +4,13 @@ Statistics Report Generation Service
 Creates comprehensive statistics reports for room allocation analysis.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from typing import List, Dict, Any
 import io
 from collections import defaultdict
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm, cm
+from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
@@ -20,7 +19,7 @@ from reportlab.platypus import (
     Spacer,
     PageBreak,
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 from src.utils.cache_helpers import get_sigaa_parser
 
@@ -322,12 +321,12 @@ class StatisticsReportService:
             ["Salas Cadastradas", f"{stats['total_rooms']} salas"],
             [
                 "Salas Utilizadas",
-                f"{stats['rooms_used']} salas ({(stats['rooms_used']/stats['total_rooms']*100):.1f}%)",
+                f"{stats['rooms_used']} salas ({(stats['rooms_used'] / stats['total_rooms'] * 100):.1f}%)",
             ],
             ["Demandas Cadastradas", f"{stats['total_demands']} disciplinas"],
             [
                 "Demandas Alocadas",
-                f"{stats['demands_allocated']} disciplinas ({(stats['demands_allocated']/stats['total_demands']*100 if stats['total_demands'] > 0 else 0):.1f}%)",
+                f"{stats['demands_allocated']} disciplinas ({(stats['demands_allocated'] / stats['total_demands'] * 100 if stats['total_demands'] > 0 else 0):.1f}%)",
             ],
             ["Taxa de Ocupação Média", f"{stats['avg_occupancy']:.1f}%"],
             ["Total de Alocações", f"{stats['total_allocations']} alocações"],

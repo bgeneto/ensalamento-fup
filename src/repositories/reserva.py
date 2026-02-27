@@ -3,7 +3,6 @@ Repository for ReservaEsporadica operations.
 """
 
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from src.repositories.base import BaseRepository
 from src.models.allocation import ReservaEsporadica

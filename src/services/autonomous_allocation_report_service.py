@@ -3,15 +3,12 @@ Autonomous Allocation PDF Report Generator - Human-readable allocation decision 
 """
 
 import io
-import os
 import logging
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.colors import Color, black, white, grey, lightgrey, green, red, blue
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
@@ -20,8 +17,7 @@ from reportlab.platypus import (
     TableStyle,
     PageBreak,
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.pdfgen import canvas
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib import colors
 
 # Suppress ReportLab logging completely
@@ -406,11 +402,11 @@ class AutonomousAllocationReportService:
         phase3 = results.get("phase3_atomic_allocation", {})
 
         summary_text = f"""
-        <b>Fase 1 - Regras Obrigatórias:</b> {phase1.get('allocations', 0)} alocações realizadas, {phase1.get('conflicts', 0)} conflitos.<br/>
-        <b>Fase 2 - Avaliação por Pontuação:</b> {phase2.get('candidates_scored', 0)} demandas avaliadas, {phase2.get('conflicts', 0)} conflitos detectados.<br/>
-        <b>Fase 3 - Alocação Atômica:</b> {phase3.get('allocations', 0)} alocações finais, {phase3.get('conflicts', 0)} conflitos restantes.<br/>
+        <b>Fase 1 - Regras Obrigatórias:</b> {phase1.get("allocations", 0)} alocações realizadas, {phase1.get("conflicts", 0)} conflitos.<br/>
+        <b>Fase 2 - Avaliação por Pontuação:</b> {phase2.get("candidates_scored", 0)} demandas avaliadas, {phase2.get("conflicts", 0)} conflitos detectados.<br/>
+        <b>Fase 3 - Alocação Atômica:</b> {phase3.get("allocations", 0)} alocações finais, {phase3.get("conflicts", 0)} conflitos restantes.<br/>
         <br/>
-        <b>Próximos Passos:</b> {results.get('next_steps', 'Análise manual das demandas não alocadas')}
+        <b>Próximos Passos:</b> {results.get("next_steps", "Análise manual das demandas não alocadas")}
         """
 
         content.append(Paragraph(summary_text, self.styles["Normal"]))
@@ -481,7 +477,7 @@ class AutonomousAllocationReportService:
 
         if skipped > total_demands * 0.2:  # More than 20% skipped
             problems.append(
-                f"• <b>{skipped}</b> demandas não alocadas ({skipped/total_demands*100:.1f}% do total) - CRÍTICO"
+                f"• <b>{skipped}</b> demandas não alocadas ({skipped / total_demands * 100:.1f}% do total) - CRÍTICO"
             )
 
         if conflicts > allocated:
@@ -666,10 +662,10 @@ class AutonomousAllocationReportService:
             content.append(Paragraph("Eficiência de Alocação", self.styles["Heading3"]))
 
             efficiency_text = f"""
-            • <b>{first_try_success}</b> demandas alocadas no <b>primeiro candidato</b> ({first_try_success/len(allocated_decisions)*100:.1f}%)<br/>
-            • <b>{multi_try_success}</b> demandas necessitaram <b>múltiplas tentativas</b> ({multi_try_success/len(allocated_decisions)*100:.1f}%)<br/>
+            • <b>{first_try_success}</b> demandas alocadas no <b>primeiro candidato</b> ({first_try_success / len(allocated_decisions) * 100:.1f}%)<br/>
+            • <b>{multi_try_success}</b> demandas necessitaram <b>múltiplas tentativas</b> ({multi_try_success / len(allocated_decisions) * 100:.1f}%)<br/>
             <br/>
-            <b>Interpretação:</b> {'✓ Excelente - maioria alocada no primeiro candidato' if first_try_success/len(allocated_decisions) > 0.7 else '⚠️ Considerar revisar pontuação - muitos candidatos alternativos necessários'}
+            <b>Interpretação:</b> {"✓ Excelente - maioria alocada no primeiro candidato" if first_try_success / len(allocated_decisions) > 0.7 else "⚠️ Considerar revisar pontuação - muitos candidatos alternativos necessários"}
             """
 
             content.append(Paragraph(efficiency_text, self.styles["Normal"]))
@@ -705,7 +701,7 @@ class AutonomousAllocationReportService:
                     "Fase 1 - Regras Obrigatórias",
                     str(phase1_conflicts),
                     (
-                        f"{phase1_conflicts/total_conflicts*100:.1f}%"
+                        f"{phase1_conflicts / total_conflicts * 100:.1f}%"
                         if total_conflicts > 0
                         else "0%"
                     ),
@@ -714,7 +710,7 @@ class AutonomousAllocationReportService:
                     "Fase 2 - Avaliação",
                     str(phase2_conflicts),
                     (
-                        f"{phase2_conflicts/total_conflicts*100:.1f}%"
+                        f"{phase2_conflicts / total_conflicts * 100:.1f}%"
                         if total_conflicts > 0
                         else "0%"
                     ),
@@ -723,7 +719,7 @@ class AutonomousAllocationReportService:
                     "Fase 3 - Alocação Atômica",
                     str(phase3_conflicts),
                     (
-                        f"{phase3_conflicts/total_conflicts*100:.1f}%"
+                        f"{phase3_conflicts / total_conflicts * 100:.1f}%"
                         if total_conflicts > 0
                         else "0%"
                     ),
@@ -907,7 +903,7 @@ class AutonomousAllocationReportService:
                     [
                         "Capacidade da Sala",
                         str(total_capacity),
-                        f"{total_capacity/total_points*100:.1f}%",
+                        f"{total_capacity / total_points * 100:.1f}%",
                         (
                             "Alto"
                             if total_capacity / total_points > 0.4
@@ -921,7 +917,7 @@ class AutonomousAllocationReportService:
                     [
                         "Regras Obrigatórias",
                         str(total_hard_rules),
-                        f"{total_hard_rules/total_points*100:.1f}%",
+                        f"{total_hard_rules / total_points * 100:.1f}%",
                         (
                             "Alto"
                             if total_hard_rules / total_points > 0.4
@@ -935,7 +931,7 @@ class AutonomousAllocationReportService:
                     [
                         "Preferências do Professor",
                         str(total_preferences),
-                        f"{total_preferences/total_points*100:.1f}%",
+                        f"{total_preferences / total_points * 100:.1f}%",
                         (
                             "Alto"
                             if total_preferences / total_points > 0.4
@@ -949,7 +945,7 @@ class AutonomousAllocationReportService:
                     [
                         "Histórico de Uso",
                         str(total_historical),
-                        f"{total_historical/total_points*100:.1f}%",
+                        f"{total_historical / total_points * 100:.1f}%",
                         (
                             "Alto"
                             if total_historical / total_points > 0.4
@@ -1245,8 +1241,8 @@ class AutonomousAllocationReportService:
                 <b>Sala Alocada:</b> {allocated_room}<br/>
                 <b>Pontuação Final:</b> {final_score} pontos<br/>
                 <b>Fase de Alocação:</b> {allocation_phase}<br/>
-                <b>Turma:</b> {decision.get('turma', 'N/A')}<br/>
-                <b>Professor:</b> {decision.get('professores', 'N/A')[:50]}{'...' if len(decision.get('professores', '')) > 50 else ''}
+                <b>Turma:</b> {decision.get("turma", "N/A")}<br/>
+                <b>Professor:</b> {decision.get("professores", "N/A")[:50]}{"..." if len(decision.get("professores", "")) > 50 else ""}
                 """
 
                 content.append(Paragraph(allocation_summary, self.styles["Normal"]))
@@ -1522,8 +1518,8 @@ class AutonomousAllocationReportService:
                 • Sala Alocada: <b>{sala}</b><br/>
                 • Pontuação Final: <b>{score}</b><br/>
                 • Fase de Alocação: {phase}<br/>
-                • Vagas: {decision.get('vagas', 0)}<br/>
-                • Professor(es): {decision.get('professores', 'N/A')}
+                • Vagas: {decision.get("vagas", 0)}<br/>
+                • Professor(es): {decision.get("professores", "N/A")}
                 """
 
                 content.append(Paragraph(details, self.styles["Normal"]))
@@ -1650,11 +1646,11 @@ class AutonomousAllocationReportService:
                     breakdown = decision.get("scoring_breakdown", {})
                     if breakdown:
                         score_text = f"""
-                        <b>{decision.get('disciplina_codigo', 'N/A')}</b> - Total: {decision.get('final_score', 0)}<br/>
-                        • Capacidade: {breakdown.get('capacity_points', 0)} pontos<br/>
-                        • Regras Obrigatórias: {breakdown.get('hard_rules_points', 0)} pontos<br/>
-                        • Preferências: {breakdown.get('soft_preference_points', 0)} pontos<br/>
-                        • Histórico: {breakdown.get('historical_frequency_points', 0)} pontos
+                        <b>{decision.get("disciplina_codigo", "N/A")}</b> - Total: {decision.get("final_score", 0)}<br/>
+                        • Capacidade: {breakdown.get("capacity_points", 0)} pontos<br/>
+                        • Regras Obrigatórias: {breakdown.get("hard_rules_points", 0)} pontos<br/>
+                        • Preferências: {breakdown.get("soft_preference_points", 0)} pontos<br/>
+                        • Histórico: {breakdown.get("historical_frequency_points", 0)} pontos
                         """
                         content.append(
                             Paragraph(score_text, self.styles["ScoreDetail"])

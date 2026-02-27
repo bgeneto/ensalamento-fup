@@ -6,7 +6,7 @@ Display and manage semester allocations.
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Tuple
 from st_aggrid import AgGrid, GridOptionsBuilder
 from pages.components.auth import initialize_page
@@ -29,17 +29,13 @@ from src.repositories.reserva import ReservaRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.semestre import SemestreRepository
 from src.repositories.dia_semana import DiaSemanaRepository
 from src.repositories.horario_bloco import HorarioBlocoRepository
 from src.config.database import get_db_session
 from src.utils.ui_feedback import (
     display_session_feedback,
-    set_session_feedback,
 )
 from src.models.inventory import Sala, Predio
-from src.models.academic import Professor
-from src.models.allocation import AlocacaoSemestral
 from src.utils.cache_helpers import get_sigaa_parser, get_semester_options
 from src.services.pdf_report_service import PDFReportService
 from src.services.statistics_report_service import StatisticsReportService
@@ -168,7 +164,7 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
                 current_start = start_time
                 current_end = end_time
 
-        except Exception as e:
+        except Exception:
             # Skip problematic blocks
             continue
 
@@ -577,7 +573,7 @@ try:
                                     f"ensalamento_{room_name_clean}_{timestamp}.pdf"
                                 )
                                 success_msg = (
-                                    f"✅ Relatório gerado com sucesso! (1 sala)"
+                                    "✅ Relatório gerado com sucesso! (1 sala)"
                                 )
 
                             st.download_button(
@@ -591,7 +587,7 @@ try:
                         else:
                             st.error("❌ Erro: Nenhum conteúdo gerado para o PDF")
 
-                except ImportError as e:
+                except ImportError:
                     st.error(
                         "❌ Biblioteca reportlab não instalada. Execute: pip install reportlab>=4.0.0"
                     )
@@ -646,11 +642,11 @@ try:
                                 mime="application/pdf",
                                 key="download_statistics_report",
                             )
-                            st.success(f"✅ Relatório estatístico gerado com sucesso!")
+                            st.success("✅ Relatório estatístico gerado com sucesso!")
                         else:
                             st.error("❌ Erro: Nenhum conteúdo gerado para o PDF")
 
-                except ImportError as e:
+                except ImportError:
                     st.error(
                         "❌ Biblioteca reportlab não instalada. Execute: pip install reportlab>=4.0.0"
                     )

@@ -2,8 +2,7 @@
 Time management models for Sigaa time blocks and weekdays.
 """
 
-from datetime import time as time_type
-from sqlalchemy import Column, Integer, String, Time, DateTime
+from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime
 
 from src.models.base import Base

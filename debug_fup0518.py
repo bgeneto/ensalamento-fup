@@ -2,7 +2,6 @@
 Script para investigar por que FUP0518 não foi alocada na sala AT-42/12.
 """
 
-import sys
 from sqlalchemy import text
 from src.config.database import get_db_session
 from src.repositories.disciplina import DisciplinaRepository
@@ -51,7 +50,7 @@ def main():
             return
 
         demanda_id, codigo, nome, turma, vagas, horario = result
-        print(f"📚 Demanda encontrada:")
+        print("📚 Demanda encontrada:")
         print(f"   ID: {demanda_id}")
         print(f"   Código: {codigo}")
         print(f"   Nome: {nome}")
@@ -69,9 +68,9 @@ def main():
         salas_interesse = ["AT-42/12", "AT-79/11"]
 
         for sala_nome in salas_interesse:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print(f"🏢 Analisando sala: {sala_nome}")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
 
             # Buscar sala
             result = session.execute(
@@ -121,11 +120,11 @@ def main():
                 )
             else:
                 print(f"📜 Sem histórico de alocações de {codigo} na sala {sala_nome}")
-                print(f"   🎯 Pontos históricos: 0 pontos")
+                print("   🎯 Pontos históricos: 0 pontos")
             print()
 
             # 4. Verificar conflitos nos blocos necessários
-            print(f"🔍 Verificando conflitos no semestre 2026-1:")
+            print("🔍 Verificando conflitos no semestre 2026-1:")
             conflitos_encontrados = []
             blocos_livres = []
 
@@ -168,13 +167,13 @@ def main():
                     f"❌ SALA INVIÁVEL: {len(conflitos_encontrados)} conflito(s) detectado(s)"
                 )
             else:
-                print(f"✅ SALA VIÁVEL: Todos os blocos estão livres!")
+                print("✅ SALA VIÁVEL: Todos os blocos estão livres!")
             print()
 
         # 5. Verificar alocação atual da demanda
-        print(f"\n{'='*80}")
-        print(f"📍 ALOCAÇÃO ATUAL DA DEMANDA")
-        print(f"{'='*80}\n")
+        print(f"\n{'=' * 80}")
+        print("📍 ALOCAÇÃO ATUAL DA DEMANDA")
+        print(f"{'=' * 80}\n")
 
         result = session.execute(
             text(
@@ -229,9 +228,9 @@ def main():
             print(f"❌ Demanda {codigo} NÃO foi alocada!")
 
         print()
-        print(f"\n{'='*80}")
-        print(f"🎯 CONCLUSÃO DA INVESTIGAÇÃO")
-        print(f"{'='*80}\n")
+        print(f"\n{'=' * 80}")
+        print("🎯 CONCLUSÃO DA INVESTIGAÇÃO")
+        print(f"{'=' * 80}\n")
 
         print("A investigação mostrará:")
         print("1. Se AT-42/12 tinha conflitos que impediram a alocação")

@@ -10,12 +10,10 @@ Extracted from the main inventory page for better maintainability.
 import streamlit as st
 import pandas as pd
 from src.repositories.sala import SalaRepository
-from src.repositories.predio import PredioRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.repositories.caracteristica import CaracteristicaRepository
 from src.schemas.inventory import (
     SalaRead,
-    SalaUpdate,
     TipoSalaCreate,
     CaracteristicaCreate,
 )
@@ -24,7 +22,6 @@ from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 from src.utils.cache_helpers import (
     get_predio_options,
     get_tipo_sala_options,
-    get_caracteristica_options,
 )
 
 # Needs to be imported from auth module for shared imports

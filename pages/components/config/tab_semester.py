@@ -6,10 +6,8 @@ CRUD operations for semester management.
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 from src.repositories.semestre import SemestreRepository
-from src.schemas.academic import SemestreCreate
 from src.models.academic import Semestre
 from src.config.database import get_db_session
 from src.utils.ui_feedback import (
@@ -18,7 +16,6 @@ from src.utils.ui_feedback import (
 )
 from src.utils.cache_helpers import get_semester_options
 from src.services.semester_service import (
-    create_and_activate_semester,
     validate_semester_name,
 )
 
@@ -300,9 +297,7 @@ def render_semester_tab():
                                                     highest.status = True
                                                     session.commit()
 
-                                                    st.session_state.global_semester_id = (
-                                                        highest.id
-                                                    )
+                                                    st.session_state.global_semester_id = highest.id
 
                                                     set_session_feedback(
                                                         "crud_result",
@@ -312,9 +307,7 @@ def render_semester_tab():
                                                     )
                                                 else:
                                                     session.commit()
-                                                    st.session_state.global_semester_id = (
-                                                        None
-                                                    )
+                                                    st.session_state.global_semester_id = None
                                                     set_session_feedback(
                                                         "crud_result",
                                                         True,

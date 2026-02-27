@@ -3,11 +3,8 @@ Script para investigar por que FUP0321, apesar de ser híbrida,
 não foi alocada em duas salas diferentes (uma lab e uma sala comum).
 """
 
-import sys
 from sqlalchemy import text
 from src.config.database import get_db_session
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.sala import SalaRepository
 from src.repositories.alocacao import AlocacaoRepository
 from src.services.room_scoring_service import RoomScoringService
 from src.services.hybrid_discipline_service import (
@@ -28,7 +25,7 @@ def main():
 
         # 1. Buscar o semestre
         result = session.execute(
-            text(f"SELECT id FROM semestres WHERE nome = :nome"),
+            text("SELECT id FROM semestres WHERE nome = :nome"),
             {"nome": TARGET_SEMESTER},
         ).fetchone()
         semester_id = result[0] if result else None
@@ -59,9 +56,9 @@ def main():
             return
 
         demanda_id, codigo, nome, turma, vagas, horario = result
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"📚 DEMANDA {DISCIPLINA_CODIGO}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"   ID: {demanda_id}")
         print(f"   Código: {codigo}")
         print(f"   Nome: {nome}")
@@ -82,7 +79,7 @@ def main():
                 blocks_by_day[day_id] = []
             blocks_by_day[day_id].append(block_code)
 
-        print(f"\n📅 Blocos agrupados por dia:")
+        print("\n📅 Blocos agrupados por dia:")
         for day_id in sorted(blocks_by_day.keys()):
             print(
                 f"   {day_names.get(day_id, f'DIA{day_id}')}: {blocks_by_day[day_id]}"
@@ -90,9 +87,9 @@ def main():
         print()
 
         # 3. Verificar detecção de híbrida
-        print(f"{'='*80}")
-        print(f"🔬 ANÁLISE DE DETECÇÃO HÍBRIDA")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}")
+        print("🔬 ANÁLISE DE DETECÇÃO HÍBRIDA")
+        print(f"{'=' * 80}\n")
 
         # Buscar semestre usado para detecção (mais recente com alocações)
         detection_semester_id = alocacao_repo.get_most_recent_semester_with_allocations(
@@ -120,7 +117,7 @@ def main():
             detection_semester_id
         )
 
-        print(f"\n🔍 Resultado da detecção:")
+        print("\n🔍 Resultado da detecção:")
         print(
             f"   Total de disciplinas híbridas detectadas: {detection_result.detected_count}"
         )
@@ -133,7 +130,7 @@ def main():
         if is_hybrid:
             info = detection_result.details.get(DISCIPLINA_CODIGO)
             if info:
-                print(f"\n   📋 Detalhes da disciplina híbrida:")
+                print("\n   📋 Detalhes da disciplina híbrida:")
                 print(
                     f"      Lab days: {info.lab_days} ({[day_names.get(d, f'DIA{d}') for d in info.lab_days]})"
                 )
@@ -144,7 +141,7 @@ def main():
                 print(f"      Historical lab rooms: {info.historical_lab_rooms}")
         else:
             # Investigar por que NÃO foi detectada
-            print(f"\n   🔍 Investigando por que NÃO foi detectada como híbrida...")
+            print("\n   🔍 Investigando por que NÃO foi detectada como híbrida...")
 
             # Verificar alocações no semestre de detecção
             hist_allocs = session.execute(
@@ -176,7 +173,7 @@ def main():
                 unique_rooms = len(set([r[0] for r in hist_allocs]))
                 has_lab = any(r[2] != REGULAR_CLASSROOM_TYPE_ID for r in hist_allocs)
 
-                print(f"\n   📋 Critérios de detecção híbrida:")
+                print("\n   📋 Critérios de detecção híbrida:")
                 print(
                     f"      - 2+ salas diferentes? {'✅' if unique_rooms >= 2 else '❌'} ({unique_rooms} sala(s))"
                 )
@@ -184,12 +181,12 @@ def main():
                     f"      - Pelo menos 1 lab/sala especial? {'✅' if has_lab else '❌'}"
                 )
             else:
-                print(f"   ❌ Sem alocações encontradas no semestre de detecção!")
+                print("   ❌ Sem alocações encontradas no semestre de detecção!")
 
         # 4. Verificar alocações atuais
-        print(f"\n\n{'='*80}")
+        print(f"\n\n{'=' * 80}")
         print(f"📍 ALOCAÇÕES ATUAIS ({TARGET_SEMESTER})")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         current_allocs = session.execute(
             text(
@@ -236,22 +233,22 @@ def main():
             # Verificar se tem apenas 1 sala (problema!)
             if len(rooms_used) == 1:
                 print(
-                    f"\n   ⚠️ PROBLEMA: Apenas 1 sala alocada para disciplina híbrida!"
+                    "\n   ⚠️ PROBLEMA: Apenas 1 sala alocada para disciplina híbrida!"
                 )
-                print(f"      Esperado: 2 salas (1 lab + 1 sala de aula)")
+                print("      Esperado: 2 salas (1 lab + 1 sala de aula)")
         else:
             print(f"❌ {DISCIPLINA_CODIGO} NÃO foi alocada!")
 
         # 5. Histórico de alocações por dia
-        print(f"\n\n{'='*80}")
-        print(f"📜 HISTÓRICO DE ALOCAÇÕES POR DIA")
-        print(f"{'='*80}\n")
+        print(f"\n\n{'=' * 80}")
+        print("📜 HISTÓRICO DE ALOCAÇÕES POR DIA")
+        print(f"{'=' * 80}\n")
 
         for day_id in sorted(blocks_by_day.keys()):
             day_name = day_names.get(day_id, f"DIA{day_id}")
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print(f"📅 {day_name} (ID: {day_id})")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
 
             hist_by_day = session.execute(
                 text(
@@ -291,21 +288,21 @@ def main():
                         f"   {semestre}: {sala_nome} ({tipo_nome}) - {blocos} blocos {'🧪' if is_lab else '🏫'}"
                     )
             else:
-                print(f"   Sem histórico para este dia.")
+                print("   Sem histórico para este dia.")
 
         # 6. Análise de scoring por dia
-        print(f"\n\n{'='*80}")
-        print(f"🎯 ANÁLISE DE SCORING POR DIA")
-        print(f"{'='*80}\n")
+        print(f"\n\n{'=' * 80}")
+        print("🎯 ANÁLISE DE SCORING POR DIA")
+        print(f"{'=' * 80}\n")
 
         scoring_service = RoomScoringService(session)
         scoring_service.set_hybrid_detection_service(hybrid_service)
 
         for day_id in sorted(blocks_by_day.keys()):
             day_name = day_names.get(day_id, f"DIA{day_id}")
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print(f"📅 {day_name} - Top 5 salas por pontuação")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
 
             # Criar BlockGroup para este dia
             from src.services.room_scoring_service import BlockGroup
@@ -327,7 +324,7 @@ def main():
                 is_lab = score.room_type != "Sala de Aula"
 
                 print(
-                    f"\n   {i+1}. {score.room_name} ({score.room_type}) {conflict_str}"
+                    f"\n   {i + 1}. {score.room_name} ({score.room_type}) {conflict_str}"
                 )
                 print(f"      Score Total: {score.score}")
                 print(f"      - Capacidade: {score.breakdown.capacity_points} pts")
@@ -358,9 +355,9 @@ def main():
                     print(f"\n   📋 Tipo esperado para este dia: {expected}")
 
         # 7. Conclusão
-        print(f"\n\n{'='*80}")
-        print(f"🎯 CONCLUSÃO DA INVESTIGAÇÃO")
-        print(f"{'='*80}\n")
+        print(f"\n\n{'=' * 80}")
+        print("🎯 CONCLUSÃO DA INVESTIGAÇÃO")
+        print(f"{'=' * 80}\n")
 
         if not is_hybrid:
             print(

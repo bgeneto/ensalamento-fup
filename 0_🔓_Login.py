@@ -18,7 +18,6 @@ import streamlit_authenticator as stauth
 from yaml.loader import SafeLoader
 import yaml
 from pathlib import Path
-from datetime import datetime
 
 # Import settings to configure logging
 from src.config.settings import settings

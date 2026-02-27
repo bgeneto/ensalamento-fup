@@ -9,7 +9,6 @@ from sqlalchemy import (
     String,
     Text,
     Table,
-    Boolean,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship

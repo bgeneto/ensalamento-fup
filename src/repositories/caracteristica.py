@@ -4,7 +4,6 @@ Repository for Caracteristica operations.
 Provides data access methods for room characteristic queries.
 """
 
-from typing import List, Optional
 
 from sqlalchemy.orm import Session
 

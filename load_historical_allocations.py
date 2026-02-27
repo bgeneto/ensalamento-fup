@@ -22,7 +22,7 @@ Options:
 import csv
 import re
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple, NamedTuple
+from typing import List, Optional, NamedTuple
 from collections import defaultdict
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 
@@ -333,7 +333,7 @@ class CSVAllocator:
                 "sala_id": sala_id,
                 "username_solicitante": "admin",  # Admin user
                 "titulo_evento": allocation.titulo_evento or "Reserva Histórica",
-                "data_reserva": f"2025-{(dia_id-2)*7 + 1:02d}-15",  # Fake date based on weekday
+                "data_reserva": f"2025-{(dia_id - 2) * 7 + 1:02d}-15",  # Fake date based on weekday
                 "codigo_bloco": bloco,
             }
 
@@ -757,7 +757,9 @@ class CSVAllocator:
 
             print("\n" + "=" * 50)
         else:
-            print("⏭️ PHASE 3: Skipping room allocations (disabled by --disable-allocation)")
+            print(
+                "⏭️ PHASE 3: Skipping room allocations (disabled by --disable-allocation)"
+            )
             print("\n" + "=" * 50)
         print("LOAD RESULTS:")
         print(f"Rows processed: {self.stats['rows_processed']}")
@@ -766,8 +768,10 @@ class CSVAllocator:
             print(f"Reservas created: {self.stats['reservas_created']}")
             print(f"Conflicts skipped: {self.stats['conflicts_skipped']}")
         print(f"Demandas created: {self.stats['demandas_created']}")
-        if self.stats['errors'] > 0:
-            print(f"Errors: {self.stats['errors']} (Critical: {self.stats['critical_errors']}, Non-critical: {self.stats['non_critical_errors']})")
+        if self.stats["errors"] > 0:
+            print(
+                f"Errors: {self.stats['errors']} (Critical: {self.stats['critical_errors']}, Non-critical: {self.stats['non_critical_errors']})"
+            )
         else:
             print("Errors: 0")
 
@@ -811,12 +815,18 @@ class CSVAllocator:
                 if self.stats["errors"] == 0:
                     print("✅ All changes committed to database")
                 else:
-                    print(f"⚠️ Changes committed with {self.stats['non_critical_errors']} non-critical errors")
-                    print("   (Missing rooms, conflicts, etc. - allocations for valid rooms were saved)")
+                    print(
+                        f"⚠️ Changes committed with {self.stats['non_critical_errors']} non-critical errors"
+                    )
+                    print(
+                        "   (Missing rooms, conflicts, etc. - allocations for valid rooms were saved)"
+                    )
             else:
                 # Rollback on critical errors
                 self.session.rollback()
-                print(f"❌ Critical errors occurred ({self.stats['critical_errors']}), all changes rolled back")
+                print(
+                    f"❌ Critical errors occurred ({self.stats['critical_errors']}), all changes rolled back"
+                )
         elif self.dry_run:
             print("📋 Dry run completed (no database changes)")
 

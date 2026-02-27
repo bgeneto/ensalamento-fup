@@ -7,7 +7,6 @@ Configure professor availability and preferences.
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from pages.components.auth import initialize_page
 from pages.components.ui import page_footer
 
@@ -394,14 +393,14 @@ with tab2:
 
                                     # Validate required fields
                                     if not username or not nome:
-                                        errors.append(f"Linha {idx+2}: Campos vazios")
+                                        errors.append(f"Linha {idx + 2}: Campos vazios")
                                         continue
 
                                     # Check if already exists
                                     existing = prof_repo.get_by_username_login(username)
                                     if existing:
                                         errors.append(
-                                            f"Linha {idx+2}: {username} já existe no BD"
+                                            f"Linha {idx + 2}: {username} já existe no BD"
                                         )
                                         continue
 
@@ -414,7 +413,7 @@ with tab2:
                                         prof_repo.create(prof_dto)
                                         count += 1
                                     except Exception as e:
-                                        errors.append(f"Linha {idx+2}: {str(e)}")
+                                        errors.append(f"Linha {idx + 2}: {str(e)}")
 
                             # Store result in session state to persist across reruns
                             message = (

@@ -8,13 +8,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    Boolean,
     UniqueConstraint,
-    DateTime,
-    JSON,
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
 import json
 
 from src.models.base import BaseModel

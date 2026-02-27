@@ -453,7 +453,6 @@ with get_db_session() as session:
                         professores_changed,
                     ]
                 ):
-
                     demanda_id = int(row["ID"])
 
                     # Validate required fields

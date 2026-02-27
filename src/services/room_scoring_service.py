@@ -164,14 +164,14 @@ class RoomScoringService:
         self.prof_repo = ProfessorRepository(session)
         self.sala_repo = SalaRepository(session)
         self.parser = SigaaScheduleParser()
-        
+
         # Hybrid discipline detection service (injected via set_hybrid_detection_service)
         self._hybrid_detection_service = None
 
     def set_hybrid_detection_service(self, hybrid_service) -> None:
         """
         Set the hybrid discipline detection service for hybrid-aware scoring.
-        
+
         Args:
             hybrid_service: HybridDisciplineDetectionService instance
         """
@@ -392,8 +392,14 @@ class RoomScoringService:
             )
 
             # Get room metadata
-            predio_name = self._get_building_name(room.predio_id) if room.predio_id else "N/A"
-            tipo_sala_name = self._get_room_type_name_by_id(room.tipo_sala_id) if room.tipo_sala_id else "N/A"
+            predio_name = (
+                self._get_building_name(room.predio_id) if room.predio_id else "N/A"
+            )
+            tipo_sala_name = (
+                self._get_room_type_name_by_id(room.tipo_sala_id)
+                if room.tipo_sala_id
+                else "N/A"
+            )
 
             score = BlockGroupRoomScore(
                 block_group=block_group,
@@ -639,9 +645,7 @@ class RoomScoringService:
             )
 
             if has_conflict:
-                conflicts.append(
-                    f"{block_group.day_name} {block_code} já alocado"
-                )
+                conflicts.append(f"{block_group.day_name} {block_code} já alocado")
 
         return conflicts
 

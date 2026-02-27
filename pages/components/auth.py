@@ -73,7 +73,7 @@ def initialize_page(
         # Call login with unrendered location to maintain session
         try:
             authenticator.login(location="unrendered", key=auth_key)
-        except Exception as exc:
+        except Exception:
             st.switch_page("0_🔓_Login.py")
             return False
 

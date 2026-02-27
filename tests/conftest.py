@@ -3,7 +3,6 @@ Test fixtures and configuration for all tests.
 """
 
 import pytest
-import os
 from pathlib import Path
 
 # Add src to path for imports
@@ -11,8 +10,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config.database import get_db_session
-from src.db.migrations import init_db, drop_db
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
