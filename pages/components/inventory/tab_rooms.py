@@ -7,27 +7,29 @@ three related entities.
 Extracted from the main inventory page for better maintainability.
 """
 
-import streamlit as st
+import os
+
+# Needs to be imported from auth module for shared imports
+import sys
+
 import pandas as pd
+import streamlit as st
+
+from src.config.database import get_db_session
+from src.repositories.caracteristica import CaracteristicaRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
-from src.repositories.caracteristica import CaracteristicaRepository
 from src.schemas.inventory import (
+    CaracteristicaCreate,
     SalaCreate,
     SalaUpdate,
     TipoSalaCreate,
-    CaracteristicaCreate,
 )
-from src.config.database import get_db_session
-from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 from src.utils.cache_helpers import (
     get_predio_options,
     get_tipo_sala_options,
 )
-
-# Needs to be imported from auth module for shared imports
-import sys
-import os
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -41,7 +43,7 @@ def render_rooms_tab():
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
-        - Use **Ativa** para habilitar/desabilitar a sala globalmente e os campos **M/T/N** para limitar por turno.
+        - Use **Ativa** para habilitar/desabilitar a sala **globalmente** e os campos **M/T/N** para limitar por turno.
         """
     )
 

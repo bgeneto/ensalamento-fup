@@ -763,8 +763,16 @@ def seed_db():
                 .filter(SalaDisponibilidadeBloco.sala_id == sala.id)
                 .all()
             }
+            # Session uses autoflush=False, so include in-memory pending rows too.
+            pending_block_codes = {
+                obj.codigo_bloco
+                for obj in session.new
+                if isinstance(obj, SalaDisponibilidadeBloco) and obj.sala_id == sala.id
+            }
             missing_block_codes = [
-                code for code in all_block_codes if code not in existing_block_codes
+                code
+                for code in all_block_codes
+                if code not in existing_block_codes and code not in pending_block_codes
             ]
             for code in missing_block_codes:
                 session.add(
@@ -775,6 +783,8 @@ def seed_db():
                     )
                 )
             if missing_block_codes:
+                # Persist immediately so subsequent iterations can see inserted rows.
+                session.flush()
                 print(
                     f"    ✓ Added {len(missing_block_codes)} availability block rows for {sala_info['nome']}"
                 )
