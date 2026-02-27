@@ -216,7 +216,10 @@ class ReservaEventoService:
         self, room_id: int, occurrences_with_blocks: List[Dict[str, Any]]
     ) -> List[str]:
         """
-        Check for conflicts in all occurrences against semester allocations and other reservations.
+        Check for conflicts in all occurrences against:
+        - allocations in the most recent semester that actually has allocations
+        - existing recurring reservation occurrences
+        - legacy ad-hoc reservations
 
         Args:
             room_id: Room ID
@@ -231,39 +234,66 @@ class ReservaEventoService:
             f"Checking conflicts for room {room_id} with {len(occurrences_with_blocks)} occurrences"
         )
 
+        # Only consider allocations from the most recent semester that has actual data.
+        # This avoids conflicts with historical/future semesters when validating concrete dates.
+        latest_alloc_semester_id = (
+            self.alocacao_repo.get_most_recent_semester_with_allocations()
+        )
+        if latest_alloc_semester_id is None:
+            logger.info("No semester with allocations found; skipping allocation conflict check")
+        else:
+            logger.info(
+                f"Using latest semester with allocations for conflict check: {latest_alloc_semester_id}"
+            )
+
         for occurrence in occurrences_with_blocks:
             data_reserva = occurrence["data_reserva"]
             codigo_bloco = occurrence["codigo_bloco"]
+            has_any_conflict = False
 
-            # Check conflicts with semester allocations
-            weekday = (
-                datetime.strptime(data_reserva, "%Y-%m-%d").weekday() + 2
-            )  # SIGAA format
-            semester_conflict = self.alocacao_repo.check_conflict(
-                room_id, weekday, codigo_bloco
-            )
-
-            if semester_conflict:
-                conflict_count += 1
-                logger.warning(
-                    f"Conflict found: semester allocation on {data_reserva} {codigo_bloco}"
+            # Check conflicts with allocations only in latest allocated semester
+            if latest_alloc_semester_id is not None:
+                weekday = (
+                    datetime.strptime(data_reserva, "%Y-%m-%d").weekday() + 2
+                )  # SIGAA format
+                semester_conflict = self.alocacao_repo.check_conflict(
+                    room_id,
+                    weekday,
+                    codigo_bloco,
+                    semestre_id=latest_alloc_semester_id,
                 )
-                continue  # Don't add individual error messages, just count
+                if semester_conflict:
+                    has_any_conflict = True
+                    logger.warning(
+                        f"Conflict found: semester allocation (sem={latest_alloc_semester_id}) on {data_reserva} {codigo_bloco}"
+                    )
 
-            # Check conflicts with existing reservations (both legacy and recurring)
+            # Check conflicts with recurring reservation occurrences
+            recurring_conflicts = self.ocorrencia_repo.get_conflicting_occurrences(
+                room_id, data_reserva, codigo_bloco
+            )
+            if recurring_conflicts:
+                has_any_conflict = True
+                logger.warning(
+                    f"Conflict found: recurring reservation on {data_reserva} {codigo_bloco}"
+                )
+
+            # Check conflicts with existing legacy ad-hoc reservations
             reserva_conflict = self.reserva_repo.check_conflict(
                 room_id, codigo_bloco, data_reserva
             )
-
             if reserva_conflict:
-                conflict_count += 1
+                has_any_conflict = True
                 logger.warning(
-                    f"Conflict found: existing reservation on {data_reserva} {codigo_bloco}"
+                    f"Conflict found: legacy ad-hoc reservation on {data_reserva} {codigo_bloco}"
                 )
+
+            if has_any_conflict:
+                conflict_count += 1
 
         if conflict_count > 0:
             errors.append(
-                f"Encontrados {conflict_count} conflito(s) com alocações existentes. Por favor, verifique os horários e datas selecionadas."
+                f"Encontrados {conflict_count} conflito(s) com alocações/reservas existentes. Por favor, verifique os horários e datas selecionadas."
             )
 
         return errors
