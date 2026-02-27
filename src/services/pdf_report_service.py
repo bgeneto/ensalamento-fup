@@ -439,6 +439,7 @@ class PDFReportService:
     def _shorten_professor_name(self, full_name: str) -> str:
         """
         Shorten professor name: keep first name, abbreviate rest.
+        Supports multiple professors separated by comma/semicolon.
 
         Examples:
             "Maria José da Silva Santos" -> "Maria J.S.S."
@@ -455,18 +456,30 @@ class PDFReportService:
             return ""
 
         # Common Portuguese connectors to skip
-        connectors = {"da", "de", "do", "das", "dos", "e", "Jr"}
+        connectors = {"da", "de", "do", "das", "dos", "e", "jr", "filho", "neto"}
 
-        parts = full_name.strip().split()
-        if len(parts) <= 1:
-            return full_name
+        def _shorten_single_name(name: str) -> str:
+            parts = name.strip().split()
+            if len(parts) <= 1:
+                return name.strip()
 
-        # Keep first name, abbreviate the rest
-        result = [parts[0]]
-        for part in parts[1:]:
-            if part.lower() in connectors:
-                continue  # Skip connectors
-            if part:
-                result.append(f"{part[0].upper()}.")
+            # Keep first name, abbreviate the rest
+            result = [parts[0]]
+            for part in parts[1:]:
+                if part.lower() in connectors:
+                    continue
+                if part:
+                    result.append(f"{part[0].upper()}.")
 
-        return " ".join(result)
+            return " ".join(result)
+
+        # Handle multiple professors in the same field
+        # Input source commonly uses commas and sometimes semicolons.
+        raw_names = full_name.replace(";", ",").split(",")
+        names = [name.strip() for name in raw_names if name and name.strip()]
+
+        if not names:
+            return ""
+
+        shortened_names = [_shorten_single_name(name) for name in names]
+        return " | ".join(shortened_names)

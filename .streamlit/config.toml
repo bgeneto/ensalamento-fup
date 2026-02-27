@@ -62,26 +62,26 @@ style = "normal"
 weight = 400
 
 [[theme.fontFaces]]
-family = "arialnarrow"
+family = "ArialNarrow"
 url = "app/static/arialnarrow.ttf"
 style = "normal"
 weight = 400
 
 
 [[theme.fontFaces]]
-family = "arialnarrow"
+family = "ArialNarrow"
 url = "app/static/arialnarrow_bold.ttf"
 style = "normal"
 weight = 700
 
 [[theme.fontFaces]]
-family = "arialnarrow"
+family = "ArialNarrow"
 url = "app/static/arialnarrow_italic.ttf"
 style = "italic"
 weight = 400
 
 [[theme.fontFaces]]
-family = "arialnarrow"
+family = "ArialNarrow"
 url = "app/static/arialnarrow_bolditalic.ttf"
 style = "italic"
 weight = 700

@@ -52,15 +52,15 @@ from src.utils.ui_feedback import (
 USE_ADVANCED_GRID_FEATURES = False
 AGGRID_CUSTOM_CSS = {
     ".ag-root-wrapper": {
-        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-family": "'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
         "font-stretch": "condensed",
     },
     ".ag-root-wrapper .ag-cell": {
-        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-family": "'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
         "font-stretch": "condensed",
     },
     ".ag-root-wrapper .ag-header-cell-text": {
-        "font-family": "'arialnarrow', 'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
+        "font-family": "'Arial Narrow', 'FiraXCond', 'Fira Sans Extra Condensed', 'Roboto Condensed', 'Noto Sans Condensed', 'Noto Sans SemiCondensed', 'Avenir Next Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif !important",
         "font-stretch": "condensed",
         "font-weight": "600 !important",
         "letter-spacing": "0.2px",
