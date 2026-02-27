@@ -155,8 +155,10 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             professor_override=professor,
         )
 
-        # Get all rooms to map room_id to room objects
-        all_rooms = self.sala_repo.get_all()
+        # Get rooms enabled for this block group to map room_id to room objects
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=block_codes
+        )
         room_dict = {room.id: room for room in all_rooms}
 
         candidates = []
@@ -915,8 +917,8 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         # Batch: Get professor information for all demands
         professor_map = self._lookup_professors_for_demands_from_objects(demands)
 
-        # Batch: Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        # Batch: Get active rooms (block filtering is demand-specific below)
+        all_rooms = self.sala_repo.get_available_for_allocation()
 
         # Process demands with hard rules
         demands_with_hard_rules = [
@@ -931,13 +933,13 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             demanda_id = demanda.id
             hard_rules = all_hard_rules[demanda.codigo_disciplina]
             professor = professor_map.get(demanda_id)
+            atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+            required_blocks = [block_code for block_code, _ in atomic_blocks]
+            allocated_room = None
 
             # Debug report: Log demand start
             if debug_report:
                 block_groups = []
-                atomic_blocks = self.parser.split_to_atomic_tuples(
-                    demanda.horario_sigaa_bruto
-                )
                 day_blocks = {}
                 day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
                 for bloco, dia in atomic_blocks:
@@ -979,15 +981,12 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             # Find rooms that satisfy hard rules
             suitable_rooms = []
             for room in all_rooms:
+                if not self.sala_repo.is_room_enabled_for_blocks(room.id, required_blocks):
+                    continue
                 if self._check_hard_rules_compliance(room, demanda, hard_rules):
                     suitable_rooms.append(room)
 
             if suitable_rooms:
-                # Get the demand's actual time blocks (not all possible slots)
-                atomic_blocks = self.parser.split_to_atomic_tuples(
-                    demanda.horario_sigaa_bruto
-                )
-
                 # Build room-time slots ONLY for this demand's actual blocks
                 room_time_slots = []
                 for room in suitable_rooms:

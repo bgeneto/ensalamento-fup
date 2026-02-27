@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS salas (
     tipo_sala_id INTEGER NOT NULL,
     capacidade INTEGER DEFAULT 0,
     andar INTEGER,
+    active BOOLEAN NOT NULL DEFAULT 1,
 
     UNIQUE (nome, predio_id),
     FOREIGN KEY (predio_id) REFERENCES predios (id),
@@ -65,6 +66,16 @@ CREATE TABLE IF NOT EXISTS horarios_bloco (
     turno TEXT NOT NULL, -- (Ex: "M", "T", "N")
     horario_inicio TIME NOT NULL,
     horario_fim TIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sala_disponibilidade_blocos (
+    id INTEGER PRIMARY KEY,
+    sala_id INTEGER NOT NULL,
+    codigo_bloco TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    UNIQUE (sala_id, codigo_bloco),
+    FOREIGN KEY (sala_id) REFERENCES salas (id) ON DELETE CASCADE,
+    FOREIGN KEY (codigo_bloco) REFERENCES horarios_bloco (codigo_bloco)
 );
 
 -- ---

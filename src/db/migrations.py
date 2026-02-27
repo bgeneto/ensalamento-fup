@@ -17,6 +17,7 @@ from src.models.inventory import (
     Caracteristica,
     Predio,
     Sala,
+    SalaDisponibilidadeBloco,
     TipoSala,
     sala_caracteristicas,
 )
@@ -704,6 +705,9 @@ def seed_db():
 
         # Get all TipoSala records for mapping
         tipos_sala_map = {tipo.nome: tipo for tipo in session.query(TipoSala).all()}
+        all_block_codes = [
+            row[0] for row in session.query(HorarioBloco.codigo_bloco).all()
+        ]
 
         for sala_info in salas_data:
             existing = (
@@ -751,6 +755,29 @@ def seed_db():
             else:
                 sala = existing
                 print(f"  → Sala already exists: {sala_info['nome']}")
+
+            # Ensure availability rows for all atomic blocks
+            existing_block_codes = {
+                row[0]
+                for row in session.query(SalaDisponibilidadeBloco.codigo_bloco)
+                .filter(SalaDisponibilidadeBloco.sala_id == sala.id)
+                .all()
+            }
+            missing_block_codes = [
+                code for code in all_block_codes if code not in existing_block_codes
+            ]
+            for code in missing_block_codes:
+                session.add(
+                    SalaDisponibilidadeBloco(
+                        sala_id=sala.id,
+                        codigo_bloco=code,
+                        enabled=True,
+                    )
+                )
+            if missing_block_codes:
+                print(
+                    f"    ✓ Added {len(missing_block_codes)} availability block rows for {sala_info['nome']}"
+                )
 
             # Always check/create caracteristicas associations for this sala
             # (whether it was just created or already existed)

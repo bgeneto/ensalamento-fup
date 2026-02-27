@@ -69,6 +69,22 @@ class ManualAllocationService:
                 error_message="Semestre da demanda não encontrado",
             )
 
+        room = self.sala_repo.get_by_id(sala_id)
+        if not room:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                error_message="Sala não encontrada",
+            )
+        if not room.active:
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                error_message="Sala inativa/desabilitada para alocação",
+            )
+
         # Parse schedule into atomic blocks
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
         if not atomic_blocks:
@@ -76,6 +92,15 @@ class ManualAllocationService:
                 success=False,
                 demanda_id=demanda_id,
                 error_message="Não foi possível parsear o horário da demanda",
+            )
+
+        required_blocks = [block_code for block_code, _ in atomic_blocks]
+        if not self.sala_repo.is_room_enabled_for_blocks(sala_id, required_blocks):
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                sala_id=sala_id,
+                error_message="Sala indisponível para um ou mais blocos de horário da demanda",
             )
 
         # Create atomic blocks preview for result
@@ -183,9 +208,22 @@ class ManualAllocationService:
                 remaining_blocks=[],
             )
 
-        # Get room for result
         room = self.sala_repo.get_by_id(sala_id)
-        room_name = room.nome if room else "N/A"
+        if not room:
+            return PartialAllocationResult(
+                success=False,
+                message="Sala não encontrada",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+        if not room.active:
+            return PartialAllocationResult(
+                success=False,
+                message="Sala inativa/desabilitada para alocação",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+        room_name = room.nome
 
         # Parse all atomic blocks for this demand
         all_atomic_blocks = self.parser.split_to_atomic_tuples(
@@ -234,6 +272,15 @@ class ManualAllocationService:
                 message="Nenhum bloco a alocar (já alocados ou não correspondem aos filtros)",
                 allocated_blocks=[],
                 remaining_blocks=remaining,
+            )
+
+        required_blocks = [block_code for block_code, _ in blocks_to_allocate]
+        if not self.sala_repo.is_room_enabled_for_blocks(sala_id, required_blocks):
+            return PartialAllocationResult(
+                success=False,
+                message="Sala indisponível para um ou mais blocos selecionados",
+                allocated_blocks=[],
+                remaining_blocks=[f"{day}{block}" for block, day in blocks_to_allocate],
             )
 
         # Check for conflicts before attempting allocation

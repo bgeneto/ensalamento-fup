@@ -5,12 +5,13 @@ Provides data access methods for room queries with domain-specific filters
 and availability checks.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, distinct, func
 
-from src.models.inventory import Sala
+from src.models.horario import HorarioBloco
+from src.models.inventory import Sala, SalaDisponibilidadeBloco
 from src.schemas.inventory import SalaRead, SalaCreate
 from src.repositories.base import BaseRepository
 
@@ -42,6 +43,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=orm_obj.tipo_sala_id,
             capacidade=orm_obj.capacidade,
             andar=orm_obj.andar,
+            active=orm_obj.active,
             descricao=orm_obj.descricao,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
@@ -62,8 +64,219 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             tipo_sala_id=dto.tipo_sala_id,
             capacidade=dto.capacidade,
             andar=dto.andar,
+            active=dto.active,
             descricao=dto.descricao,
         )
+
+    def create(self, dto: SalaCreate) -> SalaRead:
+        """Create room and initialize block availability entries."""
+        orm_obj = self.dto_to_orm_create(dto)
+        self.session.add(orm_obj)
+        self.session.flush()  # generate ID for related availability rows
+
+        self._ensure_room_block_availability_entries(orm_obj.id)
+
+        self.session.commit()
+        self.session.refresh(orm_obj)
+        return self.orm_to_dto(orm_obj)
+
+    # ========================================================================
+    # ROOM AVAILABILITY HELPERS
+    # ========================================================================
+
+    def _ensure_room_block_availability_entries(self, sala_id: int) -> None:
+        """Ensure the room has availability rows for all known atomic blocks."""
+        all_block_codes = [
+            row[0] for row in self.session.query(HorarioBloco.codigo_bloco).all()
+        ]
+        if not all_block_codes:
+            return
+
+        existing_block_codes = {
+            row[0]
+            for row in self.session.query(SalaDisponibilidadeBloco.codigo_bloco)
+            .filter(SalaDisponibilidadeBloco.sala_id == sala_id)
+            .all()
+        }
+
+        missing_block_codes = [
+            code for code in all_block_codes if code not in existing_block_codes
+        ]
+        for code in missing_block_codes:
+            self.session.add(
+                SalaDisponibilidadeBloco(
+                    sala_id=sala_id,
+                    codigo_bloco=code,
+                    enabled=True,
+                )
+            )
+
+    def get_allowed_turnos(self, sala_id: int) -> Set[str]:
+        """Get allowed shifts (M/T/N) for a room."""
+        total_rows = (
+            self.session.query(func.count(SalaDisponibilidadeBloco.id))
+            .filter(SalaDisponibilidadeBloco.sala_id == sala_id)
+            .scalar()
+            or 0
+        )
+
+        rows = (
+            self.session.query(distinct(HorarioBloco.turno))
+            .join(
+                SalaDisponibilidadeBloco,
+                SalaDisponibilidadeBloco.codigo_bloco == HorarioBloco.codigo_bloco,
+            )
+            .filter(
+                SalaDisponibilidadeBloco.sala_id == sala_id,
+                SalaDisponibilidadeBloco.enabled.is_(True),
+            )
+            .all()
+        )
+        enabled_turnos = {row[0] for row in rows}
+
+        # Legacy fallback: if room has no explicit rows yet, consider all shifts enabled.
+        if total_rows == 0:
+            return {"M", "T", "N"}
+
+        return enabled_turnos
+
+    def get_allowed_turnos_map(self, sala_ids: List[int]) -> Dict[int, Set[str]]:
+        """Get allowed shifts map for a list of rooms."""
+        if not sala_ids:
+            return {}
+
+        result: Dict[int, Set[str]] = {sala_id: set() for sala_id in sala_ids}
+
+        total_rows = dict(
+            self.session.query(
+                SalaDisponibilidadeBloco.sala_id,
+                func.count(SalaDisponibilidadeBloco.id),
+            )
+            .filter(SalaDisponibilidadeBloco.sala_id.in_(sala_ids))
+            .group_by(SalaDisponibilidadeBloco.sala_id)
+            .all()
+        )
+
+        rows = (
+            self.session.query(
+                SalaDisponibilidadeBloco.sala_id,
+                HorarioBloco.turno,
+            )
+            .join(
+                HorarioBloco,
+                HorarioBloco.codigo_bloco == SalaDisponibilidadeBloco.codigo_bloco,
+            )
+            .filter(
+                SalaDisponibilidadeBloco.sala_id.in_(sala_ids),
+                SalaDisponibilidadeBloco.enabled.is_(True),
+            )
+            .distinct()
+            .all()
+        )
+
+        for sala_id, turno in rows:
+            result.setdefault(sala_id, set()).add(turno)
+
+        # Legacy fallback for rooms without availability rows.
+        for sala_id in sala_ids:
+            if total_rows.get(sala_id, 0) == 0:
+                result[sala_id] = {"M", "T", "N"}
+
+        return result
+
+    def get_allowed_blocks(self, sala_id: int) -> List[str]:
+        """Get enabled atomic block codes for a room."""
+        total_rows = (
+            self.session.query(func.count(SalaDisponibilidadeBloco.id))
+            .filter(SalaDisponibilidadeBloco.sala_id == sala_id)
+            .scalar()
+            or 0
+        )
+
+        if total_rows == 0:
+            # Legacy fallback: no explicit rows means all blocks are enabled.
+            rows = (
+                self.session.query(HorarioBloco.codigo_bloco)
+                .order_by(HorarioBloco.codigo_bloco)
+                .all()
+            )
+            return [row[0] for row in rows]
+
+        rows = (
+            self.session.query(SalaDisponibilidadeBloco.codigo_bloco)
+            .filter(
+                SalaDisponibilidadeBloco.sala_id == sala_id,
+                SalaDisponibilidadeBloco.enabled.is_(True),
+            )
+            .all()
+        )
+        return sorted([row[0] for row in rows])
+
+    def set_room_allowed_turnos(self, sala_id: int, allowed_turnos: Set[str]) -> bool:
+        """Enable/disable room availability by shift (M/T/N)."""
+        valid_turnos = {"M", "T", "N"}
+        allowed_turnos = {t.upper() for t in allowed_turnos if t and t.upper() in valid_turnos}
+
+        try:
+            room_exists = (
+                self.session.query(Sala.id).filter(Sala.id == sala_id).first() is not None
+            )
+            if not room_exists:
+                return False
+
+            self._ensure_room_block_availability_entries(sala_id)
+            self.session.flush()
+
+            turno_blocks: Dict[str, List[str]] = {"M": [], "T": [], "N": []}
+            for codigo_bloco, turno in self.session.query(
+                HorarioBloco.codigo_bloco, HorarioBloco.turno
+            ).all():
+                if turno in turno_blocks:
+                    turno_blocks[turno].append(codigo_bloco)
+
+            for turno, block_codes in turno_blocks.items():
+                if not block_codes:
+                    continue
+                self.session.query(SalaDisponibilidadeBloco).filter(
+                    SalaDisponibilidadeBloco.sala_id == sala_id,
+                    SalaDisponibilidadeBloco.codigo_bloco.in_(block_codes),
+                ).update(
+                    {"enabled": turno in allowed_turnos},
+                    synchronize_session=False,
+                )
+
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            return False
+
+    def is_room_enabled_for_blocks(self, sala_id: int, block_codes: List[str]) -> bool:
+        """Check if room is enabled for all required atomic blocks."""
+        required = sorted({code for code in block_codes if code})
+        if not required:
+            return True
+
+        total_rows = (
+            self.session.query(func.count(SalaDisponibilidadeBloco.id))
+            .filter(SalaDisponibilidadeBloco.sala_id == sala_id)
+            .scalar()
+            or 0
+        )
+        if total_rows == 0:
+            return True
+
+        enabled_count = (
+            self.session.query(func.count(distinct(SalaDisponibilidadeBloco.codigo_bloco)))
+            .filter(
+                SalaDisponibilidadeBloco.sala_id == sala_id,
+                SalaDisponibilidadeBloco.enabled.is_(True),
+                SalaDisponibilidadeBloco.codigo_bloco.in_(required),
+            )
+            .scalar()
+            or 0
+        )
+        return enabled_count == len(required)
 
     # ========================================================================
     # DOMAIN-SPECIFIC QUERY METHODS
@@ -272,16 +485,43 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
             "min_capacity": min(capacities) if capacities else 0,
         }
 
-    def get_available_for_allocation(self) -> List[SalaRead]:
-        """Get all rooms available for allocation (active rooms).
+    def get_available_for_allocation(
+        self, required_blocks: Optional[List[str]] = None
+    ) -> List[SalaRead]:
+        """Get active rooms available for allocation, optionally filtered by blocks."""
+        query = self.session.query(Sala).filter(Sala.active.is_(True))
 
-        Returns:
-            List of all SalaRead DTOs
-        """
-        return self.get_all()
+        block_codes = sorted({code for code in (required_blocks or []) if code})
+        if block_codes:
+            query = (
+                query.join(
+                    SalaDisponibilidadeBloco,
+                    SalaDisponibilidadeBloco.sala_id == Sala.id,
+                )
+                .filter(
+                    SalaDisponibilidadeBloco.enabled.is_(True),
+                    SalaDisponibilidadeBloco.codigo_bloco.in_(block_codes),
+                )
+                .group_by(Sala.id)
+                .having(
+                    func.count(distinct(SalaDisponibilidadeBloco.codigo_bloco))
+                    == len(block_codes)
+                )
+            )
 
-    def get_with_predio_info(self) -> List[dict]:
+        orm_objs = query.order_by(Sala.nome).all()
+        return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def get_with_predio_info(
+        self,
+        active_only: bool = False,
+        required_blocks: Optional[List[str]] = None,
+    ) -> List[dict]:
         """Get all rooms with their building information included.
+
+        Args:
+            active_only: If True, return only active rooms.
+            required_blocks: Optional list of required atomic blocks.
 
         Returns:
             List of dictionaries with 'sala' and 'predio' keys
@@ -290,9 +530,29 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         from src.schemas.inventory import PredioRead
 
         # Query rooms with eager loading of predio
-        orm_objs = (
-            self.session.query(Sala).join(Predio).order_by(Predio.nome, Sala.nome).all()
-        )
+        query = self.session.query(Sala).join(Predio)
+        if active_only:
+            query = query.filter(Sala.active.is_(True))
+
+        block_codes = sorted({code for code in (required_blocks or []) if code})
+        if block_codes:
+            query = (
+                query.join(
+                    SalaDisponibilidadeBloco,
+                    SalaDisponibilidadeBloco.sala_id == Sala.id,
+                )
+                .filter(
+                    SalaDisponibilidadeBloco.enabled.is_(True),
+                    SalaDisponibilidadeBloco.codigo_bloco.in_(block_codes),
+                )
+                .group_by(Sala.id, Predio.id)
+                .having(
+                    func.count(distinct(SalaDisponibilidadeBloco.codigo_bloco))
+                    == len(block_codes)
+                )
+            )
+
+        orm_objs = query.order_by(Predio.nome, Sala.nome).all()
 
         result = []
         for sala in orm_objs:

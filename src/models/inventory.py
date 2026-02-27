@@ -3,6 +3,7 @@ Domain models for inventory management (Campus, Building, Room, etc.)
 """
 
 from sqlalchemy import (
+    Boolean,
     Column,
     ForeignKey,
     Integer,
@@ -107,6 +108,7 @@ class Sala(BaseModel):
     tipo_sala_id = Column(Integer, ForeignKey("tipos_sala.id"), nullable=False)
     capacidade = Column(Integer, default=0)
     andar = Column(Integer, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
 
     # Relationships
     predio = relationship("Predio", back_populates="salas")
@@ -120,6 +122,11 @@ class Sala(BaseModel):
     reservas = relationship(
         "ReservaEsporadica", back_populates="sala", cascade="all, delete-orphan"
     )
+    disponibilidade_blocos = relationship(
+        "SalaDisponibilidadeBloco",
+        back_populates="sala",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         # Unique constraint on name within a building (as defined in schema.sql)
@@ -129,3 +136,35 @@ class Sala(BaseModel):
 
     def __repr__(self) -> str:
         return f"<Sala(id={self.id}, nome='{self.nome}')>"
+
+
+class SalaDisponibilidadeBloco(BaseModel):
+    """Room availability per atomic time block."""
+
+    __tablename__ = "sala_disponibilidade_blocos"
+
+    sala_id = Column(Integer, ForeignKey("salas.id", ondelete="CASCADE"), nullable=False)
+    codigo_bloco = Column(
+        String(10),
+        ForeignKey("horarios_bloco.codigo_bloco"),
+        nullable=False,
+    )
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    sala = relationship("Sala", back_populates="disponibilidade_blocos")
+    bloco_horario = relationship("HorarioBloco")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "sala_id",
+            "codigo_bloco",
+            name="ux_sala_disponibilidade_bloco",
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SalaDisponibilidadeBloco(sala_id={self.sala_id}, "
+            f"codigo_bloco='{self.codigo_bloco}', enabled={self.enabled})>"
+        )

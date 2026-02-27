@@ -14,6 +14,7 @@ from src.repositories.reserva_evento import ReservaEventoRepository
 from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.reserva import ReservaRepository
+from src.repositories.sala import SalaRepository
 from src.schemas.allocation import (
     ReservaEventoCreate,
     ReservaEventoRead,
@@ -47,6 +48,7 @@ class ReservaEventoService:
         self.ocorrencia_repo = ReservaOcorrenciaRepository(session)
         self.alocacao_repo = AlocacaoRepository(session)
         self.reserva_repo = ReservaRepository(session)
+        self.sala_repo = SalaRepository(session)
 
     def criar_reserva_recorrente(
         self,
@@ -72,6 +74,14 @@ class ReservaEventoService:
             import json
 
             rule_dict = json.loads(evento_dto.regra_recorrencia_json)
+
+            room = self.sala_repo.get_by_id(evento_dto.sala_id)
+            if not room:
+                errors.append("Sala não encontrada")
+                return None, errors
+            if not room.active:
+                errors.append("Sala inativa/desabilitada para reserva")
+                return None, errors
 
             if not RecurrenceCalculator.validate_recurrence_rule(rule_dict):
                 errors.append("Regra de recorrência inválida")
@@ -99,6 +109,17 @@ class ReservaEventoService:
 
             if not occurrences_with_blocks:
                 errors.append("Nenhuma ocorrência gerada para a regra especificada")
+                return None, errors
+
+            required_blocks = [
+                occurrence["codigo_bloco"] for occurrence in occurrences_with_blocks
+            ]
+            if not self.sala_repo.is_room_enabled_for_blocks(
+                evento_dto.sala_id, required_blocks
+            ):
+                errors.append(
+                    "Sala indisponível para um ou mais blocos de horário da reserva"
+                )
                 return None, errors
 
             # Check for conflicts across all occurrences

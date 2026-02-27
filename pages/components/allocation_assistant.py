@@ -278,8 +278,16 @@ def _render_block_group_selection(
     # ================================================================
 
     st.markdown("---")
+    selected_block_codes = sorted(
+        {block for g in selected_groups for block in g.get("blocks", [])}
+    )
     result = _render_manual_selection_partial(
-        demanda_id, selected_day_ids, sala_repo, alloc_service, session
+        demanda_id,
+        selected_day_ids,
+        selected_block_codes,
+        sala_repo,
+        alloc_service,
+        session,
     )
     if result:
         return result
@@ -419,6 +427,7 @@ def _render_conflicting_room_brief(room: Dict):
 def _render_manual_selection_partial(
     demanda_id: int,
     selected_day_ids: List[int],
+    required_blocks: List[str],
     sala_repo: SalaRepository,
     alloc_service: ManualAllocationService,
     session,
@@ -431,8 +440,10 @@ def _render_manual_selection_partial(
             "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
         )
 
-        # Get all rooms for selection
-        all_rooms = sala_repo.get_all()
+        # Get only rooms enabled for selected blocks
+        all_rooms = sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
         room_options = {}
 
         for room in all_rooms:
@@ -692,7 +703,12 @@ def _render_manual_selection(
             "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
         )
 
-        all_rooms = sala_repo.get_all()
+        parser = get_sigaa_parser()
+        atomic_blocks = parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        required_blocks = [block_code for block_code, _ in atomic_blocks]
+        all_rooms = sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
         room_options = {}
 
         for room in all_rooms:

@@ -318,8 +318,14 @@ class AutonomousAllocationService:
             # Find rooms that satisfy ALL hard rules
             # Convert Pydantic object to dict for compatibility with existing methods
             demanda_dict = demanda.model_dump()
+            required_blocks = [
+                block_code
+                for block_code, _ in demand_blocks.get(demanda_id, [])
+            ]
             compatible_rooms = self._find_hard_rules_compatible_rooms(
-                demanda_dict, hard_rules
+                demanda_dict,
+                hard_rules,
+                required_blocks=required_blocks,
             )
 
             if not compatible_rooms:
@@ -657,12 +663,17 @@ class AutonomousAllocationService:
         return priorities
 
     def _find_hard_rules_compatible_rooms(
-        self, demanda: Dict, hard_rules: List[Regra]
+        self,
+        demanda: Dict,
+        hard_rules: List[Regra],
+        required_blocks: Optional[List[str]] = None,
     ) -> List[Sala]:
         """
         Find rooms that satisfy ALL hard rules for a demand.
         """
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
         compatible_rooms = []
 
         for room in all_rooms:
@@ -755,8 +766,13 @@ class AutonomousAllocationService:
         # Get professor preferences (match expectation of _calculate_compatibility_score)
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
-        # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        required_blocks = [block_code for block_code, _ in atomic_blocks]
+
+        # Get only rooms enabled for the demand schedule blocks
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
 
         for room in all_rooms:
             candidate = AllocationCandidate(
@@ -767,9 +783,7 @@ class AutonomousAllocationService:
             )
 
             # Parse atomic blocks
-            candidate.atomic_blocks = self.parser.split_to_atomic_tuples(
-                demanda.horario_sigaa_bruto
-            )
+            candidate.atomic_blocks = atomic_blocks
 
             # Use the shared scoring service to get room candidates
             room_candidates = self.scoring_service.score_room_candidates_for_demand(
@@ -1094,7 +1108,7 @@ END OF AUTONOMOUS ALLOCATION LOG
         stats["total_db_allocations"] = len(all_allocs)
 
         # Get all rooms to calculate average allocations per room
-        all_rooms = self.sala_repo.get_all()
+        all_rooms = self.sala_repo.get_available_for_allocation()
         if all_rooms:
             # Calculate average based on semester-allocated rooms
             allocated_rooms = set(a.sala_id for a in all_allocs)

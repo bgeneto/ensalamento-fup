@@ -8,7 +8,7 @@ Supports recurring reservations using Parent/Instance design pattern.
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -99,9 +99,13 @@ def get_bloco_horario(bloco_codigo: str) -> str:
     return f"{times['inicio']}-{times['fim']}"
 
 
-def get_blocos_disponiveis() -> List[str]:
-    """Get list of available blocks in canonical order (DRY - from SIGAA parser)"""
-    return CANONICAL_BLOCK_ORDER.copy()
+def get_blocos_disponiveis(allowed_blocks: Optional[List[str]] = None) -> List[str]:
+    """Get available blocks in canonical order, optionally filtered by room availability."""
+    if not allowed_blocks:
+        return CANONICAL_BLOCK_ORDER.copy()
+
+    allowed = set(allowed_blocks)
+    return [block for block in CANONICAL_BLOCK_ORDER if block in allowed]
 
 
 def are_blocks_adjacent(bloco1: str, bloco2: str) -> bool:
@@ -588,17 +592,20 @@ with get_db_session() as session:
     reserva_service = ReservaEventoService(session)
     alocacao_repo = AlocacaoRepository(session)
 
-    # Load available rooms with building info for both display and form
+    # Keep full list for historical display and active-only list for new reservations
     salas_com_predio = sala_repo.get_with_predio_info()
+    salas_ativas_com_predio = sala_repo.get_with_predio_info(active_only=True)
 
-    # Create room options for selectbox - use sala/predio objects
+    # Create room options for selectbox - active rooms only
     sala_options = {}
-    for item in salas_com_predio:
+    sala_allowed_blocks = {}
+    for item in salas_ativas_com_predio:
         sala = item["sala"]
         predio = item["predio"]
         predio_nome = predio.nome if predio else "N/A"
         sala_display = f"{sala.nome}: {sala.descricao}" if sala.descricao else sala.nome
         sala_options[sala.id] = f"{sala_display} ({predio_nome})"
+        sala_allowed_blocks[sala.id] = sala_repo.get_allowed_blocks(sala.id)
 
 # ============================================================================
 # FILTERS
@@ -870,7 +877,16 @@ elif selected_tab == "➕ Nova Reserva":
         # Time blocks selection
         st.markdown("#### ⏰ Blocos de Horário *")
         st.caption("Selecione um ou mais horários para a reserva")
-        blocos_disponiveis = get_blocos_disponiveis()
+        allowed_blocks_for_room = sala_allowed_blocks.get(
+            sala_id, CANONICAL_BLOCK_ORDER.copy()
+        )
+        blocos_disponiveis = get_blocos_disponiveis(allowed_blocks_for_room)
+
+        if not blocos_disponiveis:
+            st.error(
+                "A sala selecionada não possui blocos de horário habilitados para reserva."
+            )
+            st.stop()
 
         cols = st.columns(5)
         blocos_selecionados = []

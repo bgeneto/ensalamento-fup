@@ -217,17 +217,20 @@ class RoomScoringService:
         # Get hard rules for this demand
         hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
 
-        # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
+        required_blocks = [block_code for block_code, _ in atomic_blocks]
+
+        # Get only rooms enabled for the required blocks
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
 
         candidates = []
         for room in all_rooms:
             candidate = RoomCandidate(sala=room)
 
             # Parse atomic blocks for this demand
-            candidate.atomic_blocks = self.parser.split_to_atomic_tuples(
-                demanda.horario_sigaa_bruto
-            )
+            candidate.atomic_blocks = atomic_blocks
 
             # Calculate detailed scoring breakdown
             scoring_breakdown = self._calculate_detailed_scoring_breakdown(
@@ -371,8 +374,10 @@ class RoomScoringService:
         # Get hard rules for this demand
         hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
 
-        # Get all rooms
-        all_rooms = self.sala_repo.get_all()
+        # Get only rooms enabled for this day's required blocks
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=block_group.blocks
+        )
 
         scores = []
         for room in all_rooms:

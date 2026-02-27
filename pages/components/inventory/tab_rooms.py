@@ -13,7 +13,8 @@ from src.repositories.sala import SalaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.repositories.caracteristica import CaracteristicaRepository
 from src.schemas.inventory import (
-    SalaRead,
+    SalaCreate,
+    SalaUpdate,
     TipoSalaCreate,
     CaracteristicaCreate,
 )
@@ -40,6 +41,7 @@ def render_rooms_tab():
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
+        - Use **Ativa** para habilitar/desabilitar a sala globalmente e os campos **M/T/N** para limitar por turno.
         """
     )
 
@@ -58,6 +60,11 @@ def render_rooms_tab():
             if salas:
                 # Display summary
                 st.markdown(f"**Total de salas encontradas: {len(salas)}**")
+                total_active = sum(1 for sala in salas if sala.active)
+                st.caption(
+                    f"Ativas: {total_active} | Inativas: {len(salas) - total_active}"
+                )
+                turnos_map = sala_repo.get_allowed_turnos_map([sala.id for sala in salas])
 
                 # Create DataFrame with editable columns
                 sala_data = []
@@ -71,6 +78,10 @@ def render_rooms_tab():
                             "Prédio": sala.predio_id,
                             "Capacidade": sala.capacidade,
                             "Andar": sala.andar,  # Integer field
+                            "Ativa": bool(sala.active),
+                            "Manhã (M)": "M" in turnos_map.get(sala.id, {"M", "T", "N"}),
+                            "Tarde (T)": "T" in turnos_map.get(sala.id, {"M", "T", "N"}),
+                            "Noite (N)": "N" in turnos_map.get(sala.id, {"M", "T", "N"}),
                         }
                     )
 
@@ -118,6 +129,26 @@ def render_rooms_tab():
                         "Andar": st.column_config.NumberColumn(
                             "Andar",
                             help="Andar onde a sala está localizada (opcional)",
+                        ),
+                        "Ativa": st.column_config.CheckboxColumn(
+                            "Ativa",
+                            default=True,
+                            help="Desabilite para remover a sala de alocações e reservas novas",
+                        ),
+                        "Manhã (M)": st.column_config.CheckboxColumn(
+                            "Manhã (M)",
+                            default=True,
+                            help="Habilita blocos M1-M5 para a sala",
+                        ),
+                        "Tarde (T)": st.column_config.CheckboxColumn(
+                            "Tarde (T)",
+                            default=True,
+                            help="Habilita blocos T1-T6 para a sala",
+                        ),
+                        "Noite (N)": st.column_config.CheckboxColumn(
+                            "Noite (N)",
+                            default=True,
+                            help="Habilita blocos N1-N4 para a sala",
                         ),
                         "Tipo Assento": st.column_config.TextColumn(
                             "Tipo Assento",
@@ -178,6 +209,20 @@ def render_rooms_tab():
                                     tipo_sala_id = row["Tipo Sala"]
                                     capacidade = row["Capacidade"]
                                     andar = row["Andar"]
+                                    active = (
+                                        bool(row["Ativa"])
+                                        if "Ativa" in row and not pd.isna(row["Ativa"])
+                                        else True
+                                    )
+                                    allowed_turnos = {
+                                        turno
+                                        for turno, col in {
+                                            "M": "Manhã (M)",
+                                            "T": "Tarde (T)",
+                                            "N": "Noite (N)",
+                                        }.items()
+                                        if bool(row.get(col, True))
+                                    }
 
                                     if not nome:
                                         set_session_feedback(
@@ -233,15 +278,19 @@ def render_rooms_tab():
                                         descricao = None
 
                                     # Create room - repository should validate foreign keys
-                                    sala_dto = SalaRead(
+                                    sala_dto = SalaCreate(
                                         nome=nome,
                                         predio_id=int(predio_id),
                                         tipo_sala_id=int(tipo_sala_id),
                                         capacidade=int(capacidade),
                                         andar=andar,
                                         descricao=descricao,
+                                        active=active,
                                     )
-                                    sala_repo_create.create(sala_dto)
+                                    created_sala = sala_repo_create.create(sala_dto)
+                                    sala_repo_create.set_room_allowed_turnos(
+                                        created_sala.id, allowed_turnos
+                                    )
                                     created += 1
                         except Exception as e:
                             set_session_feedback(
@@ -262,55 +311,6 @@ def render_rooms_tab():
                             changes_made = True
 
                     if changes_made:
-                        st.rerun()
-                        # If only errors occurred, avoid rerun so user can edit
-
-                        try:
-                            with get_db_session() as session:
-                                sala_repo_create = SalaRepository(session)
-                                # Check if already exists (unique constraint on nome + predio_id)
-                                existing = sala_repo_create.get_all()
-                                existing_combinations = [
-                                    (s.nome.lower(), s.predio_id) for s in existing
-                                ]
-                                if (
-                                    nome.lower(),
-                                    int(predio_id),
-                                ) in existing_combinations:
-                                    set_session_feedback(
-                                        "crud_result",
-                                        False,
-                                        f"Sala '{nome}' já existe neste prédio",
-                                        action="create",
-                                    )
-                                else:
-                                    from src.schemas.inventory import SalaCreate
-
-                                    sala_dto = SalaCreate(
-                                        nome=nome,
-                                        predio_id=int(predio_id),
-                                        tipo_sala_id=int(tipo_sala_id),
-                                        capacidade=int(capacidade),
-                                        andar=andar,
-                                        descricao=descricao,
-                                    )
-                                    sala_repo_create.create(sala_dto)
-                                    predio_nome = predio_options.get(
-                                        int(predio_id), "N/A"
-                                    )
-                                    set_session_feedback(
-                                        "crud_result",
-                                        True,
-                                        f"Sala {nome} adicionada com sucesso ao prédio {predio_nome}!",
-                                        action="create",
-                                    )
-                        except Exception as e:
-                            set_session_feedback(
-                                "crud_result",
-                                False,
-                                f"Erro ao criar sala: {str(e)}",
-                                action="create",
-                            )
                         st.rerun()
 
                 # Handle updates (rows with changes in existing records)
@@ -336,6 +336,10 @@ def render_rooms_tab():
                             descricao_changed = (
                                 row["Descrição"] != original_row["Descrição"]
                             )
+                            active_changed = row["Ativa"] != original_row["Ativa"]
+                            turno_m_changed = row["Manhã (M)"] != original_row["Manhã (M)"]
+                            turno_t_changed = row["Tarde (T)"] != original_row["Tarde (T)"]
+                            turno_n_changed = row["Noite (N)"] != original_row["Noite (N)"]
 
                             if any(
                                 [
@@ -345,6 +349,10 @@ def render_rooms_tab():
                                     capacidade_changed,
                                     andar_changed,
                                     descricao_changed,
+                                    active_changed,
+                                    turno_m_changed,
+                                    turno_t_changed,
+                                    turno_n_changed,
                                 ]
                             ):
                                 nome = str(row["Nome"]).strip()
@@ -353,6 +361,20 @@ def render_rooms_tab():
                                 capacidade = row["Capacidade"]
                                 andar = row["Andar"]
                                 descricao = str(row["Descrição"]).strip()
+                                active = (
+                                    bool(row["Ativa"])
+                                    if "Ativa" in row and not pd.isna(row["Ativa"])
+                                    else True
+                                )
+                                allowed_turnos = {
+                                    turno
+                                    for turno, col in {
+                                        "M": "Manhã (M)",
+                                        "T": "Tarde (T)",
+                                        "N": "Noite (N)",
+                                    }.items()
+                                    if bool(row.get(col, True))
+                                }
 
                                 if not nome:
                                     set_session_feedback(
@@ -438,8 +460,6 @@ def render_rooms_tab():
                                                     continue
 
                                             # Update fields
-                                            from src.schemas.inventory import SalaUpdate
-
                                             sala_update_dto = SalaUpdate(
                                                 nome=nome,
                                                 predio_id=int(predio_id),
@@ -447,9 +467,13 @@ def render_rooms_tab():
                                                 capacidade=int(capacidade),
                                                 andar=andar,
                                                 descricao=descricao,
+                                                active=active,
                                             )
                                             sala_repo_update.update(
                                                 sala_id, sala_update_dto
+                                            )
+                                            sala_repo_update.set_room_allowed_turnos(
+                                                sala_id, allowed_turnos
                                             )
 
                                             predio_nome = predio_options.get(
