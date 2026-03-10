@@ -409,10 +409,9 @@ try:
                     if professor and professor not in professor_options:
                         professor_options[professor] = professor
 
-        col1, col2 = st.columns([1, 6])
-        with col1:
-            st.image("app/static/unb-logo.png", width=60)
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
+            st.image("/app/static/unb-logo.png", width=60)
             st.title(f"Ensalamento FUP/UnB {active_semester_name}")
 
         # Clear filters button (must be before widgets that use session state)
