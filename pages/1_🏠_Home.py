@@ -411,8 +411,15 @@ try:
 
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.image("/app/static/unb-logo.png", width=60)
-            st.title(f"Ensalamento FUP/UnB {active_semester_name}")
+            st.markdown(
+                f"""
+                <div style="text-align:center;">
+                    <img src="/app/static/unb-logo.png" width="60">
+                    <h1>Ensalamento FUP/UnB {active_semester_name}</h1>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         # Clear filters button (must be before widgets that use session state)
         if st.button(
