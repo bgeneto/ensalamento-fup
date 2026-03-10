@@ -65,6 +65,7 @@ AGGRID_CUSTOM_CSS = {
         "letter-spacing": "0.2px",
     },
 }
+WEEKDAY_NAMES = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -111,12 +112,36 @@ def create_grid_options(dataframe: pd.DataFrame) -> dict:
     return grid_options
 
 
+def get_block_sort_value(block_code: str) -> int:
+    """Return a stable numeric sort key for a SIGAA block code."""
+    parser = get_sigaa_parser()
+    bloco_info = parser.MAP_SCHEDULE_TIMES.get(block_code, {})
+    start_time = bloco_info.get("inicio", "00:00")
+
+    try:
+        hours, minutes = map(int, start_time.split(":"))
+        return hours * 60 + minutes
+    except ValueError:
+        return 0
+
+
+def get_time_range_sort_value(time_range: str) -> int:
+    """Return a numeric sort key for a display time range."""
+    start_time = time_range.split("-", 1)[0]
+
+    try:
+        hours, minutes = map(int, start_time.split(":"))
+        return hours * 60 + minutes
+    except ValueError:
+        return 0
+
+
 # ============================================================================
 # UTILITY FUNCTIONS (continued)
 # ============================================================================
 
 
-def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
+def combine_consecutive_blocks(blocks: List[Tuple[str, int]]) -> List[Dict[str, Any]]:
     """
     Combine consecutive time blocks into consolidated schedules.
 
@@ -129,20 +154,14 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
     if not blocks:
         return []
 
-    # Sort blocks by day and time
-    blocks_sorted = sorted(
-        blocks, key=lambda x: (x[1], x[0])
-    )  # dia_sigaa, codigo_bloco
-
     parser = get_sigaa_parser()
+    blocks_sorted = sorted(blocks, key=lambda x: (x[1], get_block_sort_value(x[0])))
     combined = []
 
     current_start = None
     current_end = None
     current_day = None
     current_start_code = None
-
-    day_names = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
 
     for bloco, dia_sigaa in blocks_sorted:
         try:
@@ -165,7 +184,7 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
                 current_end = end_time
             else:
                 # Close current group
-                day_name = day_names.get(current_day, f"Dia {current_day}")
+                day_name = WEEKDAY_NAMES.get(current_day, f"Dia {current_day}")
                 combined.append(
                     {
                         "day": current_day,
@@ -187,7 +206,7 @@ def combine_consecutive_blocks(blocks: List[Tuple[str, str]]) -> List[Dict[str, 
 
     # Close last group
     if current_day is not None:
-        day_name = day_names.get(current_day, f"Dia {current_day}")
+        day_name = WEEKDAY_NAMES.get(current_day, f"Dia {current_day}")
         combined.append(
             {
                 "day": current_day,
@@ -224,6 +243,147 @@ def format_schedule_display(allocation_records: List[Dict[str, Any]]) -> str:
     return " • ".join(schedule_parts) if schedule_parts else "Nenhum horário agendado"
 
 
+def create_allocation_list_items(
+    room_allocations: Dict[int, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Build a discipline-oriented list view from already filtered room allocations.
+
+    Returns:
+        List of list item dicts sorted by discipline code/name/turma.
+    """
+    disciplines: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+
+    for room_id, room_data in room_allocations.items():
+        room_name = room_data["room_name"]
+
+        for alloc in room_data["allocations"]:
+            if isinstance(alloc, dict):
+                continue
+
+            demanda = getattr(alloc, "demanda", None)
+            if demanda is None:
+                continue
+
+            discipline_key = (
+                getattr(alloc, "demanda_id", None),
+                getattr(demanda, "codigo_disciplina", "") or "",
+                getattr(demanda, "nome_disciplina", "") or "",
+                getattr(demanda, "turma_disciplina", "") or "",
+            )
+
+            if discipline_key not in disciplines:
+                disciplines[discipline_key] = {
+                    "codigo": getattr(demanda, "codigo_disciplina", "") or "N/A",
+                    "nome": getattr(demanda, "nome_disciplina", "") or "Sem nome",
+                    "turma": getattr(demanda, "turma_disciplina", "") or "",
+                    "professores": getattr(demanda, "professores_disciplina", "") or "",
+                    "schedules_by_room": {},
+                }
+
+            room_key = (room_id, room_name)
+            schedules_by_room = disciplines[discipline_key]["schedules_by_room"]
+            schedules_by_room.setdefault(room_key, []).append(
+                (alloc.codigo_bloco, alloc.dia_semana_id)
+            )
+
+    items: List[Dict[str, Any]] = []
+    for discipline_data in disciplines.values():
+        schedule_lines = []
+
+        for (_, room_name), blocks in discipline_data["schedules_by_room"].items():
+            grouped_schedules = combine_consecutive_blocks(blocks)
+            merged_by_time: Dict[str, Dict[str, Any]] = {}
+
+            for schedule in grouped_schedules:
+                time_key = schedule["time"]
+                if time_key not in merged_by_time:
+                    merged_by_time[time_key] = {
+                        "days": [],
+                        "time": time_key,
+                        "room_name": room_name,
+                        "sort_day": schedule["day"],
+                        "sort_time": get_time_range_sort_value(time_key),
+                    }
+
+                merged_by_time[time_key]["days"].append(
+                    (schedule["day"], schedule["day_name"])
+                )
+
+            for merged in merged_by_time.values():
+                sorted_days = sorted(merged["days"], key=lambda x: x[0])
+                schedule_lines.append(
+                    {
+                        "days_label": "/".join(day_name for _, day_name in sorted_days),
+                        "time": merged["time"],
+                        "room_name": merged["room_name"],
+                        "sort_day": merged["sort_day"],
+                        "sort_time": merged["sort_time"],
+                    }
+                )
+
+        schedule_lines.sort(
+            key=lambda item: (item["sort_day"], item["sort_time"], item["room_name"])
+        )
+
+        items.append(
+            {
+                "codigo": discipline_data["codigo"],
+                "nome": discipline_data["nome"],
+                "turma": discipline_data["turma"],
+                "professores": discipline_data["professores"],
+                "schedule_lines": schedule_lines,
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            item["codigo"],
+            item["nome"],
+            item["turma"],
+            item["professores"],
+        )
+    )
+    return items
+
+
+def render_allocation_list(room_allocations: Dict[int, Dict[str, Any]]) -> int:
+    """Render the mobile-friendly discipline list view."""
+    list_items = create_allocation_list_items(room_allocations)
+
+    if not list_items:
+        return 0
+
+    st.caption(
+        f"{len(list_items)} oferta(s) exibida(s), ordenadas por disciplina e com horários consolidados por sala."
+    )
+
+    for item in list_items:
+        title = f"{item['codigo']} - {item['nome']}"
+        if item["turma"]:
+            title = f"{title} (Turma {item['turma']})"
+
+        with st.container(border=True):
+            st.markdown(f"**{title}**")
+            st.write(
+                f"👨‍🏫 {item['professores']}"
+                if item["professores"]
+                else "👨‍🏫 Professor não informado"
+            )
+
+            schedule_lines = item["schedule_lines"]
+            if schedule_lines:
+                schedule_text = "\n".join(
+                    f"- **{schedule['days_label']} {schedule['time']}** | {schedule['room_name']}"
+                    for schedule in schedule_lines
+                )
+                st.markdown(schedule_text)
+            else:
+                st.caption("Sem horários alocados.")
+
+    return len(list_items)
+
+
 def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.DataFrame:
     """
     Create a schedule grid DataFrame for a room.
@@ -242,11 +402,8 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
     time_slots = set(parser.MAP_SCHEDULE_TIMES.keys())
     schedule_data = {}
 
-    # Weekdays mapping
-    weekdays = {2: "SEG", 3: "TER", 4: "QUA", 5: "QUI", 6: "SEX", 7: "SAB"}
-
     # Initialize empty schedule
-    for dia_id, dia_name in weekdays.items():
+    for dia_id, dia_name in WEEKDAY_NAMES.items():
         schedule_data[dia_name] = {}
 
     # Populate schedule data with allocations
@@ -270,10 +427,10 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
             dia_id = alloc.dia_semana_id
             bloco = alloc.codigo_bloco
 
-            if dia_id not in weekdays:
+            if dia_id not in WEEKDAY_NAMES:
                 continue
 
-            dia_name = weekdays[dia_id]
+            dia_name = WEEKDAY_NAMES[dia_id]
 
             # Get course information
             codigo_disciplina = (
@@ -301,22 +458,11 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
 
             schedule_data[dia_name][bloco] = f"{disciplina}{professor}"
 
-    # Sort time slots chronologically using parser
-    def sort_key(block_code):
-        bloco_info = parser.MAP_SCHEDULE_TIMES.get(block_code, {})
-        start_time = bloco_info.get("inicio", "00:00")
-        # Convert to minutes for proper sorting
-        try:
-            hours, minutes = map(int, start_time.split(":"))
-            return hours * 60 + minutes
-        except ValueError:
-            return 0
-
-    sorted_time_slots = sorted(time_slots, key=sort_key)
+    sorted_time_slots = sorted(time_slots, key=get_block_sort_value)
 
     # Create DataFrame
     df_data = {}
-    for dia_name in weekdays.values():
+    for dia_name in WEEKDAY_NAMES.values():
         df_data[dia_name] = []
         for bloco in sorted_time_slots:
             content = schedule_data.get(dia_name, {}).get(bloco, "")
@@ -478,6 +624,15 @@ try:
                 key="professor_filter",
             )
 
+        if "home_view_mode" not in st.session_state:
+            st.session_state.home_view_mode = "📋 Lista"
+
+        selected_view = st.segmented_control(
+            "👁️ Visualização:",
+            options=["📋 Lista", "📊 Tabela"],
+            key="home_view_mode",
+        )
+
         show_reservations = False  # disable reservations display in this page
 
         # Get data based on filters - LOAD DATA BEFORE BUTTONS
@@ -574,57 +729,58 @@ try:
         if rooms_displayed == 0:
             st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
         else:
-            for room_id, room_data in room_allocations.items():
-                room_name = room_data["room_name"]
-                allocations = room_data["allocations"]
+            if selected_view == "📋 Lista":
+                items_displayed = render_allocation_list(room_allocations)
+                if items_displayed == 0:
+                    st.info("ℹ️ Nenhum ensalamento encontrado com os filtros aplicados.")
+            else:
+                for room_id, room_data in room_allocations.items():
+                    room_name = room_data["room_name"]
+                    allocations = room_data["allocations"]
 
-                if not allocations:
-                    continue
+                    if not allocations:
+                        continue
 
-                # Create room schedule grid
-                room_grid = create_room_schedule_grid(allocations, room_name)
-                if room_grid is not None and not room_grid.empty:
-                    st.write(f"🏢 **{room_name}**")
+                    # Create room schedule grid
+                    room_grid = create_room_schedule_grid(allocations, room_name)
+                    if room_grid is not None and not room_grid.empty:
+                        st.write(f"🏢 **{room_name}**")
 
-                    # Configure and display interactive grid
-                    # AgGrid expects regular columns; convert index ("Horário") to a column.
-                    room_grid_display = room_grid.reset_index()
-                    grid_options = create_grid_options(room_grid_display)
-                    aggrid_kwargs = {
-                        "gridOptions": grid_options,
-                        "height": 400,
-                        "width": "100%",
-                        "fit_columns_on_grid_load": True,
-                        "theme": "streamlit",  # Use streamlit theme for consistency
-                        "custom_css": AGGRID_CUSTOM_CSS,
-                        "key": f"room_grid_{room_id}_{active_semester_id}",
-                        "allow_unsafe_jscode": True,
-                    }
+                        # AgGrid expects regular columns; convert index ("Horário") to a column.
+                        room_grid_display = room_grid.reset_index()
+                        grid_options = create_grid_options(room_grid_display)
+                        aggrid_kwargs = {
+                            "gridOptions": grid_options,
+                            "height": 400,
+                            "width": "100%",
+                            "fit_columns_on_grid_load": True,
+                            "theme": "streamlit",
+                            "custom_css": AGGRID_CUSTOM_CSS,
+                            "key": f"room_grid_{room_id}_{active_semester_id}",
+                            "allow_unsafe_jscode": True,
+                        }
 
-                    # Enable enterprise modules only for advanced features
-                    if USE_ADVANCED_GRID_FEATURES:
-                        aggrid_kwargs["enable_enterprise_modules"] = True
-                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
+                        if USE_ADVANCED_GRID_FEATURES:
+                            aggrid_kwargs["enable_enterprise_modules"] = True
+                            AgGrid(room_grid_display, **aggrid_kwargs)
 
-                        # Add CSV export button for this room
-                        col1, col2 = st.columns([1, 5])  # Small column for button
-                        with col1:
-                            if st.button(
-                                "📥 CSV",
-                                key=f"export_csv_{room_id}_{active_semester_id}",
-                                help=f"Exportar planilha de {room_name} para CSV",
-                            ):
-                                csv_data = room_grid.to_csv(index=True)
-                                st.download_button(
-                                    label="⬇️ Baixar CSV",
-                                    data=csv_data,
-                                    file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
-                                    mime="text/csv",
-                                    key=f"download_csv_{room_id}_{active_semester_id}",
-                                )
-                    else:
-                        # Simple mode without enterprise features
-                        grid_response = AgGrid(room_grid_display, **aggrid_kwargs)
+                            col1, col2 = st.columns([1, 5])
+                            with col1:
+                                if st.button(
+                                    "📥 CSV",
+                                    key=f"export_csv_{room_id}_{active_semester_id}",
+                                    help=f"Exportar planilha de {room_name} para CSV",
+                                ):
+                                    csv_data = room_grid.to_csv(index=True)
+                                    st.download_button(
+                                        label="⬇️ Baixar CSV",
+                                        data=csv_data,
+                                        file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
+                                        mime="text/csv",
+                                        key=f"download_csv_{room_id}_{active_semester_id}",
+                                    )
+                        else:
+                            AgGrid(room_grid_display, **aggrid_kwargs)
 
         # Display feedback
         display_session_feedback("allocation_view")
