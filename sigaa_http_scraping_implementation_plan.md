@@ -9,7 +9,7 @@ Implement a robust SIGAA scraper for UnB based on the same architectural approac
 - explicit redirect following
 - HTML form parsing from the live page
 - JSF `ViewState` preservation
-- no Selenium / Playwright in the primary path
+- no browser automation in the primary path
 
 The immediate target is the public UnB endpoint:
 
@@ -635,7 +635,7 @@ Use:
 
 Avoid:
 
-- Selenium
+- browser automation
 - Playwright
 
 for the primary implementation path.
@@ -712,7 +712,7 @@ The implementation should be considered successful when:
 
 ## Recommendation
 
-If this plan is implemented, Selenium should be removed from the primary path entirely.
+If this plan is implemented, browser automation should stay out of the primary path entirely.
 
 The closest faithful Python adaptation of `sigaa-api` is:
 

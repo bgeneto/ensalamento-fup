@@ -33,6 +33,7 @@ from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.semestre import SemestreRepository
 from src.schemas.academic import DemandaCreate
+from src.services.sigaa_discrepancy_service import SigaaDiscrepancyService
 from src.services.semester_service import sync_semester_from_api
 from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
@@ -52,6 +53,7 @@ st.info(
 
 # Display any persisted feedback from prior action
 display_session_feedback("sync_semestre_result")
+display_session_feedback("sigaa_compare_result")
 
 
 def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
@@ -109,6 +111,14 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
     return df
 
 
+def _sigaa_compare_cache_key(semester_id: int) -> str:
+    return f"sigaa_compare_result_{semester_id}"
+
+
+def _clear_sigaa_compare_cache(semester_id: int) -> None:
+    st.session_state.pop(_sigaa_compare_cache_key(semester_id), None)
+
+
 # Validate current global semester exists - semester_badge component handles initialization
 semester_options = get_semester_options()
 if not semester_options:
@@ -137,6 +147,16 @@ st.selectbox(
 )
 
 selected_semester_id = current_semester_id
+current_semester_name = semester_options_dict.get(
+    current_semester_id, f"Semestre {current_semester_id}"
+)
+
+semestre_status_active = False
+with get_db_session() as session:
+    semestre_repo = SemestreRepository(session)
+    semestre = semestre_repo.get_by_name(current_semester_name)
+    if semestre:
+        semestre_status_active = semestre.status
 
 # Allow ignoring some courses by default
 # Get list of unique course codes from demandas table or use predefined list if empty
@@ -227,6 +247,105 @@ with get_db_session() as session:
             "Acesse a página 'Professores' e importe ou cadastre os nomes antes de alocar."
         )
 
+    st.subheader("🔎 Comparar com SIGAA")
+    st.caption(
+        "Consulta todas as demandas do semestre ativo consolidando por código e turma. Os filtros da grade abaixo não alteram esta comparação."
+    )
+
+    compare_cache_key = _sigaa_compare_cache_key(selected_semester_id)
+    compare_disabled = not semestre_status_active
+
+    if st.button(
+        "🔎 Comparar demanda com SIGAA",
+        disabled=compare_disabled,
+        help="Consulta a página pública de turmas do SIGAA e compara com todas as demandas do semestre ativo.",
+        key=f"compare_sigaa_{selected_semester_id}",
+    ):
+        if not semestre_status_active:
+            set_session_feedback(
+                "sigaa_compare_result",
+                False,
+                "A comparação com o SIGAA está disponível apenas para o semestre ativo.",
+                ttl=8,
+            )
+            st.rerun()
+
+        with st.spinner(
+            "Consultando turmas públicas do SIGAA e comparando com a demanda local..."
+        ):
+            try:
+                comparison_service = SigaaDiscrepancyService()
+                comparison_result = comparison_service.compare_local_dataframe_to_sigaa(
+                    current_semester_name,
+                    df,
+                )
+                st.session_state[compare_cache_key] = comparison_result
+                set_session_feedback(
+                    "sigaa_compare_result",
+                    True,
+                    "Comparação com o SIGAA concluída com sucesso.",
+                    ttl=8,
+                )
+            except Exception as e:
+                _clear_sigaa_compare_cache(selected_semester_id)
+                set_session_feedback(
+                    "sigaa_compare_result",
+                    False,
+                    f"Erro ao comparar com o SIGAA: {type(e).__name__}: {e}",
+                    ttl=12,
+                )
+            st.rerun()
+
+    comparison_result = st.session_state.get(compare_cache_key)
+    if comparison_result:
+        metric_cols = st.columns(5)
+        metric_cols[0].metric("Local Consolidado", comparison_result["local_total"])
+        metric_cols[1].metric("Turmas SIGAA", comparison_result["sigaa_total"])
+        metric_cols[2].metric("Divergências", comparison_result["discrepancy_count"])
+        metric_cols[3].metric(
+            "Ausentes no SIGAA",
+            comparison_result["missing_in_sigaa_count"],
+        )
+        metric_cols[4].metric(
+            "Ausentes na Demanda",
+            comparison_result["missing_in_local_count"],
+        )
+
+        st.markdown("**Divergências encontradas**")
+        if comparison_result["discrepancies"]:
+            st.dataframe(
+                pd.DataFrame(comparison_result["discrepancies"]),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.success("Nenhuma divergência foi encontrada nas turmas comparadas.")
+
+        st.markdown("**Subofertas locais ausentes no SIGAA**")
+        if comparison_result["missing_in_sigaa"]:
+            st.dataframe(
+                pd.DataFrame(comparison_result["missing_in_sigaa"]),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("Nenhuma suboferta local ficou sem correspondência no SIGAA.")
+
+        st.markdown("**Turmas do SIGAA ausentes na demanda local**")
+        if comparison_result["missing_in_local"]:
+            st.dataframe(
+                pd.DataFrame(comparison_result["missing_in_local"]),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info(
+                "Nenhuma turma do SIGAA ficou sem correspondência na demanda local."
+            )
+
+        with st.expander("Diagnóstico técnico da consulta SIGAA"):
+            st.json(comparison_result.get("probe", {}))
+
     # --- Filtros e Tabela de Demandas ---
     st.subheader("🔍 Filtrar Demanda")
 
@@ -271,7 +390,7 @@ with get_db_session() as session:
         Edite os dados diretamente na tabela abaixo.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
-        - Não é possível **adicionar** demandas diretamente por aqui. Nem todos os dados são editáveis.
+        - Não é possível **adicionar** demandas diretamente via tabela (vide formulário abaixo). Nem todos os dados são editáveis.
         """
     )
 
@@ -547,6 +666,7 @@ with get_db_session() as session:
 
         # Rerun only if changes were successful, avoid rerun if only errors occurred
         if changes_made:
+            _clear_sigaa_compare_cache(selected_semester_id)
             st.rerun()
         # If only errors occurred, don't rerun so user can fix values
 
@@ -556,11 +676,6 @@ with get_db_session() as session:
 # Track sync processing state in session state
 if "sync_semestre_processing" not in st.session_state:
     st.session_state.sync_semestre_processing = False
-
-# Get current semester name for sync operations
-current_semester_name = semester_options_dict.get(
-    current_semester_id, f"Semestre {current_semester_id}"
-)
 
 # Show spinner if processing is active from a previous rerun
 if st.session_state.sync_semestre_processing:
@@ -578,6 +693,7 @@ if st.session_state.sync_semestre_processing:
                 ttl=8,
                 summary=summary,
             )
+            _clear_sigaa_compare_cache(selected_semester_id)
         except Exception as e:
             # store error feedback
             set_session_feedback(
@@ -592,14 +708,6 @@ if st.session_state.sync_semestre_processing:
 
         # Rerun to refresh the page and show results
         st.rerun()
-
-# Check semester status before allowing sync
-semestre_status_active = False
-with get_db_session() as session:
-    semestre_repo = SemestreRepository(session)
-    semestre = semestre_repo.get_by_name(current_semester_name)
-    if semestre:
-        semestre_status_active = semestre.status
 
 # Sync button (disabled during processing)
 if st.button(
@@ -775,6 +883,7 @@ with st.form("form_demanda_manual"):
                         True,
                         f"Demanda {cleaned_codigo_disciplina}-{cleaned_turma or 'única'} adicionada com sucesso!",
                     )
+                    _clear_sigaa_compare_cache(selected_semester_id)
                     st.rerun()
 
             except Exception as e:
