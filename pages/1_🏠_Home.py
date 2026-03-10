@@ -409,9 +409,11 @@ try:
                     if professor and professor not in professor_options:
                         professor_options[professor] = professor
 
-        st.title(f"📅 Visualizar Ensalamento {active_semester_name}")
-
-        st.subheader("🔎 Filtrar Exibição do Ensalamento")
+        col1, col2 = st.columns([1, 6])
+        with col1:
+            st.image("app/static/unb-logo.png", width=60)
+        with col2:
+            st.title(f"Ensalamento FUP/UnB {active_semester_name}")
 
         # Clear filters button (must be before widgets that use session state)
         if st.button(
