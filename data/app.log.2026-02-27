@@ -1,0 +1,107 @@
+2026-02-27 17:28:36,684 - src.utils.ui_feedback - INFO - User feedback: Sala AT-25/26 atualizada com sucesso (Prédio: N/A)!
+2026-02-27 17:28:39,234 - src.utils.ui_feedback - INFO - User feedback: Sala AT-25/26 atualizada com sucesso (Prédio: N/A)!
+2026-02-27 17:28:58,022 - src.utils.ui_feedback - INFO - User feedback: Semestre '2026-1' desativado. Semestre '2025-2' (ID: 4) foi automaticamente ativado.
+2026-02-27 17:29:00,002 - src.utils.ui_feedback - INFO - User feedback: Semestre '2026-1' ativado (outros desativados automaticamente).
+2026-02-27 17:29:22,222 - src.utils.ui_feedback - INFO - User feedback: Sincronização concluída: 185 demandas importadas, 4 professores criados.
+2026-02-27 17:29:25,718 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 5
+2026-02-27 17:29:25,720 - src.services.hybrid_discipline_service - INFO - Found 0 hybrid disciplines
+2026-02-27 17:29:27,651 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 17:29:27,651 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 17:29:27,660 - src.services.optimized_autonomous_allocation_service - INFO - Starting PARTIAL autonomous allocation for semester 5
+2026-02-27 17:29:27,663 - src.services.optimized_autonomous_allocation_service - INFO - Found 185 unallocated demands
+2026-02-27 17:29:27,663 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 0: Hybrid Discipline Detection ===
+2026-02-27 17:29:27,664 - src.services.optimized_autonomous_allocation_service - INFO - Starting Phase 0: Hybrid Discipline Detection
+2026-02-27 17:29:27,664 - src.services.optimized_autonomous_allocation_service - INFO - Using semester 4 for hybrid detection (current semester: 5)
+2026-02-27 17:29:27,664 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 4
+2026-02-27 17:29:27,665 - src.services.hybrid_discipline_service - INFO - Found 15 hybrid disciplines
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO - Phase 0 complete: Detected 15 hybrid disciplines from semester 4
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0007: lab_days=[4], classroom_days=[2]
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0040: lab_days=[2], classroom_days=[]
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0199: lab_days=[4], classroom_days=[5]
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0247: lab_days=[4], classroom_days=[]
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0302: lab_days=[3], classroom_days=[4, 7]
+2026-02-27 17:29:27,671 - src.services.optimized_autonomous_allocation_service - INFO -   ... and 10 more
+2026-02-27 17:29:27,672 - src.services.optimized_autonomous_allocation_service - INFO - Detected 15 hybrid disciplines
+2026-02-27 17:29:27,672 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 1: Hard Rules Allocation ===
+2026-02-27 17:29:27,724 - src.services.optimized_autonomous_allocation_service - INFO - Processing 4 demands with hard rules
+2026-02-27 17:29:27,770 - src.services.optimized_autonomous_allocation_service - INFO - Phase 1 allocations committed
+2026-02-27 17:29:27,774 - src.services.optimized_autonomous_allocation_service - INFO - After Phase 1: 181 demands remaining
+2026-02-27 17:29:27,774 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 2/3: Partial Allocation Phase ===
+2026-02-27 17:29:27,798 - src.services.optimized_autonomous_allocation_service - INFO - Executing partial allocation phase for 181 demands
+2026-02-27 17:29:38,493 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation phase committed
+2026-02-27 17:29:38,494 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation complete: 256/256 block groups allocated, 26 demands split across rooms
+2026-02-27 17:29:38,538 - src.utils.ui_feedback - INFO - User feedback: Alocação autônoma concluída: 260 alocações em 10.83s (26 disciplinas híbridas com salas divididas)
+2026-02-27 17:59:46,307 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 17:59:48,293 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:02,140 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:04,636 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:19,188 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:23,328 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:25,264 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/12 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:29,019 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/12 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:30,077 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 18:00:30,827 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/32 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:00:39,526 - src.utils.ui_feedback - INFO - User feedback: Sincronização concluída: 185 demandas importadas, 4 professores criados.
+2026-02-27 19:00:41,325 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 5
+2026-02-27 19:00:41,327 - src.services.hybrid_discipline_service - INFO - Found 0 hybrid disciplines
+2026-02-27 19:00:42,453 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 19:00:42,454 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 19:00:42,465 - src.services.optimized_autonomous_allocation_service - INFO - Starting PARTIAL autonomous allocation for semester 5
+2026-02-27 19:00:42,468 - src.services.optimized_autonomous_allocation_service - INFO - Found 185 unallocated demands
+2026-02-27 19:00:42,468 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 0: Hybrid Discipline Detection ===
+2026-02-27 19:00:42,468 - src.services.optimized_autonomous_allocation_service - INFO - Starting Phase 0: Hybrid Discipline Detection
+2026-02-27 19:00:42,471 - src.services.optimized_autonomous_allocation_service - INFO - Using semester 4 for hybrid detection (current semester: 5)
+2026-02-27 19:00:42,471 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 4
+2026-02-27 19:00:42,472 - src.services.hybrid_discipline_service - INFO - Found 15 hybrid disciplines
+2026-02-27 19:00:42,477 - src.services.optimized_autonomous_allocation_service - INFO - Phase 0 complete: Detected 15 hybrid disciplines from semester 4
+2026-02-27 19:00:42,477 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0007: lab_days=[4], classroom_days=[2]
+2026-02-27 19:00:42,477 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0040: lab_days=[2], classroom_days=[]
+2026-02-27 19:00:42,477 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0199: lab_days=[4], classroom_days=[5]
+2026-02-27 19:00:42,478 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0247: lab_days=[4], classroom_days=[]
+2026-02-27 19:00:42,478 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0302: lab_days=[3], classroom_days=[4, 7]
+2026-02-27 19:00:42,478 - src.services.optimized_autonomous_allocation_service - INFO -   ... and 10 more
+2026-02-27 19:00:42,478 - src.services.optimized_autonomous_allocation_service - INFO - Detected 15 hybrid disciplines
+2026-02-27 19:00:42,478 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 1: Hard Rules Allocation ===
+2026-02-27 19:00:42,533 - src.services.optimized_autonomous_allocation_service - INFO - Processing 4 demands with hard rules
+2026-02-27 19:00:42,630 - src.services.optimized_autonomous_allocation_service - INFO - Phase 1 allocations committed
+2026-02-27 19:00:42,633 - src.services.optimized_autonomous_allocation_service - INFO - After Phase 1: 181 demands remaining
+2026-02-27 19:00:42,633 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 2/3: Partial Allocation Phase ===
+2026-02-27 19:00:42,660 - src.services.optimized_autonomous_allocation_service - INFO - Executing partial allocation phase for 181 demands
+2026-02-27 19:00:53,880 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation phase committed
+2026-02-27 19:00:53,881 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation complete: 256/256 block groups allocated, 26 demands split across rooms
+2026-02-27 19:00:53,937 - src.utils.ui_feedback - INFO - User feedback: Alocação autônoma concluída: 260 alocações em 11.41s (26 disciplinas híbridas com salas divididas)
+2026-02-27 19:07:44,056 - src.utils.ui_feedback - INFO - User feedback: Sala A1-42/12 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:07:48,053 - src.utils.ui_feedback - INFO - User feedback: Sala AT-42/12 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:08:17,861 - src.utils.ui_feedback - INFO - User feedback: Sala AT-48/20 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:08:19,287 - src.utils.ui_feedback - INFO - User feedback: Sala AT-48/20 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:08:24,593 - src.utils.ui_feedback - INFO - User feedback: Sala A1-48/20 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:08:26,199 - src.utils.ui_feedback - INFO - User feedback: Sala A1-48/20 atualizada com sucesso (Prédio: UAC)!
+2026-02-27 19:16:44,435 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 5
+2026-02-27 19:16:44,437 - src.services.hybrid_discipline_service - INFO - Found 20 hybrid disciplines
+2026-02-27 19:17:29,281 - src.utils.ui_feedback - INFO - User feedback: Sincronização concluída: 177 demandas importadas, 0 professores criados.
+2026-02-27 19:17:33,652 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 19:17:33,652 - src.utils.pdf_fonts - INFO - ✓ Registered 6/6 PDF fonts with Unicode support
+2026-02-27 19:17:33,665 - src.services.optimized_autonomous_allocation_service - INFO - Starting PARTIAL autonomous allocation for semester 5
+2026-02-27 19:17:33,668 - src.services.optimized_autonomous_allocation_service - INFO - Found 177 unallocated demands
+2026-02-27 19:17:33,668 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 0: Hybrid Discipline Detection ===
+2026-02-27 19:17:33,668 - src.services.optimized_autonomous_allocation_service - INFO - Starting Phase 0: Hybrid Discipline Detection
+2026-02-27 19:17:33,670 - src.services.optimized_autonomous_allocation_service - INFO - Using semester 4 for hybrid detection (current semester: 5)
+2026-02-27 19:17:33,670 - src.services.hybrid_discipline_service - INFO - Starting hybrid discipline detection for semester 4
+2026-02-27 19:17:33,671 - src.services.hybrid_discipline_service - INFO - Found 15 hybrid disciplines
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO - Phase 0 complete: Detected 15 hybrid disciplines from semester 4
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0007: lab_days=[4], classroom_days=[2]
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0040: lab_days=[2], classroom_days=[]
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0199: lab_days=[4], classroom_days=[5]
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0247: lab_days=[4], classroom_days=[]
+2026-02-27 19:17:33,676 - src.services.optimized_autonomous_allocation_service - INFO -   - FUP0302: lab_days=[3], classroom_days=[4, 7]
+2026-02-27 19:17:33,677 - src.services.optimized_autonomous_allocation_service - INFO -   ... and 10 more
+2026-02-27 19:17:33,677 - src.services.optimized_autonomous_allocation_service - INFO - Detected 15 hybrid disciplines
+2026-02-27 19:17:33,677 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 1: Hard Rules Allocation ===
+2026-02-27 19:17:33,727 - src.services.optimized_autonomous_allocation_service - INFO - Processing 4 demands with hard rules
+2026-02-27 19:17:33,821 - src.services.optimized_autonomous_allocation_service - INFO - Phase 1 allocations committed
+2026-02-27 19:17:33,824 - src.services.optimized_autonomous_allocation_service - INFO - After Phase 1: 173 demands remaining
+2026-02-27 19:17:33,824 - src.services.optimized_autonomous_allocation_service - INFO - === PHASE 2/3: Partial Allocation Phase ===
+2026-02-27 19:17:33,845 - src.services.optimized_autonomous_allocation_service - INFO - Executing partial allocation phase for 173 demands
+2026-02-27 19:17:43,855 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation phase committed
+2026-02-27 19:17:43,856 - src.services.optimized_autonomous_allocation_service - INFO - Partial allocation complete: 248/248 block groups allocated, 33 demands split across rooms
+2026-02-27 19:17:43,911 - src.utils.ui_feedback - INFO - User feedback: Alocação autônoma concluída: 252 alocações em 10.19s (33 disciplinas híbridas com salas divididas)

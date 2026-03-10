@@ -8,8 +8,10 @@ amigáveis geradas pelo parser Sigaa.
 """
 
 from typing import List
+import logging
 
 import pandas as pd
+import requests
 import streamlit as st
 
 from pages.components.auth import initialize_page
@@ -33,11 +35,17 @@ from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.semestre import SemestreRepository
 from src.schemas.academic import DemandaCreate
+from src.services.sigaa_discrepancy_service import (
+    SigaaDiscrepancyService,
+    SigaaScrapingError,
+)
 from src.services.semester_service import sync_semester_from_api
 from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 st.title("🧭 Demanda Semestral")
+
+logger = logging.getLogger(__name__)
 
 st.info(
     """
@@ -52,6 +60,7 @@ st.info(
 
 # Display any persisted feedback from prior action
 display_session_feedback("sync_semestre_result")
+display_session_feedback("sigaa_discrepancy_result")
 
 
 def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
@@ -109,6 +118,103 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
     return df
 
 
+def _render_sigaa_discrepancy_results(current_semester_name: str) -> None:
+    """Render the latest discrepancy check result for the current semester."""
+    result = st.session_state.get("sigaa_discrepancy_summary")
+    if not result or result.get("semester_name") != current_semester_name:
+        return
+
+    st.subheader("🔎 Averiguação de Discrepâncias com o SIGAA")
+    st.caption(
+        f"Consulta pública realizada para {result['query']['year']}.{result['query']['period']} "
+        f"(unidade {result['query']['depto_id']}, nível {result['query']['nivel']})."
+    )
+
+    probe = result.get("probe", {})
+    if probe:
+        st.caption(
+            f"Estratégia: {probe.get('strategy', '-')}. Fluxo de scraping: "
+            f"{probe.get('attempt_url', '-')}"
+            f" -> {probe.get('final_url', '-')}"
+        )
+
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1.metric("Demandas Locais", result["local_total"])
+    col2.metric("Turmas SIGAA", result["sigaa_total"])
+    col3.metric("Discrepâncias", result["discrepancy_count"])
+    col4.metric("Horários", result["schedule_mismatch_count"])
+    col5.metric("Professores", result["professor_mismatch_count"])
+    col6.metric("Faltando no SIGAA", result["missing_in_sigaa_count"])
+
+    if result["discrepancies"]:
+        st.markdown("### Divergências Encontradas")
+        st.dataframe(
+            pd.DataFrame(result["discrepancies"]),
+            width="stretch",
+            hide_index=True,
+        )
+
+    if result["missing_in_sigaa"]:
+        st.markdown("### Demandas do Sistema sem Correspondência no SIGAA")
+        st.dataframe(
+            pd.DataFrame(result["missing_in_sigaa"]),
+            width="stretch",
+            hide_index=True,
+        )
+
+    if result["missing_in_local"]:
+        st.markdown("### Turmas do SIGAA sem Correspondência no Sistema")
+        st.dataframe(
+            pd.DataFrame(result["missing_in_local"]),
+            width="stretch",
+            hide_index=True,
+        )
+
+    if (
+        not result["discrepancies"]
+        and not result["missing_in_sigaa"]
+        and not result["missing_in_local"]
+    ):
+        st.success(
+            "Nenhuma divergência de turma, professor ou horário foi encontrada nas correspondências consultadas no SIGAA."
+        )
+
+
+def _render_sigaa_discrepancy_error(current_semester_name: str) -> None:
+    """Render last scraping/comparison error for the current semester."""
+    error_payload = st.session_state.get("sigaa_discrepancy_last_error")
+    if not error_payload or error_payload.get("semester_name") != current_semester_name:
+        return
+
+    st.error(error_payload.get("message", "Falha ao consultar o SIGAA."))
+    detail = error_payload.get("detail")
+    if detail:
+        with st.expander("Ver detalhes da falha na consulta ao SIGAA"):
+            st.code(detail)
+
+
+def _build_sigaa_status_lookup(current_semester_name: str) -> dict[int, str]:
+    """Build per-demand SIGAA verification status for the current semester."""
+    summary = st.session_state.get("sigaa_discrepancy_summary")
+    if summary and summary.get("semester_name") == current_semester_name:
+        raw_lookup = summary.get("status_by_demanda_id", {}) or {}
+        return {int(key): value for key, value in raw_lookup.items()}
+
+    error_payload = st.session_state.get("sigaa_discrepancy_last_error")
+    if error_payload and error_payload.get("semester_name") == current_semester_name:
+        return {}
+
+    return {}
+
+
+def _default_sigaa_status(current_semester_name: str) -> str:
+    """Return default UI label when a demand has no explicit SIGAA status."""
+    error_payload = st.session_state.get("sigaa_discrepancy_last_error")
+    if error_payload and error_payload.get("semester_name") == current_semester_name:
+        return "⚠️ Falha na consulta"
+    return "⏳ Não verificado"
+
+
 # Validate current global semester exists - semester_badge component handles initialization
 semester_options = get_semester_options()
 if not semester_options:
@@ -124,6 +230,11 @@ current_semester_id = st.session_state.get("global_semester_id")
 if current_semester_id not in semester_options_dict:
     current_semester_id = semester_options[0][0]
     st.session_state.global_semester_id = current_semester_id
+
+# Get current semester name for sync/discrepancy operations
+current_semester_name = semester_options_dict.get(
+    current_semester_id, f"Semestre {current_semester_id}"
+)
 
 # Display readonly semester selector with help text
 st.selectbox(
@@ -280,6 +391,9 @@ with get_db_session() as session:
         f"**Total de demandas encontradas: {len(df_filtrado)}**"
     )  # DON'T use metric here, this is the layout in other pages!
 
+    sigaa_status_lookup = _build_sigaa_status_lookup(current_semester_name)
+    default_sigaa_status = _default_sigaa_status(current_semester_name)
+
     # Display editable table if there are demandes
     if df_filtrado.empty:
         st.warning(
@@ -306,7 +420,9 @@ with get_db_session() as session:
                     "Vagas": row["vagas_disciplina"],
                     "Professores": row["professores_disciplina"],
                     "Horário": row["horario_legivel"],
-                    "Slots": row["num_slots"],
+                    "SIGAA": sigaa_status_lookup.get(
+                        int(row["id"]), default_sigaa_status
+                    ),
                 }
             )
 
@@ -382,10 +498,10 @@ with get_db_session() as session:
                     disabled=True,  # Read-only, calculated from raw schedule
                     help="Horário legível (calculado automaticamente)",
                 ),
-                "Slots": st.column_config.NumberColumn(
-                    "Slots",
+                "SIGAA": st.column_config.TextColumn(
+                    "SIGAA",
                     disabled=True,  # Read-only, calculated from raw schedule
-                    help="Número de slots de horário",
+                    help="Resultado da última averiguação de discrepâncias com o SIGAA para esta demanda",
                 ),
             },
             key=editor_key,
@@ -557,10 +673,63 @@ with get_db_session() as session:
 if "sync_semestre_processing" not in st.session_state:
     st.session_state.sync_semestre_processing = False
 
-# Get current semester name for sync operations
-current_semester_name = semester_options_dict.get(
-    current_semester_id, f"Semestre {current_semester_id}"
-)
+# Track SIGAA discrepancy check processing state in session state
+if "sigaa_discrepancy_processing" not in st.session_state:
+    st.session_state.sigaa_discrepancy_processing = False
+
+# Track sync confirmation dialog state in session state
+if "show_sync_semestre_confirmation" not in st.session_state:
+    st.session_state.show_sync_semestre_confirmation = False
+
+
+@st.dialog("Confirmar Sincronização da Demanda", width="large")
+def show_sync_confirmation_dialog():
+    st.markdown(
+        f"Você está prestes a sincronizar a demanda do semestre **{current_semester_name}**."
+    )
+    st.warning("Revise o comportamento atual da sincronização antes de prosseguir.")
+    st.markdown(
+        """
+- A sincronização **não sobrescreve tudo**.
+- Ela **importa apenas ofertas novas** que ainda não existem localmente.
+- Demandas já importadas **não são atualizadas automaticamente**.
+- Demandas que foram deletadas do Sistema de Oferta **não são removidas automaticamente**.
+- Edições manuais feitas nas demandas **são preservadas**.
+- Alocações já salvas para o semestre **são preservadas**.
+"""
+    )
+    st.caption(
+        "Se a oferta mudou na API após a primeira importação, essa alteração não será aplicada automaticamente nesta sincronização."
+    )
+
+    col_cancel, col_confirm = st.columns(2)
+    with col_cancel:
+        if st.button(
+            "Cancelar",
+            width="stretch",
+            key="cancel_sync_semestre_confirmation",
+        ):
+            st.session_state.show_sync_semestre_confirmation = False
+            st.rerun()
+
+    with col_confirm:
+        if st.button(
+            "Prosseguir com a Sincronização",
+            type="primary",
+            width="stretch",
+            key="confirm_sync_semestre_confirmation",
+        ):
+            st.session_state.show_sync_semestre_confirmation = False
+            st.session_state.sync_semestre_processing = True
+            st.rerun()
+
+
+# Show sync confirmation dialog when requested
+if (
+    st.session_state.show_sync_semestre_confirmation
+    and not st.session_state.sync_semestre_processing
+):
+    show_sync_confirmation_dialog()
 
 # Show spinner if processing is active from a previous rerun
 if st.session_state.sync_semestre_processing:
@@ -593,6 +762,74 @@ if st.session_state.sync_semestre_processing:
         # Rerun to refresh the page and show results
         st.rerun()
 
+# Run SIGAA discrepancy check when requested
+if st.session_state.sigaa_discrepancy_processing:
+    with st.spinner(
+        "🔎 Consultando o SIGAA público e comparando horários. Isso pode levar alguns segundos."
+    ):
+        try:
+            if not demandas:
+                raise ValueError(
+                    "Não há demandas locais para comparar no semestre selecionado."
+                )
+
+            discrepancy_service = SigaaDiscrepancyService()
+            summary = discrepancy_service.compare_local_demands_to_sigaa(
+                current_semester_name,
+                demandas,
+            )
+
+            st.session_state["sigaa_discrepancy_summary"] = summary
+            st.session_state.pop("sigaa_discrepancy_last_error", None)
+
+            set_session_feedback(
+                "sigaa_discrepancy_result",
+                True,
+                f"Averiguação concluída: {summary['discrepancy_count']} discrepância(s), "
+                f"{summary['missing_in_sigaa_count']} demanda(s) sem correspondência no SIGAA "
+                f"e {summary['missing_in_local_count']} turma(s) do SIGAA sem correspondência local.",
+                ttl=10,
+            )
+        except (SigaaScrapingError, requests.RequestException, ValueError) as e:
+            logger.error(
+                "SIGAA discrepancy check failed for semester %s: %s",
+                current_semester_name,
+                e,
+                exc_info=True,
+            )
+            st.session_state["sigaa_discrepancy_last_error"] = {
+                "semester_name": current_semester_name,
+                "message": "Não foi possível concluir a averiguação com o SIGAA.",
+                "detail": str(e),
+            }
+            st.session_state.pop("sigaa_discrepancy_summary", None)
+            set_session_feedback(
+                "sigaa_discrepancy_result",
+                False,
+                "Falha ao consultar o SIGAA público para averiguação de discrepâncias.",
+                ttl=10,
+            )
+        except Exception as e:
+            logger.exception(
+                "Unexpected SIGAA discrepancy check error for semester %s",
+                current_semester_name,
+            )
+            st.session_state["sigaa_discrepancy_last_error"] = {
+                "semester_name": current_semester_name,
+                "message": "Erro inesperado durante a averiguação com o SIGAA.",
+                "detail": f"{type(e).__name__}: {e}",
+            }
+            st.session_state.pop("sigaa_discrepancy_summary", None)
+            set_session_feedback(
+                "sigaa_discrepancy_result",
+                False,
+                "Erro inesperado durante a averiguação com o SIGAA.",
+                ttl=10,
+            )
+
+        st.session_state.sigaa_discrepancy_processing = False
+        st.rerun()
+
 # Check semester status before allowing sync
 semestre_status_active = False
 with get_db_session() as session:
@@ -601,25 +838,47 @@ with get_db_session() as session:
     if semestre:
         semestre_status_active = semestre.status
 
-# Sync button (disabled during processing)
-if st.button(
-    f"🔄 Sincronizar Demanda {current_semester_name}",
-    help="Importar demanda por salas do Sistema de Oferta",
-    disabled=st.session_state.sync_semestre_processing,
-):
-    # Check if selected semester is active
-    if not semestre_status_active:
-        set_session_feedback(
-            "sync_semestre_result",
-            False,
-            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página ⚙️ Configurações.",
-            ttl=6,
-        )
+button_col_sync, button_col_sigaa = st.columns([1, 1])
+
+with button_col_sync:
+    if st.button(
+        f"🔄 Sincronizar Demanda {current_semester_name}",
+        help="Importar demanda por salas do Sistema de Oferta",
+        disabled=(
+            st.session_state.sync_semestre_processing
+            or st.session_state.sigaa_discrepancy_processing
+        ),
+        width="stretch",
+    ):
+        # Check if selected semester is active
+        if not semestre_status_active:
+            set_session_feedback(
+                "sync_semestre_result",
+                False,
+                "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página ⚙️ Configurações.",
+                ttl=6,
+            )
+            st.rerun()
+        else:
+            # Ask for explicit confirmation before starting sync
+            st.session_state.show_sync_semestre_confirmation = True
+            st.rerun()
+
+with button_col_sigaa:
+    if st.button(
+        "🔎 Averiguar Discrepâncias com o SIGAA",
+        help="Consultar a página pública de turmas do SIGAA e comparar código, turma, professores e horários com as demandas locais.",
+        disabled=(
+            st.session_state.sync_semestre_processing
+            or st.session_state.sigaa_discrepancy_processing
+        ),
+        width="stretch",
+    ):
+        st.session_state.sigaa_discrepancy_processing = True
         st.rerun()
-    else:
-        # Set processing state and rerun to start spinner
-        st.session_state.sync_semestre_processing = True
-        st.rerun()
+
+_render_sigaa_discrepancy_error(current_semester_name)
+_render_sigaa_discrepancy_results(current_semester_name)
 
 st.markdown("---")
 
