@@ -561,7 +561,7 @@ try:
                 f"""
                 <div style="text-align:center;">
                     <img src="/app/static/unb-logo.png" width="60">
-                    <h1>Ensalamento FUP/UnB {active_semester_name}</h1>
+                    <h2>Ensalamento FUP/UnB {active_semester_name}</h2>
                 </div>
                 """,
                 unsafe_allow_html=True,
