@@ -136,8 +136,14 @@ class SigaaDiscrepancyService:
         client: Optional[SigaaPublicTurmasClient] = None,
         schedule_parser: Optional[SigaaScheduleParser] = None,
     ) -> None:
-        self.client = client or SigaaPublicTurmasClient()
-        self.schedule_parser = schedule_parser or SigaaScheduleParser()
+        if client is None or schedule_parser is None:
+            from src.utils.cache_helpers import (
+                get_sigaa_parser,
+                get_sigaa_public_turmas_client,
+            )
+
+        self.client = client or get_sigaa_public_turmas_client()
+        self.schedule_parser = schedule_parser or get_sigaa_parser()
 
     @classmethod
     def normalize_turma_value(cls, turma: Any) -> str:

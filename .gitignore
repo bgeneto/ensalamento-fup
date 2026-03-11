@@ -164,6 +164,8 @@ Thumbs.db
 
 # Log files
 *.log
+*.log.*
+data/*.log*
 logs/
 
 # Configuration files with sensitive data

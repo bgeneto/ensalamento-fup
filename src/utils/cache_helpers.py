@@ -16,10 +16,12 @@ import streamlit as st
 from typing import Dict, List, Tuple
 
 from src.config.database import get_db_session
+from src.integrations.sigaa import SigaaPublicTurmasClient
 from src.repositories.predio import PredioRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.repositories.caracteristica import CaracteristicaRepository
 from src.repositories.semestre import SemestreRepository
+from src.services.sigaa_discrepancy_service import SigaaDiscrepancyService
 from src.utils.sigaa_parser import SigaaScheduleParser
 
 
@@ -44,6 +46,37 @@ def get_sigaa_parser() -> SigaaScheduleParser:
         readable = parser.parse_to_human_readable("24M12")
     """
     return SigaaScheduleParser()
+
+
+@st.cache_resource
+def get_sigaa_public_turmas_client() -> SigaaPublicTurmasClient:
+    """
+    Get singleton SigaaPublicTurmasClient instance (cached).
+
+    The SIGAA public client owns HTTP/session resources and should be reused
+    across comparison actions instead of being recreated on every click.
+
+    Returns:
+        SigaaPublicTurmasClient: Singleton client instance
+    """
+    return SigaaPublicTurmasClient()
+
+
+@st.cache_resource
+def get_sigaa_discrepancy_service() -> SigaaDiscrepancyService:
+    """
+    Get singleton SigaaDiscrepancyService instance (cached).
+
+    The service is stateless and depends on cached SIGAA utilities, so it is
+    safe and cheaper to reuse across pages and reruns.
+
+    Returns:
+        SigaaDiscrepancyService: Singleton comparison service instance
+    """
+    return SigaaDiscrepancyService(
+        client=get_sigaa_public_turmas_client(),
+        schedule_parser=get_sigaa_parser(),
+    )
 
 
 # ============================================================================

@@ -34,8 +34,11 @@ from src.repositories.professor import ProfessorRepository
 from src.repositories.semestre import SemestreRepository
 from src.schemas.academic import DemandaCreate
 from src.services.semester_service import sync_semester_from_api
-from src.services.sigaa_discrepancy_service import SigaaDiscrepancyService
-from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
+from src.utils.cache_helpers import (
+    get_semester_options,
+    get_sigaa_discrepancy_service,
+    get_sigaa_parser,
+)
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 st.title("🧭 Demanda Semestral")
@@ -839,7 +842,7 @@ if st.button(
         "Consultando turmas públicas do SIGAA e comparando com a demanda local..."
     ):
         try:
-            comparison_service = SigaaDiscrepancyService()
+            comparison_service = get_sigaa_discrepancy_service()
             comparison_result = comparison_service.compare_local_dataframe_to_sigaa(
                 current_semester_name,
                 df,
