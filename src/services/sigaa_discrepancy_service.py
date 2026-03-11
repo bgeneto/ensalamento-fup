@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 import re
 import unicodedata
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
@@ -336,7 +336,7 @@ class SigaaDiscrepancyService:
                             "Cursos": ", ".join(suboffer.cursos),
                             "Professores": suboffer.professores_raw,
                             "Horário (Sistema)": suboffer.horario_humano,
-                            "Observação": "Nenhuma suboferta correspondente foi encontrada no SIGAA.",
+                            "Observação": "Nenhuma oferta correspondente foi encontrada no SIGAA.",
                         }
                     )
                 continue
@@ -353,7 +353,7 @@ class SigaaDiscrepancyService:
                         "Cursos": ", ".join(suboffer.cursos),
                         "Professores": suboffer.professores_raw,
                         "Horário (Sistema)": suboffer.horario_humano,
-                        "Observação": "Suboferta local sem correspondência no SIGAA.",
+                        "Observação": "Oferta local sem correspondência no SIGAA.",
                     }
                 )
 

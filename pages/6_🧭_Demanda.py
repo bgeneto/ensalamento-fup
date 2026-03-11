@@ -33,8 +33,8 @@ from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.semestre import SemestreRepository
 from src.schemas.academic import DemandaCreate
-from src.services.sigaa_discrepancy_service import SigaaDiscrepancyService
 from src.services.semester_service import sync_semester_from_api
+from src.services.sigaa_discrepancy_service import SigaaDiscrepancyService
 from src.utils.cache_helpers import get_semester_options, get_sigaa_parser
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
@@ -321,7 +321,7 @@ with get_db_session() as session:
         else:
             st.success("Nenhuma divergência foi encontrada nas turmas comparadas.")
 
-        st.markdown("**Subofertas locais ausentes no SIGAA**")
+        st.markdown("**Ofertas locais ausentes no SIGAA**")
         if comparison_result["missing_in_sigaa"]:
             st.dataframe(
                 pd.DataFrame(comparison_result["missing_in_sigaa"]),
@@ -329,7 +329,7 @@ with get_db_session() as session:
                 hide_index=True,
             )
         else:
-            st.info("Nenhuma suboferta local ficou sem correspondência no SIGAA.")
+            st.info("Nenhuma oferta local ficou sem correspondência no SIGAA.")
 
         st.markdown("**Turmas do SIGAA ausentes na demanda local**")
         if comparison_result["missing_in_local"]:
