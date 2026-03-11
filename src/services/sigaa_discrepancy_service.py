@@ -327,9 +327,6 @@ class SigaaDiscrepancyService:
                 for suboffer in unmatched_suboffers or group.suboffers:
                     missing_in_sigaa.append(
                         {
-                            "Demanda IDs": ", ".join(
-                                str(demanda_id) for demanda_id in suboffer.demanda_ids
-                            ),
                             "Código": suboffer.codigo_disciplina,
                             "Disciplina": suboffer.nome_disciplina,
                             "Turma": group.turma,
@@ -344,9 +341,6 @@ class SigaaDiscrepancyService:
             for suboffer in unmatched_suboffers:
                 missing_in_sigaa.append(
                     {
-                        "Demanda IDs": ", ".join(
-                            str(demanda_id) for demanda_id in suboffer.demanda_ids
-                        ),
                         "Código": suboffer.codigo_disciplina,
                         "Disciplina": suboffer.nome_disciplina,
                         "Turma": group.turma,
@@ -377,12 +371,6 @@ class SigaaDiscrepancyService:
             if len(matched_sigaa_turmas) > 1:
                 consolidated_turma_count += 1
                 issue_types.append("Turma consolidada localmente")
-            elif (
-                matched_sigaa_turmas
-                and group.turma_normalizada != matched_sigaa_turmas[0]
-            ):
-                turma_mismatch_count += 1
-                issue_types.append("Turma")
 
             if only_in_system or only_in_sigaa:
                 schedule_mismatch_count += 1
@@ -403,9 +391,6 @@ class SigaaDiscrepancyService:
                 )
                 discrepancies.append(
                     {
-                        "Demanda IDs": ", ".join(
-                            str(demanda_id) for demanda_id in group.demanda_ids
-                        ),
                         "Código": group.codigo_disciplina,
                         "Disciplina": group.nome_disciplina,
                         "Turma (Sistema)": group.turma,
@@ -416,7 +401,6 @@ class SigaaDiscrepancyService:
                         "Cursos": ", ".join(group.cursos),
                         "Professores (Sistema)": group.professores_raw,
                         "Professores (SIGAA)": ", ".join(union_sigaa_professors),
-                        "Similaridade Professores": round(professor_similarity, 2),
                         "Horário (Sistema)": group.horario_humano,
                         "Horário (SIGAA)": self._format_schedule_list(
                             self._sort_schedule_components(
@@ -427,9 +411,6 @@ class SigaaDiscrepancyService:
                                 ]
                             )
                         ),
-                        "Somente no Sistema": " | ".join(only_in_system),
-                        "Somente no SIGAA": " | ".join(only_in_sigaa),
-                        "Subofertas Locais": len(group.suboffers),
                     }
                 )
             else:

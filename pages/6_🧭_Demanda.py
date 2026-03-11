@@ -119,6 +119,21 @@ def _clear_sigaa_compare_cache(semester_id: int) -> None:
     st.session_state.pop(_sigaa_compare_cache_key(semester_id), None)
 
 
+def _comparison_table_df(records: list[dict]) -> pd.DataFrame:
+    """Build a display DataFrame hiding columns intentionally omitted from the UI."""
+    df_result = pd.DataFrame(records)
+    return df_result.drop(
+        columns=[
+            "Demanda IDs",
+            "Similaridade Professores",
+            "Somente no Sistema",
+            "Somente no SIGAA",
+            "Subofertas Locais",
+        ],
+        errors="ignore",
+    )
+
+
 # Validate current global semester exists - semester_badge component handles initialization
 semester_options = get_semester_options()
 if not semester_options:
@@ -150,6 +165,7 @@ selected_semester_id = current_semester_id
 current_semester_name = semester_options_dict.get(
     current_semester_id, f"Semestre {current_semester_id}"
 )
+compare_cache_key = _sigaa_compare_cache_key(selected_semester_id)
 
 semestre_status_active = False
 with get_db_session() as session:
@@ -246,105 +262,6 @@ with get_db_session() as session:
         st.info(
             "Acesse a página 'Professores' e importe ou cadastre os nomes antes de alocar."
         )
-
-    st.subheader("🔎 Comparar com SIGAA")
-    st.caption(
-        "Consulta todas as demandas do semestre ativo consolidando por código e turma. Os filtros da grade abaixo não alteram esta comparação."
-    )
-
-    compare_cache_key = _sigaa_compare_cache_key(selected_semester_id)
-    compare_disabled = not semestre_status_active
-
-    if st.button(
-        "🔎 Comparar demanda com SIGAA",
-        disabled=compare_disabled,
-        help="Consulta a página pública de turmas do SIGAA e compara com todas as demandas do semestre ativo.",
-        key=f"compare_sigaa_{selected_semester_id}",
-    ):
-        if not semestre_status_active:
-            set_session_feedback(
-                "sigaa_compare_result",
-                False,
-                "A comparação com o SIGAA está disponível apenas para o semestre ativo.",
-                ttl=8,
-            )
-            st.rerun()
-
-        with st.spinner(
-            "Consultando turmas públicas do SIGAA e comparando com a demanda local..."
-        ):
-            try:
-                comparison_service = SigaaDiscrepancyService()
-                comparison_result = comparison_service.compare_local_dataframe_to_sigaa(
-                    current_semester_name,
-                    df,
-                )
-                st.session_state[compare_cache_key] = comparison_result
-                set_session_feedback(
-                    "sigaa_compare_result",
-                    True,
-                    "Comparação com o SIGAA concluída com sucesso.",
-                    ttl=8,
-                )
-            except Exception as e:
-                _clear_sigaa_compare_cache(selected_semester_id)
-                set_session_feedback(
-                    "sigaa_compare_result",
-                    False,
-                    f"Erro ao comparar com o SIGAA: {type(e).__name__}: {e}",
-                    ttl=12,
-                )
-            st.rerun()
-
-    comparison_result = st.session_state.get(compare_cache_key)
-    if comparison_result:
-        metric_cols = st.columns(5)
-        metric_cols[0].metric("Local Consolidado", comparison_result["local_total"])
-        metric_cols[1].metric("Turmas SIGAA", comparison_result["sigaa_total"])
-        metric_cols[2].metric("Divergências", comparison_result["discrepancy_count"])
-        metric_cols[3].metric(
-            "Ausentes no SIGAA",
-            comparison_result["missing_in_sigaa_count"],
-        )
-        metric_cols[4].metric(
-            "Ausentes na Demanda",
-            comparison_result["missing_in_local_count"],
-        )
-
-        st.markdown("**Divergências encontradas**")
-        if comparison_result["discrepancies"]:
-            st.dataframe(
-                pd.DataFrame(comparison_result["discrepancies"]),
-                width="stretch",
-                hide_index=True,
-            )
-        else:
-            st.success("Nenhuma divergência foi encontrada nas turmas comparadas.")
-
-        st.markdown("**Ofertas locais ausentes no SIGAA**")
-        if comparison_result["missing_in_sigaa"]:
-            st.dataframe(
-                pd.DataFrame(comparison_result["missing_in_sigaa"]),
-                width="stretch",
-                hide_index=True,
-            )
-        else:
-            st.info("Nenhuma oferta local ficou sem correspondência no SIGAA.")
-
-        st.markdown("**Turmas do SIGAA ausentes na demanda local**")
-        if comparison_result["missing_in_local"]:
-            st.dataframe(
-                pd.DataFrame(comparison_result["missing_in_local"]),
-                width="stretch",
-                hide_index=True,
-            )
-        else:
-            st.info(
-                "Nenhuma turma do SIGAA ficou sem correspondência na demanda local."
-            )
-
-        with st.expander("Diagnóstico técnico da consulta SIGAA"):
-            st.json(comparison_result.get("probe", {}))
 
     # --- Filtros e Tabela de Demandas ---
     st.subheader("🔍 Filtrar Demanda")
@@ -896,6 +813,101 @@ with st.form("form_demanda_manual"):
 
 # Display form result feedback
 display_session_feedback("demanda_manual_form_result")
+
+st.markdown("---")
+st.subheader("🔎 Comparar com SIGAA")
+st.caption(
+    "Consulta todas as demandas do semestre ativo consolidando por código e turma. Os filtros da grade acima não alteram esta comparação."
+)
+
+if st.button(
+    "🔎 Comparar demanda com SIGAA",
+    disabled=not semestre_status_active,
+    help="Consulta a página pública de turmas do SIGAA e compara com todas as demandas do semestre ativo.",
+    key=f"compare_sigaa_{selected_semester_id}",
+):
+    if not semestre_status_active:
+        set_session_feedback(
+            "sigaa_compare_result",
+            False,
+            "A comparação com o SIGAA está disponível apenas para o semestre ativo.",
+            ttl=8,
+        )
+        st.rerun()
+
+    with st.spinner(
+        "Consultando turmas públicas do SIGAA e comparando com a demanda local..."
+    ):
+        try:
+            comparison_service = SigaaDiscrepancyService()
+            comparison_result = comparison_service.compare_local_dataframe_to_sigaa(
+                current_semester_name,
+                df,
+            )
+            st.session_state[compare_cache_key] = comparison_result
+            set_session_feedback(
+                "sigaa_compare_result",
+                True,
+                "Comparação com o SIGAA concluída com sucesso.",
+                ttl=8,
+            )
+        except Exception as e:
+            _clear_sigaa_compare_cache(selected_semester_id)
+            set_session_feedback(
+                "sigaa_compare_result",
+                False,
+                f"Erro ao comparar com o SIGAA: {type(e).__name__}: {e}",
+                ttl=12,
+            )
+        st.rerun()
+
+comparison_result = st.session_state.get(compare_cache_key)
+if comparison_result:
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Local Consolidado", comparison_result["local_total"])
+    metric_cols[1].metric("Turmas SIGAA", comparison_result["sigaa_total"])
+    metric_cols[2].metric("Divergências", comparison_result["discrepancy_count"])
+    metric_cols[3].metric(
+        "Ausentes no SIGAA",
+        comparison_result["missing_in_sigaa_count"],
+    )
+    metric_cols[4].metric(
+        "Ausentes na Demanda",
+        comparison_result["missing_in_local_count"],
+    )
+
+    st.markdown("**Divergências encontradas**")
+    if comparison_result["discrepancies"]:
+        st.dataframe(
+            _comparison_table_df(comparison_result["discrepancies"]),
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.success("Nenhuma divergência foi encontrada nas turmas comparadas.")
+
+    st.markdown("**Ofertas locais ausentes no SIGAA**")
+    if comparison_result["missing_in_sigaa"]:
+        st.dataframe(
+            _comparison_table_df(comparison_result["missing_in_sigaa"]),
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("Nenhuma oferta local ficou sem correspondência no SIGAA.")
+
+    st.markdown("**Turmas do SIGAA ausentes na demanda local**")
+    if comparison_result["missing_in_local"]:
+        st.dataframe(
+            _comparison_table_df(comparison_result["missing_in_local"]),
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("Nenhuma turma do SIGAA ficou sem correspondência na demanda local.")
+
+    with st.expander("Diagnóstico técnico da consulta SIGAA"):
+        st.json(comparison_result.get("probe", {}))
 
 # Page Footer
 page_footer.show()
