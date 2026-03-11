@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <form
+      id="formTurma"
+      name="formTurma"
+      method="post"
+      action="/sigaa/public/turmas/listar.jsf"
+      enctype="application/x-www-form-urlencoded"
+    >
+      <input type="hidden" name="formTurma" value="formTurma" />
+      <select id="formTurma:inputNivel" name="formTurma:inputNivel">
+        <option value=""> -- SELECIONE -- </option>
+        <option value="G">GRADUACAO</option>
+      </select>
+      <select id="formTurma:inputDepto" name="formTurma:inputDepto">
+        <option value="0" selected="selected"> -- SELECIONE -- </option>
+        <option value="666">FACULDADE DE PLANALTINA</option>
+      </select>
+      <input id="formTurma:inputAno" type="text" name="formTurma:inputAno" value="2026" />
+      <select id="formTurma:inputPeriodo" name="formTurma:inputPeriodo">
+        <option value="1" selected="selected">1</option>
+        <option value="2">2</option>
+      </select>
+      <input type="submit" name="formTurma:j_id_1" value="Buscar" />
+      <input type="submit" name="formTurma:j_id_2" value="Cancelar" />
+      <input type="hidden" name="javax.faces.ViewState" value="j_id1" />
+    </form>
+  </body>
+</html>
