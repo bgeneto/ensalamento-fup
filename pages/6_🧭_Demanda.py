@@ -817,7 +817,7 @@ display_session_feedback("demanda_manual_form_result")
 st.markdown("---")
 st.subheader("🔎 Comparar com SIGAA")
 st.caption(
-    "Consulta todas as demandas do semestre ativo consolidando por código e turma. Os filtros da grade acima não alteram esta comparação."
+    "Consulta todas as demandas do semestre ativo consolidando por professores e horários. Os filtros da grade acima não alteram esta comparação."
 )
 
 if st.button(
