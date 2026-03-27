@@ -1,331 +1,294 @@
-# Updated Allocation Scoring System
+# Current Autonomous Allocation Pipeline
 
-> Complete documentation of the room allocation pipeline including the new **Phase 0: Hybrid Discipline Detection**.
+Code-accurate description of the autonomous room-allocation flow currently wired into the Streamlit UI.
 
-## Overview
-
-The allocation system uses a multi-phase approach to optimally assign rooms to course demands based on rules, preferences, and historical data. The system now includes an enhanced Phase 0 that automatically detects **hybrid disciplines** (those requiring both classroom and lab/specialized room allocations).
+This document supersedes older descriptions that assumed the main page was still using the classic full pipeline by default.
 
 ---
 
-## System Architecture
+## Which Entry Point The UI Uses
 
-```mermaid
-flowchart TD
-    subgraph Phase0["Phase 0: Hybrid Detection"]
-        A[Analyze most recent semester] --> B[Detect hybrid disciplines]
-        B --> C[Identify lab days vs classroom days]
-        C --> D[Cache results for scoring]
-    end
-    
-    subgraph Phase1["Phase 1: Hard Rules"]
-        E[Filter demands with hard rules] --> F[Score rooms per hard rule]
-        F --> G[Allocate highest scoring rooms]
-    end
-    
-    subgraph Phase2["Phase 2: Soft Scoring"]
-        H[Score remaining demands] --> I[Apply soft preferences]
-        I --> J[Apply historical frequency bonus]
-        J --> K[Apply hybrid bonus for detected disciplines]
-    end
-    
-    subgraph Phase3["Phase 3: Atomic Allocation"]
-        L[Fresh conflict check] --> M[Allocate highest scoring]
-        M --> N[Update conflict map]
-        N --> L
-    end
-    
-    Phase0 --> Phase1
-    Phase1 --> Phase2
-    Phase2 --> Phase3
-```
+The main allocation page currently calls:
+
+- `OptimizedAutonomousAllocationService.execute_autonomous_allocation_partial()`
+
+It does **not** call `execute_autonomous_allocation()` from the button used in the page today.
+
+That means the normal UI flow is:
+
+1. Phase 0: hybrid detection
+2. Phase 1: hard-rule allocation
+3. Combined partial allocation phase by day-group
+
+The legacy full optimized pipeline still exists in the codebase, but it is not the path used by the page button today.
 
 ---
 
-## Phase 0: Hybrid Discipline Detection (NEW!)
+## Core Data Model
 
-### Purpose
+### Atomic time slots
 
-Automatically detect disciplines that historically have been allocated to both:
-- **Regular classrooms** (`tipo_sala_id = 2`)
-- **Specialized rooms** (labs, auditoriums, etc. - `tipo_sala_id ≠ 2`)
+A SIGAA schedule is broken into atomic tuples:
 
-### Detection Criteria
+- `(codigo_bloco, dia_semana_id)`
 
-A discipline is classified as **hybrid** if, in the most recent semester:
-1. It has allocations in **2+ different rooms**
-2. At least **one room is NOT** a regular classroom
+Example:
 
-### Implementation
+- `24M12` becomes `('M1', 2)`, `('M2', 2)`, `('M1', 4)`, `('M2', 4)`
 
-```python
-# Detection query (simplified)
-SELECT DISTINCT d.codigo_disciplina
-FROM alocacoes_semestrais a
-JOIN demandas d ON a.demanda_id = d.id
-JOIN salas s ON a.sala_id = s.id
-WHERE a.semestre_id = :most_recent_semester
-GROUP BY d.codigo_disciplina
-HAVING 
-    COUNT(DISTINCT a.sala_id) >= 2
-    AND MAX(CASE WHEN s.tipo_sala_id != 2 THEN 1 ELSE 0 END) = 1
-```
+Each tuple becomes one row in `alocacoes_semestrais`.
 
-### Per-Day Lab Detection
+### Block groups
 
-For each detected hybrid discipline:
-- **Lab Days**: Days that historically used non-classroom rooms
-- **Classroom Days**: Days that only used regular classrooms
+For partial allocation, atomic blocks are grouped by day:
 
-This information is used during scoring to boost the appropriate room type for each day.
+- same-day blocks must stay together
+- different-day groups can go to different rooms
 
-### Related Files
+Example:
 
-| File | Purpose |
-|------|---------|
-| [hybrid_discipline_service.py](file:///home/bgeneto/github/ensalamento-fup/src/services/hybrid_discipline_service.py) | Main detection service |
-| [alocacao.py](file:///home/bgeneto/github/ensalamento-fup/src/repositories/alocacao.py) | Repository detection queries |
+- `24M12 6T34`
+- groups:
+  - `SEG`: `M1`, `M2`
+  - `QUA`: `M1`, `M2`
+  - `SEX`: `T3`, `T4`
+
+---
+
+## Current Pipeline
+
+## Phase 0: Hybrid Detection
+
+Purpose:
+
+- find disciplines that historically split between regular classrooms and specialized rooms
+
+Current detection logic:
+
+1. choose the most recent semester that actually has allocations
+2. exclude the current semester when possible
+3. detect disciplines that:
+   - used at least 2 distinct rooms
+   - and used at least one non-classroom room
+
+Important implementation details:
+
+- regular classroom type id is assumed to be `2`
+- hybrid detection is based on **historical allocations**, not on rule definitions
+- detection also stores which days were historically lab days vs classroom-only days
+
+Output of this phase:
+
+- cached hybrid discipline info
+- lab days per discipline
+- classroom-only days per discipline
+
+That cache is then injected into the scoring service for autonomous partial scoring.
 
 ---
 
 ## Phase 1: Hard Rules Allocation
 
-### Purpose
+Purpose:
 
-Allocate demands that have **mandatory constraints** (priority = 0 rules).
+- allocate demands with `prioridade == 0` rules to one room covering all their atomic blocks
 
-### Rule Types
+What Phase 1 does:
 
-| Rule Type | Description | Example |
-|-----------|-------------|---------|
-| `DISCIPLINA_SALA` | Must use specific room | "Only B203" |
-| `DISCIPLINA_TIPO_SALA` | Must use specific room type | "Must be a Lab" |
-| `DISCIPLINA_CARACTERISTICA` | Must have specific characteristic | "Projector required" |
+1. collect hard rules for every demand
+2. keep only demands that actually have hard rules
+3. parse the full demand schedule into atomic blocks
+4. filter rooms to active rooms that are enabled for all required blocks
+5. keep only rooms that satisfy every hard rule
+6. batch-check conflicts for all candidate room-slot pairs in the current semester
+7. allocate the first room with no conflicts
 
-### Scoring
+Important current behavior:
 
-Each satisfied hard rule adds **+20 points** (`HARD_RULE_COMPLIANCE`).
+- in the optimized partial pipeline used by the UI, Phase 1 does **not** use the legacy demand-priority ordering from `AutonomousAllocationService._prioritize_demands_for_hard_rules()`
+- it processes the demands in the order returned by `get_unallocated_demands()`
+- that order ultimately comes from `DisciplinaRepository.get_by_semestre()`, which sorts by `codigo_disciplina`
+- room choice within the filtered candidate list effectively follows the room ordering returned by `SalaRepository.get_available_for_allocation()`, which sorts by room name
 
-> [!IMPORTANT]
-> If ANY hard rule fails, the room receives 0 points and soft preferences are not checked.
+So Phase 1 is deterministic, but simpler than the older design docs suggested.
 
 ---
 
-## Phase 2: Soft Scoring
+## Phase 2/3 Combined: Partial Allocation By Day
 
-### Purpose
+Purpose:
 
-Score all remaining demands based on soft preferences, historical frequency, and hybrid bonuses.
+- allocate remaining demands day by day instead of forcing a single room for the whole demand
 
-### Scoring Components
+For each remaining demand:
 
-| Component | Points | Description |
-|-----------|--------|-------------|
-| **Capacity Adequate** | +3 | Room capacity ≥ enrolled students |
-| **Hard Rule Compliance** | +20 each | Mandatory rule satisfaction |
-| **Preferred Room** | +4 | Professor's preferred room |
-| **Preferred Characteristic** | +4 | Professor's preferred room feature |
-| **Historical Frequency** | +4 per allocation | Past allocations of discipline to room (max 80) |
-| **Hybrid Room Type Match** | +15 | Room type matches hybrid day pattern |
+1. group atomic blocks by day
+2. for each day-group, score all rooms independently
+3. drop candidates that already have conflicts
+4. perform a fresh batch conflict check against current database state
+5. allocate the best currently valid room
+6. move to the next day-group
 
-### Total Score Formula
+Important properties:
 
-```python
-total_score = (
-    capacity_points 
-    + hard_rules_points 
-    + soft_preference_points 
-    + historical_frequency_points
-    + hybrid_bonus_points  # NEW!
-)
+- different days of the same discipline may end up in different rooms
+- no global optimizer is used
+- there is no backtracking
+- allocation is greedy and local to the current demand and current day-group
+
+This is why the current UI can produce split allocations naturally.
+
+---
+
+## Scoring Used In The Partial Flow
+
+For each room candidate of a day-group:
+
+```text
+score =
+    capacity_points
+    + hard_rules_points
+    + professor_preference_points
+    + day_specific_historical_points
+    + hybrid_bonus_points
 ```
 
-### Hybrid Bonus Logic
+Current effective weights:
 
-For hybrid disciplines, the scoring service applies a **+15 point bonus** when:
-- Room is a **lab** AND day is a **historical lab day**
-- Room is a **classroom** AND day is a **historical classroom-only day**
+| Weight | Value |
+| --- | ---: |
+| Capacity adequate | 3 |
+| Hard rule compliance | 20 each |
+| Preferred room | 4 |
+| Preferred characteristic | 4 |
+| Historical frequency per allocation row | 2 |
+| Historical cap | 20 |
+| Hybrid room-type match | 15 |
 
-This ensures that:
-- Lab time slots naturally score higher for lab rooms
-- Classroom time slots naturally score higher for regular classrooms
+Important nuance:
 
----
-
-## Phase 3: Atomic Allocation
-
-### Purpose
-
-Perform the actual allocation with **fresh conflict detection** for each demand.
-
-### Process
-
-1. Get highest-scoring room candidate
-2. Perform fresh conflict check against current database state
-3. If no conflict, create allocation records
-4. Update in-memory conflict map for next iteration
-5. Repeat for next demand
+- historical frequency counts atomic allocation rows, not distinct semesters
+- day-specific historical scoring uses the same day of week as the current block-group
 
 ---
 
-## Configuration
+## What "Soft" Means In The Current Code
 
-### Scoring Weights
+The current code does **not** score `Regra.prioridade > 0` rules.
 
-All scoring weights are configurable via:
-- **Default values**: [scoring_defaults.json](file:///home/bgeneto/github/ensalamento-fup/data/scoring_defaults.json)
-- **User overrides**: `data/scoring_config.json`
-- **Python config**: [scoring_config.py](file:///home/bgeneto/github/ensalamento-fup/src/config/scoring_config.py)
+In practice:
 
-```json
-{
-    "weights": {
-        "CAPACITY_ADEQUATE": 3,
-        "HARD_RULE_COMPLIANCE": 20,
-        "PREFERRED_ROOM": 4,
-        "PREFERRED_CHARACTERISTIC": 4,
-        "HISTORICAL_FREQUENCY_PER_ALLOCATION": 4,
-        "HISTORICAL_FREQUENCY_MAX_CAP": 80,
-        "HYBRID_ROOM_TYPE_MATCH": 15
-    }
-}
-```
+- hard rules come from `Regra` with `prioridade == 0`
+- "soft preferences" currently mean professor preferred rooms and preferred characteristics
+
+This is a real divergence from older docs that described scored rule priorities beyond zero.
 
 ---
 
-## UI Integration
+## Conflict Handling
 
-### Manual Allocation Warnings
+Conflict checks are semester-isolated:
 
-The demand queue now shows enhanced warnings for hybrid disciplines:
+- only the current semester is checked for autonomous allocation conflicts
 
-| Warning Type | Indicator | Source |
-|--------------|-----------|--------|
-| **HYBRID (Confirmed)** | 🧪 `Disciplina HÍBRIDA - requer laboratório em alguns dias` | Phase 0 detection |
-| **May require lab** | `Disciplina pode necessitar de laboratório` | Name regex match |
+The conflict query is based on:
 
-### Related Files
+- room id
+- day id
+- atomic block code
+- semester id
 
-- [alloc_queue.py](file:///home/bgeneto/github/ensalamento-fup/pages/components/alloc_queue.py) - `_check_rule_warnings()` function
-
----
-
-## Key Services
-
-### RoomScoringService
-
-**Path**: [room_scoring_service.py](file:///home/bgeneto/github/ensalamento-fup/src/services/room_scoring_service.py)
-
-The **single source of truth** for all scoring logic. Used by both:
-- `OptimizedAutonomousAllocationService` (automatic allocation)
-- `ManualAllocationService` (manual allocation with suggestions)
-
-Key methods:
-- `score_room_candidates_for_demand()` - Full demand scoring
-- `score_rooms_for_block_group()` - Per-day scoring for partial allocation
-- `_calculate_hybrid_bonus()` - NEW! Hybrid room type matching
-
-### HybridDisciplineDetectionService
-
-**Path**: [hybrid_discipline_service.py](file:///home/bgeneto/github/ensalamento-fup/src/services/hybrid_discipline_service.py)
-
-Detects and caches hybrid discipline information.
-
-Key methods:
-- `detect_hybrid_disciplines()` - Run detection phase
-- `is_hybrid()` - Check if discipline is hybrid
-- `get_lab_days_for_discipline()` - Get lab days for a discipline
-- `get_hybrid_info()` - Get full hybrid info for a discipline
-
-### OptimizedAutonomousAllocationService
-
-**Path**: [optimized_autonomous_allocation_service.py](file:///home/bgeneto/github/ensalamento-fup/src/services/optimized_autonomous_allocation_service.py)
-
-Main allocation service with all phases.
-
-Key methods:
-- `_execute_hybrid_detection_phase()` - NEW! Phase 0
-- `execute_autonomous_allocation()` - Full allocation pipeline
-- `execute_autonomous_allocation_partial()` - Partial allocation with per-day scoring
+Reservations are not part of the autonomous allocation conflict path.
 
 ---
 
-## Data Flow
+## Result Semantics
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant AllocationPage
-    participant OptimizedAllocationService
-    participant HybridDetectionService
-    participant RoomScoringService
-    participant Database
-    
-    User->>AllocationPage: Click "Execute Allocation"
-    AllocationPage->>OptimizedAllocationService: execute_autonomous_allocation()
-    
-    Note over OptimizedAllocationService: Phase 0
-    OptimizedAllocationService->>HybridDetectionService: detect_hybrid_disciplines()
-    HybridDetectionService->>Database: Query historical allocations
-    Database-->>HybridDetectionService: Hybrid discipline codes
-    HybridDetectionService-->>OptimizedAllocationService: HybridDetectionResult
-    OptimizedAllocationService->>RoomScoringService: set_hybrid_detection_service()
-    
-    Note over OptimizedAllocationService: Phase 1
-    OptimizedAllocationService->>RoomScoringService: Score demands with hard rules
-    
-    Note over OptimizedAllocationService: Phase 2
-    OptimizedAllocationService->>RoomScoringService: Score remaining demands
-    RoomScoringService->>HybridDetectionService: is_hybrid()? get_lab_days()?
-    RoomScoringService-->>OptimizedAllocationService: Scored candidates
-    
-    Note over OptimizedAllocationService: Phase 3
-    OptimizedAllocationService->>Database: Create allocations
-    OptimizedAllocationService-->>AllocationPage: Results
-```
+In the current partial pipeline, the output metrics are not all demand-based.
+
+Important counters:
+
+- `allocations_completed`
+  - phase 1 counts one successful demand allocation
+  - partial phase counts one successful block-group allocation
+- `block_groups_processed`
+  - number of day-groups evaluated
+- `block_groups_allocated`
+  - number of day-groups successfully assigned
+- `demands_with_split_rooms`
+  - number of demands whose allocated day-groups ended in more than one room
+- `progress_percentage`
+  - in partial mode, this is based on allocated block-groups over processed block-groups
+
+So partial-mode progress is not the same thing as "percentage of demands fully completed".
 
 ---
 
-## Example Scoring Breakdown
+## Important Current Limitations
 
-### Hybrid Discipline on a Lab Day
+### 1. Partially allocated demands are excluded from future autonomous runs
 
-```
-Room: Laboratório de Informática 1
-Day: Segunda-feira (lab day)
+`get_unallocated_demands()` treats a demand as allocated as soon as it has at least one allocation row.
 
-Scoring:
-  ✅ Capacity adequate:        +3
-  ✅ Hard rules passed:        +20
-  ✅ Professor preference:     +4
-  📈 Historical frequency (2x): +8
-  🧪 Hybrid lab day match:     +15
-  ────────────────────────────
-  TOTAL:                       50 points
-```
+Practical consequence:
 
-### Same Discipline on a Classroom Day
+- if a demand gets only some day-groups allocated
+- a later autonomous run will not pick it up again as "unallocated"
 
-```
-Room: Laboratório de Informática 1
-Day: Quarta-feira (classroom day)
+The manual UI can still continue the allocation, but the autonomous rerun will not resume it automatically.
 
-Scoring:
-  ✅ Capacity adequate:        +3
-  ✅ Hard rules passed:        +20
-  ✅ Professor preference:     +4
-  📈 Historical frequency (0x): +0   ← Different day!
-  ❌ Hybrid mismatch:          +0   ← Lab room on classroom day
-  ────────────────────────────
-  TOTAL:                       27 points
-```
+### 2. Hard rules are only truly strict in Phase 1
 
-The classroom will score **higher** on classroom days due to the hybrid bonus.
+After Phase 1, later scoring does not remove hard-rule-violating candidates from consideration.
+
+Instead:
+
+- violating rooms lose hard-rule points
+- professor-preference scoring is skipped
+- but capacity, historical, and hybrid points may still leave that room as the top candidate
+
+### 3. Manual and autonomous hybrid behavior can diverge
+
+The autonomous partial flow injects hybrid detection into the scoring service.
+
+The current manual allocation service does not inject that same hybrid service into its own scoring service instance.
+
+Practical consequence:
+
+- manual per-day suggestions can differ from autonomous per-day choices for hybrid disciplines
+
+### 4. No global optimization
+
+The algorithm is greedy:
+
+- it does not reconsider earlier allocations
+- it does not search for a globally optimal semester-wide arrangement
+
+### 5. The main UI path does not currently generate PDF reports
+
+PDF generation exists in the legacy full optimized pipeline, not in the partial pipeline currently called by the page button.
+
+See `docs/PDF_REPORT_SYSTEM.md`.
 
 ---
 
-## References
+## Legacy Full Pipeline Still In The Repository
 
-- **RF-006**: Autonomous Allocation Algorithm specification
-- **RF-006.6**: Historical frequency bonus requirement
-- Previous documentation: [ALLOCATION SCORING SYSTEM.md](file:///home/bgeneto/github/ensalamento-fup/docs/ALLOCATION%20SCORING%20SYSTEM.md)
+`execute_autonomous_allocation()` still exists and still documents a more classic:
+
+1. Phase 0
+2. Phase 1
+3. Phase 2 soft scoring
+4. Phase 3 atomic allocation
+
+That full pipeline also generates PDF output.
+
+But that is not the entry point used by the main page today.
+
+---
+
+## Recommended Reading Order
+
+- `docs/ALLOCATION SCORING SYSTEM.md`
+- `docs/PARTIAL_ALLOCATION_IMPLEMENTATION.md`
+- `docs/PDF_REPORT_SYSTEM.md`

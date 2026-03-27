@@ -1,204 +1,120 @@
-# Autonomous Allocation PDF Report System
+# Autonomous Allocation PDF Report Status
 
-## 📄 Human-Readable PDF Reports
+Code-accurate status of PDF report generation in the current repository.
 
-The autonomous allocation system now generates **professional, human-readable PDF reports** instead of technical JSON logs, making allocation decisions accessible to all users.
-
----
-
-## 🎯 Features of the PDF Report
-
-### **1. Executive Summary**
-- Overall performance assessment (EXCELLENT/GOOD/REQUIRES ATTENTION)
-- Success rate percentage with visual indicators
-- Phase-by-phase allocation statistics
-- Clear next steps for manual intervention
-
-### **2. Detailed Phase Analysis**
-- **Phase 1 - Hard Rules**: Automatic allocations based on mandatory requirements
-- **Phase 2 - Soft Scoring**: Evaluation by compatibility scoring
-- **Phase 3 - Atomic Allocation**: Final room assignments with conflict resolution
-
-### **3. Allocation Decision Details**
-- ✅ **Successfully Allocated**: Room, score, phase, and reasoning
-- ❌ **Not Allocated**: Grouped by skip reason with explanations
-- 📊 **Score Breakdown**: Capacity, rules, preferences, and historical points
-
-### **4. Scoring Analysis**
-- Score distribution statistics (average, min, max)
-- Examples of high, medium, and low scoring decisions
-- Detailed breakdown of how points were calculated
-
-### **5. Room Utilization**
-- Most frequently used rooms
-- Usage percentages and allocation counts
-- Room efficiency analysis
-
-### **6. Recommendations**
-- Priority-based action items
-- Conflict investigation suggestions
-- Process improvement recommendations
+This document replaces older wording that implied PDF generation always happens in the default UI flow.
 
 ---
 
-## 🔧 Configuration Options
+## Short Version
 
-### **DEBUG Mode Control**
-JSON technical logs are only generated when DEBUG mode is enabled:
+PDF generation exists in the codebase, but it is **not currently produced by the autonomous allocation button used in the main Streamlit page**.
 
-```bash
-# Enable technical JSON logs (for developers)
-export DEBUG=true
+Why:
 
-# Disable technical logs (production default)
-export DEBUG=false
-```
+- the page button calls `execute_autonomous_allocation_partial()`
+- PDF generation is implemented in `execute_autonomous_allocation()`
+- the partial entry point does not attach `pdf_report` or `pdf_filename` to its result
 
-### **PDF Report Generation**
-PDF reports are **always generated** regardless of DEBUG mode, ensuring users always have access to human-readable decision documentation.
+So the feature exists, but it is not wired into the primary UI path at the moment.
 
 ---
 
-## 📥 Download Process
+## Current Runtime Behavior
 
-### **Automatic PDF Generation**
-1. Run autonomous allocation from the allocation page
-2. PDF is automatically generated with all decisions
-3. Download button appears in the interface
-4. PDF is stored in session state for repeated downloads
+### Main page behavior
 
-### **PDF Naming Convention**
-```
-relatorio_alocacao_autonoma_2025_1.pdf
-```
+The button in `pages/7_✅_Ensalamento.py` currently calls:
 
-### **Download Interface**
-- 📄 **Download Button**: Prominent button in allocation interface
-- **File Info**: Shows filename and download count
-- **Help Text**: Explains report contents and usage
+- `OptimizedAutonomousAllocationService.execute_autonomous_allocation_partial(selected_semester)`
 
----
+That partial result includes:
 
-## 📊 Report Sections Explained
+- mode
+- block-group statistics
+- split-demand statistics
+- execution time
 
-### **Title Page**
-- Semester information and execution metrics
-- Key performance indicators in table format
-- Visual success/failure indicators
+It does **not** include:
 
-### **Executive Summary**
-- Performance rating with color coding:
-  - 🟢 **EXCELENTE** (≥80% success rate)
-  - 🟡 **BOM** (60-79% success rate)  
-  - 🔴 **REQUER ATENÇÃO** (<60% success rate)
+- `pdf_report`
+- `pdf_filename`
 
-### **Phase Analysis**
-- Detailed statistics for each allocation phase
-- Success/failure rates and conflict counts
-- Identification of bottlenecks and issues
+The page still contains code that would store and expose a PDF download if those fields existed, but they are not present in the result returned by the current entry point.
 
-### **Decision Details**
-- **Allocated Courses**: Room assignment, score, and phase
-- **Skipped Courses**: Grouped by reason (conflicts, no suitable rooms, etc.)
-- **Score Analysis**: Point breakdown for transparency
+### Full optimized pipeline behavior
 
-### **Scoring Breakdown**
-For each allocation decision:
-```
-BCC001 - Algoritmos
-• Sala Alocada: Lab-101
-• Pontuação Final: 16
-• Capacidade: 4 pontos
-• Regras Obrigatórias: 8 pontos  
-• Preferências: 4 pontos
-• Histórico: 0 pontos
-```
+The repository still contains a second entry point:
 
-### **Room Utilization**
-- Top 10 most used rooms
-- Usage percentages and allocation counts
-- Efficiency metrics for planning
+- `OptimizedAutonomousAllocationService.execute_autonomous_allocation()`
 
-### **Recommendations**
-- **ALTA PRIORIDADE**: Critical issues requiring immediate action
-- **MÉDIA PRIORIDADE**: Important improvements to consider
-- **BAIXA PRIORIDADE**: Optional optimizations for future semesters
+That method:
+
+- runs the full optimized pipeline
+- generates the PDF with `AutonomousAllocationReportService`
+- returns `pdf_report`
+- returns `pdf_filename`
+
+So PDF generation is available only when that full entry point is used.
 
 ---
 
-## 🎨 Visual Design
+## What Is Accurate To Say Today
 
-### **Professional Formatting**
-- Clean, corporate layout with consistent styling
-- Color-coded indicators for quick scanning
-- Tables and charts for data visualization
-- Proper typography and spacing
+### Accurate statements
 
-### **User-Friendly Language**
-- Portuguese language for institutional use
-- Clear, non-technical explanations
-- Actionable recommendations
-- Executive-level summaries
+- PDF generation support exists in the repository.
+- The full optimized autonomous pipeline can generate a PDF report.
+- The current UI button does not use that path.
+- The current UI flow therefore does not normally produce a downloadable PDF.
 
-### **Print Optimization**
-- A4 page size with proper margins
-- Page breaks at logical sections
-- High-quality formatting for printing
-- PDF optimization for file size
+### Inaccurate statements
+
+- "PDF reports are always generated regardless of mode."
+- "Running autonomous allocation from the page always produces a PDF."
+- "The current autonomous allocation button automatically stores and exposes a PDF report."
 
 ---
 
-## 🔍 Debug vs Production Modes
+## Relationship With DEBUG Mode
 
-### **DEBUG Mode (`export DEBUG=true`)**
-- ✅ Human-readable PDF report (always)
-- ✅ Technical JSON logs (for developers)
-- ✅ Detailed console output
-- ✅ Phase-by-phase logging
+The old documentation mixed together:
 
-### **Production Mode (`export DEBUG=false`)**
-- ✅ Human-readable PDF report (always)
-- ❌ Technical JSON logs (disabled)
-- ✅ Essential console output
-- ✅ Clean user experience
+- PDF generation
+- debug logs
+- JSON debug reports
 
----
+Current code reality:
 
-## 📈 Benefits
+- PDF generation belongs to the full optimized pipeline entry point
+- partial mode does not generate PDF output
+- debug-report generation is optional and also tied to the full optimized flow
 
-### **For Users**
-- **Transparency**: Clear understanding of allocation decisions
-- **Accountability**: Complete audit trail of process
-- **Planning**: Data-driven insights for future semesters
-- **Accessibility**: No technical knowledge required
-
-### **For Administrators**  
-- **Quality Assurance**: Verification of allocation logic
-- **Performance Monitoring**: Identification of system issues
-- **Process Improvement**: Data for optimization decisions
-- **Compliance**: Documentation for audits and reviews
-
-### **For Developers**
-- **Debugging**: Technical logs available when needed
-- **Testing**: Detailed decision tracking for validation
-- **Maintenance**: Clear documentation of system behavior
-- **Evolution**: Baseline data for feature improvements
+So DEBUG mode is not the deciding factor for whether the current page flow yields a PDF. The deciding factor is which service entry point is called.
 
 ---
 
-## 🚀 Usage Example
+## If The UI Is Switched Back To The Full Pipeline
 
-```python
-# Run autonomous allocation
-allocation_service = OptimizedAutonomousAllocationService(session)
-result = allocation_service.execute_autonomous_allocation(semester_id=1)
+If the page starts calling:
 
-# PDF is automatically generated and available for download
-pdf_content = result['pdf_report']
-pdf_filename = result['pdf_filename']
+- `execute_autonomous_allocation()`
 
-# Users can download via the interface
-# Technical logs available only if DEBUG=true
-```
+then the existing page code can again:
 
-The autonomous allocation system now provides **complete transparency** with **professional documentation** while maintaining **high performance** and **user-friendly operation**! 🎉
+- receive `pdf_report`
+- store it in session state
+- save it to `data/reports`
+- show a download button
+
+That code path already exists in the page, but the current partial result does not provide the required fields.
+
+---
+
+## Recommendation
+
+When documenting the current product behavior, describe PDF reporting like this:
+
+> PDF report generation is implemented for the full optimized autonomous allocation pipeline, but the main UI currently uses the partial allocation pipeline, which does not return PDF output.
+
+That wording matches the code today.

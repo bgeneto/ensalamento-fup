@@ -1,208 +1,311 @@
-# Allocation Scoring System - RF-006
+# Allocation Scoring System
 
-This document details the complete scoring system used by the autonomous and manual allocation algorithm, including all point attributions, rule types, and preference calculations.
+Code-accurate description of the scoring logic currently implemented in the repository.
 
-## System Architecture
+This document intentionally describes the behavior of the code as it exists today, even when that behavior differs from older design docs or from the intended product rules.
 
-### Core Components
-The scoring system is implemented through three main components:
+---
 
-1. **RoomScoringService** (`src/services/room_scoring_service.py`)
-   - Unified scoring engine for both manual and autonomous allocation
-   - Single source of truth for all scoring logic
-   - Semester-isolated conflict detection
+## Scope
 
-2. **ManualAllocationService** (`src/services/manual_allocation_service.py`)
-   - Integrated with RoomScoringService for consistent suggestions
-   - Provides detailed breakdown for UI transparency
+The scoring logic lives mainly in:
 
-3. **AutonomousAllocationService** (`src/services/autonomous_allocation_service.py`)
-   - Uses same scoring logic for automatic allocation decisions
-   - Implements three-phase algorithm with prioritization
+- `src/services/room_scoring_service.py`
+- `src/config/scoring_config.py`
+- `data/scoring_defaults.json`
+- `data/scoring_config.json`
 
-## Scoring Breakdown
+There are two scoring paths in the codebase:
 
-### Point Categories
+1. **Full-demand scoring**
+   - Scores one room against all atomic blocks of a demand.
+   - Used by the legacy full autonomous pipeline and by legacy manual suggestion helpers.
 
-The scoring system awards points across four main categories:
+2. **Block-group scoring**
+   - Scores one room against a single day-group of a demand.
+   - Used by the current partial/split allocation flow.
 
-#### 1. Capacity Score (+{SCORING_WEIGHTS.CAPACITY_ADEQUATE} point)
-- **Requirement**: Room capacity ≥ Demand student count
-- **Points**: {SCORING_WEIGHTS.CAPACITY_ADEQUATE} point if capacity adequate, 0 if insufficient
-- **Purpose**: Basic requirement check for room size
+---
 
-#### 2. Hard Rules Compliance (+{SCORING_WEIGHTS.HARD_RULE_COMPLIANCE} points each)
-- **Priority**: Rule priority = 0 (hard rules)
-- **Points**: {SCORING_WEIGHTS.HARD_RULE_COMPLIANCE} points per satisfied hard rule
-- **Failure Cascades**: If ANY hard rule fails, scores 0 for hard rules AND soft preferences are not checked
-- **Rule Types**:
+## Effective Weights
 
-  | Rule Type                   | Description                       | Example                         |
-  | --------------------------- | --------------------------------- | ------------------------------- |
-  | `DISCIPLINA_TIPO_SALA`      | Room must be specific type        | Lab, Lecture Hall, Seminar Room |
-  | `DISCIPLINA_SALA`           | Must use specific room            | "Room B203 only"                |
-  | `DISCIPLINA_CARACTERISTICA` | Must have specific characteristic | "Projector required"            |
+The effective runtime weights come from the merge of:
 
-#### 3. Professor Preferences (+{SCORING_WEIGHTS.PREFERRED_ROOM} points each category)
-- **Priority**: Only checked if hard rules pass
-- **Points**: {SCORING_WEIGHTS.PREFERRED_ROOM} points per satisfied preference category
-- **Categories**:
-  - **Room Preferences**: Professor's preferred room (must match exactly)
-  - **Characteristic Preferences**: Professor's preferred room characteristics (any match counts)
+- `data/scoring_defaults.json`
+- `data/scoring_config.json`
 
-#### 4. Historical Frequency Bonus (+{SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION} point per allocation)
-- **Algorithm**: RF-006.6 - Direct bonus for previous allocations
-- **Points**: {SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION} point × number of times this discipline was allocated to this room in previous semesters
-- **Capped at**: {SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP} points maximum
-- **Purpose**: Continuity and room familiarity
+Current effective values:
 
-### Total Score Calculation
-```python
-total_score = capacity_points + hard_rules_points + soft_preference_points + historical_points
-```
+| Weight | Effective value | Notes |
+| --- | ---: | --- |
+| `CAPACITY_ADEQUATE` | 3 | Adequate capacity |
+| `HARD_RULE_COMPLIANCE` | 20 | Per satisfied hard rule |
+| `PREFERRED_ROOM` | 4 | Professor prefers this room |
+| `PREFERRED_CHARACTERISTIC` | 4 | Professor prefers a characteristic present in the room |
+| `HISTORICAL_FREQUENCY_PER_ALLOCATION` | 2 | Per historical allocation row |
+| `HISTORICAL_FREQUENCY_MAX_CAP` | 20 | Maximum historical points |
+| `HYBRID_ROOM_TYPE_MATCH` | 15 | Comes from defaults because user config does not override it |
 
-**Example Score Calculation:**
-```
-Room Score: 12 points
-- Capacity: ✅ Adequate (+1)
-- Hard Rules: ✅ Lab Required + Projector Required (+8 total)
-- Preferences: ✅ AC Characteristic (+2)
-- Historical: 📈 3x allocated (+3)
-= 12 total points
-```
+Important detail:
 
-## Implementation Details
+- Historical frequency is counted from `alocacoes_semestrais` rows, not from distinct semesters.
+- Because allocations are stored by atomic block, one historically allocated discipline can contribute multiple historical counts in the same semester.
 
-### Data Structures
+---
 
-#### ScoringBreakdown Dataclass
-```python
-@dataclass
-class ScoringBreakdown:
-    total_score: int
-    capacity_points: int
-    hard_rules_points: int
-    soft_preference_points: int
-    historical_frequency_points: int
+## Candidate Filtering Before Scoring
 
-    # Details for UI
-    capacity_satisfied: bool
-    hard_rules_satisfied: List[str]  # Names of satisfied rules
-    soft_preferences_satisfied: List[str]  # Satisfied preference descriptions
-    historical_allocations: int  # Count of previous allocations
-```
+Before a room is scored, the code filters candidates to rooms that:
 
-### UI Transparency Features
+- are active
+- are enabled for all required atomic blocks of the demand or block-group
 
-#### Detailed Breakdown Display
-The UI shows each scoring component with full transparency:
+This filtering is done through `SalaRepository.get_available_for_allocation()` and `SalaRepository.is_room_enabled_for_blocks()`.
 
-```
-🟢 Pontuação: 12
-▼ 📊 Detalhes da Pontuação
+Conflict detection is separate from availability filtering:
 
-Capacidade:
-✅ Adequada (+1)
+- full-demand scoring checks conflicts for all atomic blocks in the current semester
+- block-group scoring checks conflicts only for the selected day-group in the current semester
 
-Regras Obrigatórias:
-✅ Atendidas (+8): Tipo de sala: Laboratório; Característica: Projetor
-• "Tipo de sala: Laboratório"
-• "Característica: Projetor"
+---
 
-Preferências Professor:
-✅ Atendidas (+2): Característica preferida: Ar Condicionado
-• "Característica preferida: Ar Condicionado"
+## Atomic Blocks And Time Slots
 
-Frequência Histórica:
-📈 Alocada 3x aqui (+3)
+The system does not allocate a discipline as one opaque schedule.
 
-────────────────────────────
-**Total: 12 pontos**
-```
+It first parses the SIGAA code into atomic tuples:
 
-#### Scoring Flow Logic
-1. **Capacity Check**: Basic room size validation
-2. **Hard Rules**: High-priority constraints (must all pass)
-3. **Soft Preferences**: Professor preferences (only if hard rules pass)
-4. **Historical Bonus**: Frequency-based scoring
-5. **Semester Conflict**: Final conflict check within current semester only
+- input example: `24M12`
+- parsed tuples: `('M1', 2)`, `('M2', 2)`, `('M1', 4)`, `('M2', 4)`
 
-### semesters-isolated Conflict Detection
+Each tuple becomes one row in `alocacoes_semestrais`:
 
-- **Architecture**: RF-006.2 - Semester scope isolation
-- **Implementation**: Only checks conflicts within the specified semester
-- **Performance**: Prevents cross-semester interference
-- **Accuracy**: Ensures current semester scheduling integrity
+- `semestre_id`
+- `demanda_id`
+- `sala_id`
+- `dia_semana_id`
+- `codigo_bloco`
 
-## Usage Examples
+The database enforces a unique constraint on:
 
-### Basic Scoring Example
-```python
-# Get scored candidates
-candidates = scoring_service.score_room_candidates_for_demand(
-    demanda_id=123,
-    semester_id=4  # Current semester
+- `(semestre_id, sala_id, dia_semana_id, codigo_bloco)`
+
+That is the real collision rule for a room time slot.
+
+---
+
+## Hard Rules
+
+Only rules with `prioridade == 0` are used by the scoring logic.
+
+Supported rule types:
+
+| Rule type | Meaning |
+| --- | --- |
+| `DISCIPLINA_TIPO_SALA` | Room must have a specific `tipo_sala_id` |
+| `DISCIPLINA_SALA` | Room must be one specific room |
+| `DISCIPLINA_CARACTERISTICA` | Room must contain a characteristic with the configured name |
+
+Current behavior:
+
+- every satisfied hard rule adds `+20`
+- if any hard rule fails, the room gets `0` hard-rule points
+- when a hard rule fails, the room also skips professor-preference scoring
+
+Important limitation in the current code:
+
+- outside the dedicated hard-rules allocation phase, hard-rule violation does **not** remove the candidate from consideration
+- it only removes hard-rule points and professor-preference points
+- capacity, historical points, and hybrid bonus can still make that room win later
+
+So in the current implementation, hard rules behave as a strict filter only in **Phase 1** of the autonomous pipeline, not in every later scoring decision.
+
+---
+
+## Professor Preferences
+
+Professor preferences come from:
+
+- `professor_prefere_sala`
+- `professor_prefere_caracteristica`
+
+Current scoring:
+
+- preferred room: `+4`
+- one matching preferred characteristic: `+4`
+
+Current behavior detail:
+
+- professor preferences are evaluated only when `hard_rules_satisfied` is non-empty
+- this means a demand with **no hard rules at all** currently receives `0` preference points
+
+This is a code behavior detail, not a documentation mistake.
+
+Also important:
+
+- rules with `prioridade > 0` are **not** currently used as scored soft rules
+- the code shows them in some reports and debug output, but they do not participate in the actual score
+- in practice, the only real "soft preferences" used today are professor room/characteristic preferences
+
+---
+
+## Historical Frequency
+
+### Full-demand scoring
+
+Formula:
+
+```text
+historical_points = min(
+    frequency_rows * HISTORICAL_FREQUENCY_PER_ALLOCATION,
+    HISTORICAL_FREQUENCY_MAX_CAP
 )
-
-# Each candidate has:
-# - candidate.score (total points)
-# - candidate.scoring_breakdown (detailed breakdown)
 ```
 
-### Manual Allocation Integration
-The ManualAllocationService integrates detailed scoring:
+Where `frequency_rows` is the number of historical rows in `alocacoes_semestrais` for:
 
-```python
-suggestions = alloc_service.get_suggestions_for_demand(demanda_id, semester_id)
-# Each suggestion.room_suggestion includes scoring_breakdown dict
+- same `codigo_disciplina`
+- same `sala_id`
+- excluding the current semester
+
+This is not a count of "times in previous semesters" in the human sense. It is a count of stored allocation rows.
+
+### Block-group scoring
+
+The partial/split flow uses a day-specific variant:
+
+```text
+historical_points_for_day = min(
+    frequency_rows_for_same_day * HISTORICAL_FREQUENCY_PER_ALLOCATION,
+    HISTORICAL_FREQUENCY_MAX_CAP
+)
 ```
 
-## Performance Characteristics
+Where the historical count is filtered by:
 
-### Key Metrics
-- **Consistency**: 100% consistent between autonomous and manual allocation
-- **Transparency**: Full scoring breakdown available in UI
-- **Extensibility**: Easy to add new scoring rules
-- **Semester Isolation**: No cross-semester interference
+- same `codigo_disciplina`
+- same `sala_id`
+- same `dia_semana_id`
+- excluding the current semester
 
-### Scalability
-- Single scoring service reduces code duplication
-- Shared logic ensures maintenance efficiency
-- Modular design supports future enhancements
+This is what allows different days of the same discipline to naturally prefer different rooms.
 
-## Architecture Decisions
+---
 
-### Single Source of Truth
-- **RoomScoringService**: Centralized scoring logic
-- **Prevents divergence**: Manual vs autonomous allocation always use same algorithm
-- **Maintenance**: Changes in one place affect entire system
+## Hybrid Detection And Hybrid Bonus
 
-### Semester Boundary Isolation
-- **RF-006.2**: Semester-scoped conflict detection
-- **Accuracy**: Prevents conflicts with wrong semester
-- **Performance**: Simpler queries, better indexing
+Hybrid behavior is explicit in the current autonomous partial pipeline.
 
-### UI Transparency
-- **Detailed Breakdown**: Shows exactly how each point earned
-- **User Confidence**: Builds trust in algorithm recommendations
-- **Educational**: Helps users understand scoring logic
+A discipline is detected as hybrid when, in the most recent historical semester with allocations:
 
-## Future Extensions
+- it used at least 2 distinct rooms
+- and at least one of those rooms is not a regular classroom
 
-### Potential Scoring Enhancements
-1. **Time-of-Day Preferences**: Professor preferred times
-2. **Building Proximity**: Distance-based preferences
-3. **Equipment Availability**: Booking conflicts for equipment
-4. **Student Accessibility**: Handicap-accessible preferences
+The code assumes:
 
-### Algorithm Improvements
-- Dynamic preference learning
-- Time-based weight adjustments
-- Multi-objective optimization
+- regular classroom type id = `2`
 
-## References
+For detected hybrid disciplines, block-group scoring adds `+15` when:
 
-- **RF-006**: Autonomous Allocation Algorithm specification
-- **RF-006.6**: Historical frequency bonus requirement
-- **RoomScoringService**: Implementation in `src/services/room_scoring_service.py`
-- **ManualAllocationService**: Integration in `src/services/manual_allocation_service.py`
+- a non-classroom room is scored on a historical lab day
+- or a regular classroom is scored on a historical classroom-only day
+
+Formula used in block-group scoring:
+
+```text
+block_group_score =
+    capacity_points
+    + hard_rules_points
+    + soft_preference_points
+    + historical_frequency_points_for_day
+    + hybrid_bonus_points
+```
+
+---
+
+## Current Formulas
+
+### Full-demand scoring
+
+```text
+total_score =
+    capacity_points
+    + hard_rules_points
+    + soft_preference_points
+    + historical_frequency_points
+```
+
+### Block-group scoring
+
+```text
+total_score =
+    capacity_points
+    + hard_rules_points
+    + soft_preference_points
+    + historical_frequency_points_for_day
+    + hybrid_bonus_points
+```
+
+---
+
+## Sorting And Tie-Breaks
+
+### Full-demand candidates
+
+Candidates are sorted by:
+
+1. higher score
+2. conflict-free rooms before conflicting rooms
+3. higher current occupancy as a tie-break
+
+That occupancy tie-break comes from `src/utils/room_utils.py`.
+
+### Block-group candidates
+
+Candidates are sorted by:
+
+1. higher score
+2. conflict-free rooms before conflicting rooms
+
+There is no occupancy tie-break in the block-group score list.
+
+---
+
+## Manual Vs Autonomous Consistency
+
+The formulas are centralized in `RoomScoringService`, but the flows are not fully identical.
+
+What is aligned:
+
+- capacity scoring
+- hard-rule scoring
+- professor-preference scoring
+- historical scoring formulas
+
+What is not fully aligned today:
+
+- the autonomous partial pipeline injects hybrid detection into `RoomScoringService`
+- the manual allocation service currently instantiates `RoomScoringService` without that injected hybrid service
+- as a result, manual block-group suggestions can diverge from autonomous partial scoring for hybrid disciplines
+
+The manual UI also does not currently expose hybrid bonus details in the block-group scoring breakdown.
+
+---
+
+## Important Caveats
+
+These are the most important code-accurate caveats to know:
+
+1. **`prioridade > 0` rules are not part of the runtime score.**
+2. **Professor preferences are only scored when at least one hard rule is satisfied.**
+3. **Historical counts are row-based at atomic-block level, not distinct-semester counts.**
+4. **Hard-rule violations can still win in later scoring phases if other points compensate.**
+5. **Hybrid bonus is present in autonomous partial scoring but not reliably present in manual block-group suggestions.**
+
+---
+
+## Related Docs
+
+- `docs/UPDATED_ALLOCATION_SCORING_SYSTEM.md`
+- `docs/PARTIAL_ALLOCATION_IMPLEMENTATION.md`
+- `docs/PDF_REPORT_SYSTEM.md`
