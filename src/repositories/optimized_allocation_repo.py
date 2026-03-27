@@ -1,14 +1,15 @@
-"""
-Optimized Allocation Repository - Batch operations for reduced I/O
-"""
-
-from typing import List, Dict, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, text
-from src.repositories.base import BaseRepository
-from src.models.allocation import AlocacaoSemestral
-from src.schemas.allocation import AlocacaoSemestralCreate, AlocacaoSemestralRead
 import logging
+
+"""Optimized Allocation Repository - Batch operations for reduced I/O."""
+
+from typing import Dict, List, Set, Tuple
+
+from sqlalchemy import and_, text
+from sqlalchemy.orm import Session
+
+from src.models.allocation import AlocacaoSemestral
+from src.repositories.base import BaseRepository
+from src.schemas.allocation import AlocacaoSemestralCreate, AlocacaoSemestralRead
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,31 @@ class OptimizedAllocationRepository(
 
     def __init__(self, session: Session):
         super().__init__(session, AlocacaoSemestral)
+        self._semester_occupied_slots_cache: Dict[int, Set[Tuple[int, int, str]]] = {}
+
+    def invalidate_semester_conflict_cache(self, semester_id: int) -> None:
+        """Drop any cached occupied-slot snapshot for a semester."""
+        self._semester_occupied_slots_cache.pop(semester_id, None)
+
+    def _get_semester_occupied_slots(
+        self, semester_id: int
+    ) -> Set[Tuple[int, int, str]]:
+        cached = self._semester_occupied_slots_cache.get(semester_id)
+        if cached is not None:
+            return cached
+
+        occupied_slots = {
+            (alloc.sala_id, alloc.dia_semana_id, alloc.codigo_bloco)
+            for alloc in self.session.query(
+                AlocacaoSemestral.sala_id,
+                AlocacaoSemestral.dia_semana_id,
+                AlocacaoSemestral.codigo_bloco,
+            )
+            .filter(AlocacaoSemestral.semestre_id == semester_id)
+            .all()
+        }
+        self._semester_occupied_slots_cache[semester_id] = occupied_slots
+        return occupied_slots
 
     def dto_to_orm_create(self, dto: AlocacaoSemestralCreate) -> AlocacaoSemestral:
         """Convert DTO to ORM object for creation."""
@@ -63,36 +89,7 @@ class OptimizedAllocationRepository(
         """
         if not room_time_slots:
             return {}
-
-        # Build OR conditions for all slots
-        or_conditions = []
-        for sala_id, dia_semana_id, codigo_bloco in room_time_slots:
-            or_conditions.append(
-                and_(
-                    AlocacaoSemestral.sala_id == sala_id,
-                    AlocacaoSemestral.dia_semana_id == dia_semana_id,
-                    AlocacaoSemestral.codigo_bloco == codigo_bloco,
-                    AlocacaoSemestral.semestre_id == semester_id,
-                )
-            )
-
-        # Single query to check all conflicts
-        existing_allocations = (
-            self.session.query(
-                AlocacaoSemestral.sala_id,
-                AlocacaoSemestral.dia_semana_id,
-                AlocacaoSemestral.codigo_bloco,
-            )
-            .filter(or_(*or_conditions))
-            .all()
-        )
-
-        # Build conflict results
-        occupied_slots = {
-            (alloc.sala_id, alloc.dia_semana_id, alloc.codigo_bloco)
-            for alloc in existing_allocations
-        }
-
+        occupied_slots = self._get_semester_occupied_slots(semester_id)
         return {slot: slot in occupied_slots for slot in room_time_slots}
 
     def create_batch_atomic(
@@ -110,6 +107,12 @@ class OptimizedAllocationRepository(
         if not allocation_dtos:
             return []
 
+        affected_slots_by_semester: Dict[int, Set[Tuple[int, int, str]]] = {}
+        for dto in allocation_dtos:
+            affected_slots_by_semester.setdefault(dto.semestre_id, set()).add(
+                (dto.sala_id, dto.dia_semana_id, dto.codigo_bloco)
+            )
+
         try:
             # Convert all DTOs to ORM objects
             orm_objects = [self.dto_to_orm_create(dto) for dto in allocation_dtos]
@@ -126,6 +129,11 @@ class OptimizedAllocationRepository(
                 self.session.refresh(orm_obj)
 
             # Convert back to DTOs
+            for semester_id, new_slots in affected_slots_by_semester.items():
+                cached = self._semester_occupied_slots_cache.get(semester_id)
+                if cached is not None:
+                    cached.update(new_slots)
+
             return [self.orm_to_dto(obj) for obj in orm_objects]
 
         except Exception as e:

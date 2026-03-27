@@ -12,7 +12,7 @@ Used by both ManualAllocationService and AutonomousAllocationService for consist
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,11 +22,11 @@ from src.models.academic import Professor
 from src.models.inventory import Sala
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.optimized_allocation_repo import OptimizedAllocationRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.manual_allocation import CompatibilityScore
-from src.utils.room_utils import get_room_occupancy
 from src.utils.sigaa_parser import SigaaScheduleParser
 
 logger = logging.getLogger(__name__)
@@ -184,6 +184,7 @@ class RoomScoringService:
         """Initialize with required repositories."""
         self.session = session
         self.alocacao_repo = AlocacaoRepository(session)
+        self.optimized_alocacao_repo = OptimizedAllocationRepository(session)
         self.demanda_repo = DisciplinaRepository(session)
         self.regra_repo = RegraRepository(session)
         self.prof_repo = ProfessorRepository(session)
@@ -192,6 +193,15 @@ class RoomScoringService:
 
         # Hybrid discipline detection service (injected via set_hybrid_detection_service)
         self._hybrid_detection_service = None
+        self._rules_cache: Dict[str, List[Any]] = {}
+        self._available_rooms_cache: Dict[Tuple[str, ...], List[Any]] = {}
+        self._professor_lookup_cache: Dict[str, Optional[Professor]] = {}
+        self._professor_preferences_cache: Dict[int, Dict] = {}
+        self._room_characteristics_cache: Dict[int, set[int]] = {}
+        self._characteristic_name_cache: Dict[int, str] = {}
+        self._historical_frequency_cache: Dict[Tuple[str, int, int], int] = {}
+        self._historical_frequency_day_cache: Dict[Tuple[str, int, int, int], int] = {}
+        self._historical_room_occupancy_cache: Dict[Tuple[int, int], int] = {}
 
     def set_hybrid_detection_service(self, hybrid_service) -> None:
         """
@@ -201,6 +211,147 @@ class RoomScoringService:
             hybrid_service: HybridDisciplineDetectionService instance
         """
         self._hybrid_detection_service = hybrid_service
+
+    def clear_runtime_caches(self) -> None:
+        """Clear mutable runtime caches used during scoring."""
+        self._available_rooms_cache.clear()
+
+    def _get_rules_for_disciplina(self, codigo_disciplina: str) -> List[Any]:
+        if codigo_disciplina not in self._rules_cache:
+            self._rules_cache[codigo_disciplina] = (
+                self.regra_repo.find_rules_by_disciplina(codigo_disciplina)
+            )
+        return self._rules_cache[codigo_disciplina]
+
+    def _get_available_rooms(self, required_blocks: List[str]) -> List[Any]:
+        cache_key = tuple(sorted({block for block in required_blocks if block}))
+        cached = self._available_rooms_cache.get(cache_key)
+        if cached is None:
+            cached = self.sala_repo.get_available_for_allocation(
+                required_blocks=list(cache_key)
+            )
+            self._available_rooms_cache[cache_key] = cached
+        return cached
+
+    def _build_room_occupancy_lookup(
+        self, room_ids: List[int], semester_id: int
+    ) -> Dict[int, int]:
+        unique_room_ids = sorted(set(room_ids))
+        if not unique_room_ids:
+            return {}
+
+        occupancy = self.optimized_alocacao_repo.get_room_occupancy_batch(
+            unique_room_ids,
+            semester_id,
+        )
+
+        unresolved_room_ids = []
+        for room_id in unique_room_ids:
+            if occupancy.get(room_id, 0) > 0:
+                continue
+
+            cached = self._historical_room_occupancy_cache.get((room_id, semester_id))
+            if cached is not None:
+                occupancy[room_id] = cached
+            else:
+                unresolved_room_ids.append(room_id)
+
+        previous_semester_id = semester_id - 1
+        while unresolved_room_ids and previous_semester_id > 0:
+            previous_occupancy = self.optimized_alocacao_repo.get_room_occupancy_batch(
+                unresolved_room_ids,
+                previous_semester_id,
+            )
+            next_unresolved = []
+            for room_id in unresolved_room_ids:
+                historical_count = previous_occupancy.get(room_id, 0)
+                if historical_count > 0:
+                    occupancy[room_id] = historical_count
+                    self._historical_room_occupancy_cache[(room_id, semester_id)] = (
+                        historical_count
+                    )
+                else:
+                    next_unresolved.append(room_id)
+
+            unresolved_room_ids = next_unresolved
+            previous_semester_id -= 1
+
+        for room_id in unresolved_room_ids:
+            occupancy[room_id] = 0
+            self._historical_room_occupancy_cache[(room_id, semester_id)] = 0
+
+        return occupancy
+
+    def _sort_room_candidates(
+        self,
+        candidates: List[RoomCandidate],
+        semester_id: int,
+    ) -> Dict[int, int]:
+        occupancy_lookup = self._build_room_occupancy_lookup(
+            [candidate.sala.id for candidate in candidates],
+            semester_id,
+        )
+        candidates.sort(
+            key=lambda candidate: (
+                candidate.score,
+                not candidate.has_conflicts,
+                occupancy_lookup.get(candidate.sala.id, 0),
+            ),
+            reverse=True,
+        )
+        return occupancy_lookup
+
+    def _build_conflict_lookup(
+        self,
+        room_ids: List[int],
+        atomic_blocks: List[tuple[str, int]],
+        semester_id: int,
+    ) -> Dict[Tuple[int, int, str], bool]:
+        """Resolve room/block conflicts for many candidate rooms in one batch."""
+        unique_room_ids = sorted(set(room_ids))
+        if not unique_room_ids or not atomic_blocks:
+            return {}
+
+        slots = list(
+            dict.fromkeys(
+                (room_id, day_id, block_code)
+                for room_id in unique_room_ids
+                for block_code, day_id in atomic_blocks
+            )
+        )
+        return self.optimized_alocacao_repo.check_conflicts_batch(slots, semester_id)
+
+    def _collect_atomic_conflicts_from_lookup(
+        self,
+        sala_id: int,
+        atomic_blocks: List[tuple[str, int]],
+        conflict_map: Dict[Tuple[int, int, str], bool],
+    ) -> List[Dict]:
+        """Build atomic conflict details from a precomputed lookup."""
+        conflicts = []
+        for bloco_codigo, dia_sigaa in atomic_blocks:
+            if conflict_map.get((sala_id, dia_sigaa, bloco_codigo), False):
+                conflicts.append(
+                    {
+                        "dia_sigaa": dia_sigaa,
+                        "codigo_bloco": bloco_codigo,
+                        "sala_id": sala_id,
+                    }
+                )
+        return conflicts
+
+    def _collect_block_group_conflicts_from_lookup(
+        self,
+        sala_id: int,
+        block_group: BlockGroup,
+        conflict_map: Dict[Tuple[int, int, str], bool],
+    ) -> List[str]:
+        """Build block-group conflict descriptions from a precomputed lookup."""
+        conflicts = []
+        for block_code in block_group.blocks:
+            if conflict_map.get((sala_id, block_group.day_id, block_code), False):
+                conflicts.append(f"{block_group.day_name} {block_code} já alocado")
+        return conflicts
 
     def _split_rules_by_priority(self, rules: List) -> tuple[List, List]:
         """Split discipline rules into hard and soft sets."""
@@ -295,15 +446,18 @@ class RoomScoringService:
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
         # Get rules for this demand
-        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        all_rules = self._get_rules_for_disciplina(demanda.codigo_disciplina)
         hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
         required_blocks = [block_code for block_code, _ in atomic_blocks]
 
         # Get only rooms enabled for the required blocks
-        all_rooms = self.sala_repo.get_available_for_allocation(
-            required_blocks=required_blocks
+        all_rooms = self._get_available_rooms(required_blocks)
+        conflict_map = self._build_conflict_lookup(
+            [room.id for room in all_rooms],
+            atomic_blocks,
+            semester_id,
         )
 
         candidates = []
@@ -341,21 +495,16 @@ class RoomScoringService:
 
             # Check for conflicts within the specified semester
             conflicts = self._check_allocation_conflicts_semester_isolated(
-                candidate, semester_id
+                candidate,
+                semester_id,
+                conflict_map,
             )
             candidate.has_conflicts = len(conflicts) > 0
 
             candidates.append(candidate)
 
         # Sort by score (highest first), then by conflict status, then by room occupancy (highest first for optimization)
-        candidates.sort(
-            key=lambda c: (
-                c.score,
-                not c.has_conflicts,
-                get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id),
-            ),
-            reverse=True,
-        )
+        occupancy_lookup = self._sort_room_candidates(candidates, semester_id)
 
         # Debug: Log when room occupancy optimization affects sorting
         if len(candidates) >= 2:
@@ -367,8 +516,8 @@ class RoomScoringService:
                 logger = logging.getLogger(__name__)
                 logger.debug(
                     f"Room occupancy optimization applied for demand {candidates[0].sala.id}: "
-                    f"Room {candidates[0].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[0].sala.id, semester_id)}) "
-                    f"vs Room {candidates[1].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[1].sala.id, semester_id)})"
+                    f"Room {candidates[0].sala.nome} (occupancy: {occupancy_lookup.get(candidates[0].sala.id, 0)}) "
+                    f"vs Room {candidates[1].sala.nome} (occupancy: {occupancy_lookup.get(candidates[1].sala.id, 0)})"
                 )
 
         return candidates
@@ -398,12 +547,15 @@ class RoomScoringService:
             professor = professor_map.get(demanda_id)
 
         professor_prefs = self._get_professor_preferences_for_professor(professor)
-        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        all_rules = self._get_rules_for_disciplina(demanda.codigo_disciplina)
         hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         required_blocks = sorted({block_code for block_code, _ in pending_blocks})
-        all_rooms = self.sala_repo.get_available_for_allocation(
-            required_blocks=required_blocks
+        all_rooms = self._get_available_rooms(required_blocks)
+        conflict_map = self._build_conflict_lookup(
+            [room.id for room in all_rooms],
+            pending_blocks,
+            semester_id,
         )
 
         candidates = []
@@ -432,19 +584,15 @@ class RoomScoringService:
                 candidate.rule_violations.append("Regras rígidas não atendidas")
 
             conflicts = self._check_atomic_block_conflicts(
-                room.id, pending_blocks, semester_id
+                room.id,
+                pending_blocks,
+                semester_id,
+                conflict_map,
             )
             candidate.has_conflicts = len(conflicts) > 0
             candidates.append(candidate)
 
-        candidates.sort(
-            key=lambda c: (
-                c.score,
-                not c.has_conflicts,
-                get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id),
-            ),
-            reverse=True,
-        )
+        self._sort_room_candidates(candidates, semester_id)
         return candidates
 
     # ========================================================================
@@ -534,12 +682,15 @@ class RoomScoringService:
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
         # Get rules for this demand
-        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        all_rules = self._get_rules_for_disciplina(demanda.codigo_disciplina)
         hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         # Get only rooms enabled for this day's required blocks
-        all_rooms = self.sala_repo.get_available_for_allocation(
-            required_blocks=block_group.blocks
+        all_rooms = self._get_available_rooms(block_group.blocks)
+        conflict_map = self._build_conflict_lookup(
+            [room.id for room in all_rooms],
+            block_group.get_atomic_tuples(),
+            semester_id,
         )
 
         scores = []
@@ -560,7 +711,10 @@ class RoomScoringService:
 
             # Check for conflicts for this block group specifically
             conflicts = self._check_block_group_conflicts(
-                room.id, block_group, semester_id
+                room.id,
+                block_group,
+                semester_id,
+                conflict_map,
             )
 
             # Get room metadata
@@ -810,7 +964,11 @@ class RoomScoringService:
         return 0
 
     def _check_block_group_conflicts(
-        self, sala_id: int, block_group: BlockGroup, semester_id: int
+        self,
+        sala_id: int,
+        block_group: BlockGroup,
+        semester_id: int,
+        conflict_map: Optional[Dict[Tuple[int, int, str], bool]] = None,
     ) -> List[str]:
         """
         Check for conflicts for a specific block group.
@@ -823,17 +981,18 @@ class RoomScoringService:
         Returns:
             List of conflict descriptions (empty if no conflicts)
         """
-        conflicts = []
-
-        for block_code in block_group.blocks:
-            has_conflict = self.alocacao_repo.check_conflict(
-                sala_id, block_group.day_id, block_code, semestre_id=semester_id
+        if conflict_map is None:
+            conflict_map = self._build_conflict_lookup(
+                [sala_id],
+                block_group.get_atomic_tuples(),
+                semester_id,
             )
 
-            if has_conflict:
-                conflicts.append(f"{block_group.day_name} {block_code} já alocado")
-
-        return conflicts
+        return self._collect_block_group_conflicts_from_lookup(
+            sala_id,
+            block_group,
+            conflict_map,
+        )
 
     def _get_building_name(self, predio_id: int) -> str:
         """Get building name by ID."""
@@ -1084,25 +1243,20 @@ class RoomScoringService:
         sala_id: int,
         atomic_blocks: List[tuple[str, int]],
         semester_id: int,
+        conflict_map: Optional[Dict[Tuple[int, int, str], bool]] = None,
     ) -> List[Dict]:
         """Check conflicts for an arbitrary list of atomic blocks."""
-        conflicts = []
-        for bloco_codigo, dia_sigaa in atomic_blocks:
-            has_conflict = self.alocacao_repo.check_conflict(
-                sala_id,
-                dia_sigaa,
-                bloco_codigo,
-                semestre_id=semester_id,
+        if conflict_map is None:
+            conflict_map = self._build_conflict_lookup(
+                [sala_id],
+                atomic_blocks,
+                semester_id,
             )
-            if has_conflict:
-                conflicts.append(
-                    {
-                        "dia_sigaa": dia_sigaa,
-                        "codigo_bloco": bloco_codigo,
-                        "sala_id": sala_id,
-                    }
-                )
-        return conflicts
+        return self._collect_atomic_conflicts_from_lookup(
+            sala_id,
+            atomic_blocks,
+            conflict_map,
+        )
 
     def _check_rule_compliance(self, room, demanda, rule) -> bool:
         """Check if room complies with a specific rule."""
@@ -1158,29 +1312,26 @@ class RoomScoringService:
         return False
 
     def _check_allocation_conflicts_semester_isolated(
-        self, candidate: RoomCandidate, semester_id: int
+        self,
+        candidate: RoomCandidate,
+        semester_id: int,
+        conflict_map: Optional[Dict[Tuple[int, int, str], bool]] = None,
     ) -> List[Dict]:
         """
         Check for conflicts within a specific semester only (not cross-semester).
         """
-        conflicts = []
-
-        for bloco_codigo, dia_sigaa in candidate.atomic_blocks:
-            # Check for conflicts IN THE SPECIFIED SEMESTER only
-            has_conflict = self.alocacao_repo.check_conflict(
-                candidate.sala.id, dia_sigaa, bloco_codigo, semestre_id=semester_id
+        if conflict_map is None:
+            conflict_map = self._build_conflict_lookup(
+                [candidate.sala.id],
+                candidate.atomic_blocks,
+                semester_id,
             )
 
-            if has_conflict:
-                conflicts.append(
-                    {
-                        "dia_sigaa": dia_sigaa,
-                        "codigo_bloco": bloco_codigo,
-                        "sala_id": candidate.sala.id,
-                    }
-                )
-
-        return conflicts
+        return self._collect_atomic_conflicts_from_lookup(
+            candidate.sala.id,
+            candidate.atomic_blocks,
+            conflict_map,
+        )
 
     def _get_professor_preferences_for_professor(
         self, professor: Optional[Professor]
@@ -1190,6 +1341,10 @@ class RoomScoringService:
 
         if not professor:
             return prefs
+
+        cached = self._professor_preferences_cache.get(professor.id)
+        if cached is not None:
+            return cached
 
         # Get room preferences
         stmt = text(
@@ -1211,6 +1366,7 @@ class RoomScoringService:
         ]
         prefs["preferred_characteristics"].extend(char_prefs)
 
+        self._professor_preferences_cache[professor.id] = prefs
         return prefs
 
     def _calculate_historical_frequency_bonus(
@@ -1230,6 +1386,11 @@ class RoomScoringService:
         Returns:
             Historical frequency points (already capped at MAX_CAP value)
         """
+        cache_key = (disciplina_codigo, sala_id, exclude_semester_id)
+        cached = self._historical_frequency_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         # Use existing repository method to get frequency count
         frequency = self.alocacao_repo.get_discipline_room_frequency(
             disciplina_codigo, sala_id, exclude_semester_id
@@ -1241,7 +1402,9 @@ class RoomScoringService:
         )
 
         # Cap at maximum POINTS (not maximum allocations)
-        return min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+        result = min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+        self._historical_frequency_cache[cache_key] = result
+        return result
 
     def _calculate_historical_frequency_bonus_per_day(
         self,
@@ -1269,6 +1432,11 @@ class RoomScoringService:
         Returns:
             Historical frequency points for this day (capped at MAX_CAP value)
         """
+        cache_key = (disciplina_codigo, sala_id, dia_semana_id, exclude_semester_id)
+        cached = self._historical_frequency_day_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         # Use new repository method to get day-specific frequency count
         frequency = self.alocacao_repo.get_discipline_room_day_frequency(
             disciplina_codigo, sala_id, dia_semana_id, exclude_semester_id
@@ -1280,7 +1448,9 @@ class RoomScoringService:
         )
 
         # Cap at maximum POINTS (not maximum allocations)
-        return min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+        result = min(historical_points, SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP)
+        self._historical_frequency_day_cache[cache_key] = result
+        return result
 
     def _lookup_professors_for_demands_from_objects(
         self, demands
@@ -1298,7 +1468,11 @@ class RoomScoringService:
                 professor = None
 
                 for prof_name in prof_names:
-                    professor = self.prof_repo.get_by_nome_completo(prof_name)
+                    if prof_name not in self._professor_lookup_cache:
+                        self._professor_lookup_cache[prof_name] = (
+                            self.prof_repo.get_by_nome_completo(prof_name)
+                        )
+                    professor = self._professor_lookup_cache[prof_name]
                     if professor:
                         break
 
@@ -1308,17 +1482,29 @@ class RoomScoringService:
 
     def _get_room_characteristics(self, sala_id: int):
         """Get characteristic IDs for a room."""
+        cached = self._room_characteristics_cache.get(sala_id)
+        if cached is not None:
+            return cached
+
         stmt = text(
             "SELECT caracteristica_id FROM sala_caracteristicas WHERE sala_id = :sala_id"
         )
         rows = self.session.execute(stmt, {"sala_id": sala_id}).fetchall()
-        return {row[0] for row in rows}
+        characteristics = {row[0] for row in rows}
+        self._room_characteristics_cache[sala_id] = characteristics
+        return characteristics
 
     def _get_characteristic_name(self, caracteristica_id: int) -> str:
         """Get characteristic name by ID."""
+        cached = self._characteristic_name_cache.get(caracteristica_id)
+        if cached is not None:
+            return cached
+
         stmt = text("SELECT nome FROM caracteristicas WHERE id = :cid")
         row = self.session.execute(stmt, {"cid": caracteristica_id}).fetchone()
-        return row[0] if row else ""
+        name = row[0] if row else ""
+        self._characteristic_name_cache[caracteristica_id] = name
+        return name
 
     def _get_rule_description(self, rule) -> str:
         """Get human-readable description of a rule for UI display."""

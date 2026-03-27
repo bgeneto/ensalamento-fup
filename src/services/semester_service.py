@@ -101,9 +101,7 @@ def sync_semester_from_api(
 
         semestre = sem_repo.get_by_name(semestre_name)
         if not semestre:
-            semestre = sem_repo.create(
-                {"nome": semestre_name, "status": "Planejamento"}
-            )
+            semestre = sem_repo.create({"nome": semestre_name, "status": False})
             summary["created_semestre"] = 1
 
         # collect all professor names to provision later
@@ -247,12 +245,14 @@ def sync_semester_from_api(
                 summary["skipped_details"].append(detail)
                 logger.exception("Exception while creating demanda: %s", detail)
 
-            removal_result = demanda_sync_service.mark_missing_offers_as_removed(
-                semestre.id, seen_external_ids
-            )
-            summary["removed_in_api"] = removal_result["removed_in_api"]
-            summary["revalidation_required"] += removal_result["revalidation_required"]
-            summary["demandas"] = summary["created"] + summary["updated_from_api"]
+        removal_result = demanda_sync_service.mark_missing_offers_as_removed(
+            semestre.id, seen_external_ids
+        )
+        summary["removed_in_api"] = removal_result["removed_in_api"]
+        summary["revalidation_required"] += removal_result["revalidation_required"]
+        summary["demandas"] = (
+            summary["created"] + summary["updated_from_api"] + summary["unchanged"]
+        )
 
         # Provision professors (idempotent)
         for nome in sorted(prof_names_to_provision):

@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session
 from src.config.settings import Settings
 from src.repositories.optimized_allocation_repo import OptimizedAllocationRepository
 from src.schemas.allocation import AlocacaoSemestralCreate
-from src.services.allocation_continuity_planner import AllocationContinuityPlanner
+from src.services.allocation_continuity_planner import (
+    AllocationContinuityPlanner,
+    DemandContinuityProfile,
+)
 from src.services.autonomous_allocation_report_service import (
     AutonomousAllocationReportService,
 )
@@ -384,19 +387,40 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         demanda: Any,
         semester_id: int,
         professor: Optional[Any] = None,
+        profile: Optional[DemandContinuityProfile] = None,
     ) -> ContinuityScoringContext:
         """Build continuity context for whole-demand consolidation attempts."""
-        anchor = self.continuity_planner.resolve_professor_anchor(
-            professor, semester_id
-        )
+        anchor = None
+        if profile is None:
+            anchor = self.continuity_planner.resolve_professor_anchor(
+                professor, semester_id
+            )
         return ContinuityScoringContext(
-            is_hybrid=self._is_hybrid_demand(demanda.codigo_disciplina),
-            discipline_existing_room_ids=self._get_existing_room_ids_for_demand(
-                demanda.id
+            is_hybrid=(
+                profile.is_hybrid
+                if profile is not None
+                else self._is_hybrid_demand(demanda.codigo_disciplina)
             ),
-            professor_anchor_room_id=anchor.room_id if anchor else None,
-            professor_anchor_building_id=anchor.building_id if anchor else None,
-            professor_anchor_room_type_id=anchor.room_type_id if anchor else None,
+            discipline_existing_room_ids=(
+                profile.existing_room_ids
+                if profile is not None
+                else self._get_existing_room_ids_for_demand(demanda.id)
+            ),
+            professor_anchor_room_id=(
+                profile.professor_anchor_room_id
+                if profile is not None
+                else (anchor.room_id if anchor else None)
+            ),
+            professor_anchor_building_id=(
+                profile.professor_anchor_building_id
+                if profile is not None
+                else (anchor.building_id if anchor else None)
+            ),
+            professor_anchor_room_type_id=(
+                profile.professor_anchor_room_type_id
+                if profile is not None
+                else (anchor.room_type_id if anchor else None)
+            ),
         )
 
     def _build_block_group_continuity_context(
@@ -407,11 +431,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         pending_blocks_by_day: Dict[int, List[Tuple[str, int]]],
         semester_id: int,
         professor: Optional[Any] = None,
+        profile: Optional[DemandContinuityProfile] = None,
     ) -> ContinuityScoringContext:
         """Build continuity context for partial per-day fallback scoring."""
-        anchor = self.continuity_planner.resolve_professor_anchor(
-            professor, semester_id
-        )
+        anchor = None
+        if profile is None:
+            anchor = self.continuity_planner.resolve_professor_anchor(
+                professor, semester_id
+            )
         remaining_days = {
             day_id: blocks
             for day_id, blocks in pending_blocks_by_day.items()
@@ -432,13 +459,31 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         }
 
         return ContinuityScoringContext(
-            is_hybrid=self._is_hybrid_demand(demanda.codigo_disciplina),
-            discipline_existing_room_ids=self._get_existing_room_ids_for_demand(
-                demanda.id
+            is_hybrid=(
+                profile.is_hybrid
+                if profile is not None
+                else self._is_hybrid_demand(demanda.codigo_disciplina)
             ),
-            professor_anchor_room_id=anchor.room_id if anchor else None,
-            professor_anchor_building_id=anchor.building_id if anchor else None,
-            professor_anchor_room_type_id=anchor.room_type_id if anchor else None,
+            discipline_existing_room_ids=(
+                profile.existing_room_ids
+                if profile is not None
+                else self._get_existing_room_ids_for_demand(demanda.id)
+            ),
+            professor_anchor_room_id=(
+                profile.professor_anchor_room_id
+                if profile is not None
+                else (anchor.room_id if anchor else None)
+            ),
+            professor_anchor_building_id=(
+                profile.professor_anchor_building_id
+                if profile is not None
+                else (anchor.building_id if anchor else None)
+            ),
+            professor_anchor_room_type_id=(
+                profile.professor_anchor_room_type_id
+                if profile is not None
+                else (anchor.room_type_id if anchor else None)
+            ),
             future_day_coverage_by_room_id=future_coverage_by_room_id,
         )
 
@@ -447,13 +492,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         demands: List[Any],
         semester_id: int,
         dry_run: bool,
+        profiles: Optional[Dict[int, DemandContinuityProfile]] = None,
     ) -> PhaseResult:
         """Phase 1.5: consolidate non-hybrid disciplines into one room when viable."""
         result = PhaseResult()
         if not demands:
             return result
 
-        profiles = self._prepare_continuity_profiles(demands, semester_id)
+        profiles = profiles or self._prepare_continuity_profiles(demands, semester_id)
         prioritized_ids = self.continuity_planner.prioritize_demands_for_continuity(
             profiles
         )
@@ -482,6 +528,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 demanda,
                 semester_id,
                 professor,
+                profile,
             )
             candidates = self.scoring_service.score_room_candidates_for_full_continuity(
                 demanda_id=demanda_id,
@@ -534,6 +581,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         demands: List[Any],
         semester_id: int,
         dry_run: bool,
+        profiles: Optional[Dict[int, DemandContinuityProfile]] = None,
     ) -> Tuple[PhaseResult, List[BlockGroupAllocationResult]]:
         """
         Execute partial allocation phase: process each demand's block-groups independently.
@@ -561,6 +609,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         for demanda in demands:
             demanda_id = demanda.id
             professor = professor_map.get(demanda_id)
+            profile = profiles.get(demanda_id) if profiles else None
 
             # Group only pending blocks by day so reruns resume partial demands.
             block_groups = self._group_pending_blocks_by_day(
@@ -585,6 +634,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     block_groups,
                     semester_id,
                     professor,
+                    profile,
                 )
 
                 # Score rooms for this specific block group
@@ -796,6 +846,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             if not dry_run:
                 self.session.commit()
+                self.continuity_planner.clear_runtime_caches()
                 logger.info("Phase 1 allocations committed")
 
             # Get remaining demands after Phase 1
@@ -826,6 +877,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 remaining_demands,
                 semester_id,
                 dry_run,
+                continuity_profiles,
             )
             phase_timings["phase1_5_continuity"] = round(
                 time.perf_counter() - phase_start, 4
@@ -836,6 +888,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             if not dry_run:
                 self.session.commit()
+                self.continuity_planner.clear_runtime_caches()
                 logger.info("Phase 1.5 allocations committed")
 
             phase_start = time.perf_counter()
@@ -853,12 +906,13 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             phase_start = time.perf_counter()
             partial_result, block_group_results = (
                 self._execute_partial_allocation_phase(
-                    remaining_demands, semester_id, dry_run
+                    remaining_demands,
+                    semester_id,
+                    dry_run,
+                    continuity_profiles,
                 )
             )
-            phase_timings["phase_partial"] = round(
-                time.perf_counter() - phase_start, 4
-            )
+            phase_timings["phase_partial"] = round(time.perf_counter() - phase_start, 4)
 
             if not dry_run:
                 self.session.commit()
@@ -954,7 +1008,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 f"Partial allocation complete: {allocated_block_groups}/{total_block_groups} "
                 f"block groups allocated, {split_demands} demands split across rooms"
             )
-            logger.info("Partial allocation performance: %s", final_result["performance"])
+            logger.info(
+                "Partial allocation performance: %s", final_result["performance"]
+            )
 
             return final_result
 

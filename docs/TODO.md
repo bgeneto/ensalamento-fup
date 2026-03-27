@@ -2,13 +2,13 @@ Sugestões para aprimorar o sistema de ensalamento:
 
 
 
-- Única forma de desfazer o ensalamento é removendo todas as demandas, seria possível criar uma forma de desfazer o ensalamento completamente sem mexer nas demandas? 
+- ~~Única forma de desfazer o ensalamento é removendo todas as demandas, seria possível criar uma forma de desfazer o ensalamento completamente sem mexer nas demandas?~~ 
 
-- A ação de sincronizar a demanda com a API do sistema de oferta desfaz toda a demanda, inclusive as demandas acrescentadas e/ou alteradas manualmente.
+- ~~A ação de sincronizar a demanda com a API do sistema de oferta desfaz toda a demanda, inclusive as demandas acrescentadas e/ou alteradas manualmente.~~
 
 - Depois de travar uma sala ela fica indisponível p/ novas alocações.
 
-- Pesquisa/filtro de disciplina na página Ensalamento 
+- ~~Pesquisa/filtro de disciplina na página Ensalamento~~ 
 
 - ~~Preferir alocar as disciplinas diferentes de um mesmo professor na mesma sala sempre que possível~~
 
@@ -16,13 +16,13 @@ Sugestões para aprimorar o sistema de ensalamento:
 
 - ~~Iniciar a distribuição pelas disciplinas que tenham horários em dias diferentes, depois as blocadas.~~ 
 
-- Verificar se um update/deploy do sistema mantém as configs de pontuação contidas no arquivos de config
+- ~~Verificar se um update/deploy do sistema mantém as configs de pontuação contidas no arquivos de config~~
 
 
 
 ---
 
-Prompt:
+Prompt: Okay, fixed!
 
 No modo parcial, blocos do mesmo dia ficam juntos; dias diferentes podem ir para salas diferentes. Esse agrupamento por dia é a base do split allocation: sigaa_parser.py (line 191) e optimized_autonomous_allocation_service.py (line 235). Isso dificulta os seguintes pontos/exigências: 
 
@@ -38,6 +38,12 @@ Como podemos adaptar/melhorar o fluxo do modo de alocação utilizado (parcial) 
 ---
 
 
+
+Prompt: Okay, Fixed!
+
+Verifique se um update do sistema ou deploy via docker mantém as configs de pontuação contidas no arquivo de config scoring_config.json e outras configurações. eu detectei que um docker build seguindo de um docker compose up está perdendo certas configurações já definidas anteriormente pelo usuário.
+
+---
 
 Prompt:
 

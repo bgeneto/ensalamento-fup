@@ -13,8 +13,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from src.models.academic import Demanda
 from src.models.allocation import AlocacaoSemestral
 from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.optimized_allocation_repo import OptimizedAllocationRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
@@ -62,17 +64,37 @@ class AllocationContinuityPlanner:
     def __init__(self, session: Session, hybrid_service: Optional[Any] = None):
         self.session = session
         self.alocacao_repo = AlocacaoRepository(session)
+        self.optimized_alocacao_repo = OptimizedAllocationRepository(session)
         self.prof_repo = ProfessorRepository(session)
         self.regra_repo = RegraRepository(session)
         self.sala_repo = SalaRepository(session)
         self.parser = SigaaScheduleParser()
         self.scoring_service = RoomScoringService(session)
         self.hybrid_service = hybrid_service
+        self._professor_lookup_cache: Dict[str, Optional[Any]] = {}
+        self._professor_anchor_cache: Dict[
+            Tuple[int, int], Optional[ProfessorAnchor]
+        ] = {}
+        self._professor_room_usage_cache: Dict[
+            Tuple[str, Optional[int], Optional[int]], Counter
+        ] = {}
+        self._existing_room_ids_cache: Dict[int, Tuple[List[int], Optional[int]]] = {}
+        self._room_enabled_blocks_cache: Dict[Tuple[int, Tuple[str, ...]], bool] = {}
+        self._specific_room_constraint_cache: Dict[str, bool] = {}
+        self._room_cache: Dict[int, Any] = {}
+
+    def clear_runtime_caches(self) -> None:
+        """Clear caches that depend on current allocation state."""
+        self._professor_anchor_cache.clear()
+        self._professor_room_usage_cache.clear()
+        self._existing_room_ids_cache.clear()
+        self._room_enabled_blocks_cache.clear()
 
     def build_demand_profiles(
         self, demands: List[Any], semester_id: int
     ) -> Dict[int, DemandContinuityProfile]:
         """Build continuity profiles for a batch of pending demands."""
+        self.clear_runtime_caches()
         profiles: Dict[int, DemandContinuityProfile] = {}
 
         for demanda in demands:
@@ -89,13 +111,20 @@ class AllocationContinuityPlanner:
             )
             professor = self._resolve_primary_professor(demanda)
             professor_anchor = self.resolve_professor_anchor(professor, semester_id)
-            hard_rules = self.regra_repo.find_rules_by_disciplina(
+            has_specific_room_constraint = self._specific_room_constraint_cache.get(
                 demanda.codigo_disciplina
             )
-            has_specific_room_constraint = any(
-                rule.prioridade == 0 and rule.tipo_regra == "DISCIPLINA_SALA"
-                for rule in hard_rules
-            )
+            if has_specific_room_constraint is None:
+                hard_rules = self.regra_repo.find_rules_by_disciplina(
+                    demanda.codigo_disciplina
+                )
+                has_specific_room_constraint = any(
+                    rule.prioridade == 0 and rule.tipo_regra == "DISCIPLINA_SALA"
+                    for rule in hard_rules
+                )
+                self._specific_room_constraint_cache[demanda.codigo_disciplina] = (
+                    has_specific_room_constraint
+                )
 
             profiles[demanda_id] = DemandContinuityProfile(
                 demanda_id=demanda_id,
@@ -128,6 +157,10 @@ class AllocationContinuityPlanner:
         if professor is None or getattr(professor, "id", None) is None:
             return None
 
+        cache_key = (professor.id, semester_id)
+        if cache_key in self._professor_anchor_cache:
+            return self._professor_anchor_cache[cache_key]
+
         professor_name = getattr(professor, "nome_completo", "") or ""
         if not professor_name.strip():
             return None
@@ -137,27 +170,32 @@ class AllocationContinuityPlanner:
         )
         if current_counts:
             room_id, allocation_count = self._select_anchor_room(current_counts)
-            return self._build_anchor(
+            anchor = self._build_anchor(
                 professor_id=professor.id,
                 semester_id=semester_id,
                 room_id=room_id,
                 allocation_count=allocation_count,
                 source="current_semester",
             )
+            self._professor_anchor_cache[cache_key] = anchor
+            return anchor
 
         historical_counts = self._count_professor_room_usage(
             professor_name, semester_id=None, exclude_semester_id=semester_id
         )
         if historical_counts:
             room_id, allocation_count = self._select_anchor_room(historical_counts)
-            return self._build_anchor(
+            anchor = self._build_anchor(
                 professor_id=professor.id,
                 semester_id=semester_id,
                 room_id=room_id,
                 allocation_count=allocation_count,
                 source="historical",
             )
+            self._professor_anchor_cache[cache_key] = anchor
+            return anchor
 
+        self._professor_anchor_cache[cache_key] = None
         return None
 
     def get_full_compatible_rooms(
@@ -213,19 +251,23 @@ class AllocationContinuityPlanner:
     ) -> int:
         """Count how many pending day-groups a room can still cover fully."""
         covered_days = 0
+        room_time_slots = [
+            (room_id, day_id, block_code)
+            for blocks in pending_by_day.values()
+            for block_code, day_id in blocks
+        ]
+        conflict_map = self.optimized_alocacao_repo.check_conflicts_batch(
+            room_time_slots,
+            semester_id,
+        )
 
         for blocks in pending_by_day.values():
             block_codes = [block_code for block_code, _ in blocks]
-            if not self.sala_repo.is_room_enabled_for_blocks(room_id, block_codes):
+            if not self._is_room_enabled_for_blocks_cached(room_id, block_codes):
                 continue
 
             has_conflict = any(
-                self.alocacao_repo.check_conflict(
-                    room_id,
-                    day_id,
-                    block_code,
-                    semestre_id=semester_id,
-                )
+                conflict_map.get((room_id, day_id, block_code), False)
                 for block_code, day_id in blocks
             )
             if not has_conflict:
@@ -261,11 +303,17 @@ class AllocationContinuityPlanner:
     def _get_existing_room_ids(
         self, demanda_id: int
     ) -> Tuple[List[int], Optional[int]]:
+        cached = self._existing_room_ids_cache.get(demanda_id)
+        if cached is not None:
+            return cached
+
         allocations = self.alocacao_repo.get_by_demanda(demanda_id)
         room_counts = Counter(alloc.sala_id for alloc in allocations)
         ordered_room_ids = [room_id for room_id, _ in room_counts.most_common()]
         preferred_existing_room_id = ordered_room_ids[0] if ordered_room_ids else None
-        return ordered_room_ids, preferred_existing_room_id
+        result = (ordered_room_ids, preferred_existing_room_id)
+        self._existing_room_ids_cache[demanda_id] = result
+        return result
 
     def _resolve_primary_professor(self, demanda: Any) -> Optional[Any]:
         professor_text = (getattr(demanda, "professores_disciplina", "") or "").strip()
@@ -273,7 +321,11 @@ class AllocationContinuityPlanner:
             return None
 
         primary_name = self._extract_primary_professor_name(professor_text)
-        return self.prof_repo.get_by_nome_completo(primary_name)
+        if primary_name not in self._professor_lookup_cache:
+            self._professor_lookup_cache[primary_name] = (
+                self.prof_repo.get_by_nome_completo(primary_name)
+            )
+        return self._professor_lookup_cache[primary_name]
 
     def _extract_primary_professor_name(self, raw_text: str) -> str:
         normalized = raw_text.replace(";", ",").replace("\n", ",")
@@ -286,20 +338,26 @@ class AllocationContinuityPlanner:
         semester_id: Optional[int],
         exclude_semester_id: Optional[int] = None,
     ) -> Counter:
-        query = self.session.query(AlocacaoSemestral).join(AlocacaoSemestral.demanda)
+        cache_key = (professor_name, semester_id, exclude_semester_id)
+        cached = self._professor_room_usage_cache.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        query = self.session.query(
+            AlocacaoSemestral.sala_id,
+            Demanda.professores_disciplina,
+        ).join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
         if semester_id is not None:
             query = query.filter(AlocacaoSemestral.semestre_id == semester_id)
         if exclude_semester_id is not None:
             query = query.filter(AlocacaoSemestral.semestre_id != exclude_semester_id)
 
         counts: Counter = Counter()
-        for allocation in query.all():
-            demand = allocation.demanda
-            if demand and self._demand_mentions_professor(
-                demand.professores_disciplina, professor_name
-            ):
-                counts[allocation.sala_id] += 1
+        for sala_id, professor_text in query.all():
+            if self._demand_mentions_professor(professor_text, professor_name):
+                counts[sala_id] += 1
 
+        self._professor_room_usage_cache[cache_key] = counts.copy()
         return counts
 
     def _demand_mentions_professor(
@@ -326,7 +384,11 @@ class AllocationContinuityPlanner:
         allocation_count: int,
         source: str,
     ) -> Optional[ProfessorAnchor]:
-        room = self.sala_repo.get_by_id(room_id)
+        room = self._room_cache.get(room_id)
+        if room is None:
+            room = self.sala_repo.get_by_id(room_id)
+            if room is not None:
+                self._room_cache[room_id] = room
         if room is None:
             return None
 
@@ -346,3 +408,16 @@ class AllocationContinuityPlanner:
         if not getattr(self.hybrid_service, "_is_initialized", False):
             return False
         return bool(self.hybrid_service.is_hybrid(codigo_disciplina))
+
+    def _is_room_enabled_for_blocks_cached(
+        self, sala_id: int, block_codes: List[str]
+    ) -> bool:
+        required = tuple(sorted({code for code in block_codes if code}))
+        cache_key = (sala_id, required)
+        cached = self._room_enabled_blocks_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = self.sala_repo.is_room_enabled_for_blocks(sala_id, list(required))
+        self._room_enabled_blocks_cache[cache_key] = result
+        return result

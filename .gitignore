@@ -216,6 +216,7 @@ dev_*.py
 test_*.py
 !tests/test_alloc_queue_filters.py
 !tests/test_manual_allocation_service.py
+!tests/test_demanda_sync_behavior.py
 
 # Documentation build
 docs/build/

@@ -40,6 +40,11 @@ from src.utils.cache_helpers import (
     get_sigaa_discrepancy_service,
     get_sigaa_parser,
 )
+from src.utils.demanda_ui import (
+    build_course_ignore_options,
+    default_ignored_courses,
+    sanitize_ignored_courses,
+)
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 st.title("🧭 Demanda Semestral")
@@ -49,6 +54,7 @@ st.info(
     ℹ️ Use esta página para visualizar, importar, editar, remover ou adicionar demandas de oferta de disciplinas.
     - A importação de demandas é realizada por meio da integração com Sistema de Oferta FUP/UnB.
     - Antes de importar, você pode **ignorar** cursos específicos que não devem ser considerados na alocação de salas.
+    - `LEDOC` e `OUTROS` vêm pré-selecionados para ignorar por padrão, mas você pode desmarcá-los a qualquer momento.
     - Para importar, basta garantir que o semestre correto esteja pré-selecionado e então clicar em **🔄 Sincronizar Demanda**.
     - Só é possível importar demandas para semestres que estejam ativos (veja página **⚙️ Configurações**).
     - A importação é uma etapa necessária **antes** de realizar o ensalamento, garantindo que as demandas sejam atendidas.
@@ -190,39 +196,25 @@ with get_db_session() as session:
     if semestre:
         semestre_status_active = semestre.status
 
-# Allow ignoring some courses by default
-# Get list of unique course codes from demandas table or use predefined list if empty
+# Build a stable ignore-courses selector using DB codes plus known fallbacks
 with get_db_session() as session:
     dem_repo = DisciplinaRepository(session)
     cursos_from_db = dem_repo.get_unique_course_codes()
 
-# Use course codes from DB or fallback to predefined list if DB is empty
-if len(cursos_from_db) > 2:  # arbitrary threshold to consider DB data valid
-    options_cursos = cursos_from_db
+options_cursos = build_course_ignore_options(cursos_from_db)
+ignored_courses_key = f"demanda_cursos_ignorados_{selected_semester_id}"
+if ignored_courses_key not in st.session_state:
+    st.session_state[ignored_courses_key] = default_ignored_courses(options_cursos)
 else:
-    options_cursos = [
-        "PPGCIMA",
-        "PPGCA-M",
-        "PPGCA-D",
-        "CND",
-        "CNN",
-        "LEDOC",
-        "PPGEC",
-        "GAM",
-        "GEAGRO",
-        "PROFAGUA",
-        "PPGP",
-        "PPG-MADER",
-        "OUTROS",
-    ]
-
-# Determine default ignored courses (LEDOC if available)
-default_ignored = [c for c in ("LEDOC", "OUTROS") if c in options_cursos]
+    st.session_state[ignored_courses_key] = sanitize_ignored_courses(
+        st.session_state.get(ignored_courses_key), options_cursos
+    )
 
 cursos_ignorados = st.multiselect(
     "Cursos a Ignorar:",
     options=options_cursos,
-    default=default_ignored,  # "LEDOC" and "Outros" by default are ignored (if available)
+    key=ignored_courses_key,
+    help="Selecione apenas os cursos que devem ficar fora desta sincronização.",
     width=400,
 )
 
@@ -681,6 +673,8 @@ if st.session_state.sync_semestre_processing:
                 f"{summary['removed_in_api']} removida(s) na API e "
                 f"{summary['professores']} professor(es) criado(s)."
             )
+            if summary.get("skipped"):
+                sync_message += f" {summary['skipped']} oferta(s) foram ignorada(s) ou descartada(s)."
             if summary.get("revalidation_required"):
                 sync_message += f" {summary['revalidation_required']} demanda(s) exigem revalidação."
             set_session_feedback(
