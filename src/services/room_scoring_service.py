@@ -11,27 +11,42 @@ Used by both ManualAllocationService and AutonomousAllocationService for consist
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.config.scoring_config import (
-    SCORING_WEIGHTS,
-)
-from src.repositories.alocacao import AlocacaoRepository
-from src.repositories.disciplina import DisciplinaRepository
-
-logger = logging.getLogger(__name__)
+from src.config.scoring_config import SCORING_WEIGHTS
 from src.models.academic import Professor
 from src.models.inventory import Sala
+from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.manual_allocation import CompatibilityScore
 from src.utils.room_utils import get_room_occupancy
 from src.utils.sigaa_parser import SigaaScheduleParser
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ContinuityScoringContext:
+    """Optional context for future continuity-aware scoring phases.
+
+    This context is intentionally neutral in the initial infrastructure step:
+    the scorer accepts it, but does not yet alter room ranking.
+    """
+
+    is_hybrid: bool = False
+    discipline_existing_room_ids: List[int] = field(default_factory=list)
+    professor_anchor_room_id: Optional[int] = None
+    professor_anchor_building_id: Optional[int] = None
+    professor_anchor_room_type_id: Optional[int] = None
+    future_day_coverage_count: int = 0
+    future_day_coverage_by_room_id: Dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,9 +58,14 @@ class ScoringBreakdown:
     hard_rules_points: int = 0
     soft_preference_points: int = 0
     historical_frequency_points: int = 0
+    discipline_continuity_points: int = 0
+    professor_anchor_points: int = 0
+    future_coverage_points: int = 0
+    fragmentation_penalty: int = 0
 
     # Details for each category
     capacity_satisfied: bool = False
+    hard_rules_compliant: bool = True
     hard_rules_satisfied: List[str] = None  # Names of satisfied rules
     soft_preferences_satisfied: List[str] = None  # Names of satisfied preferences
     historical_allocations: int = (
@@ -113,9 +133,14 @@ class BlockGroupScoringBreakdown:
     soft_preference_points: int = 0
     historical_frequency_points: int = 0
     hybrid_bonus_points: int = 0  # Bonus for hybrid discipline room type match
+    discipline_continuity_points: int = 0
+    professor_anchor_points: int = 0
+    future_coverage_points: int = 0
+    fragmentation_penalty: int = 0
 
     # Details
     capacity_satisfied: bool = False
+    hard_rules_compliant: bool = True
     hard_rules_satisfied: List[str] = None
     soft_preferences_satisfied: List[str] = None
     historical_allocations: int = 0  # Count for THIS DAY specifically
@@ -177,11 +202,66 @@ class RoomScoringService:
         """
         self._hybrid_detection_service = hybrid_service
 
+    def _split_rules_by_priority(self, rules: List) -> tuple[List, List]:
+        """Split discipline rules into hard and soft sets."""
+        hard_rules = [rule for rule in rules if rule.prioridade == 0]
+        soft_rules = [rule for rule in rules if rule.prioridade > 0]
+        return hard_rules, soft_rules
+
+    def _evaluate_hard_rules(
+        self, room: Sala, demanda, hard_rules: List
+    ) -> tuple[bool, int, List[str]]:
+        """Return hard-rule compliance, awarded points, and matched rule labels."""
+        if not hard_rules:
+            return True, 0, []
+
+        hard_point_total = 0
+        hard_rules_satisfied_list = []
+
+        for rule in hard_rules:
+            compliance = self._check_rule_compliance(room, demanda, rule)
+
+            logger.debug(
+                f"Hard rule check: {rule.descricao} | "
+                f"Room: {room.nome} (tipo_sala_id={room.tipo_sala_id}) | "
+                f"Compliant: {compliance}"
+            )
+
+            if not compliance:
+                return False, 0, []
+
+            hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
+            hard_rules_satisfied_list.append(self._get_rule_description(rule))
+
+        return True, hard_point_total, hard_rules_satisfied_list
+
+    def _evaluate_soft_rules(
+        self, room: Sala, demanda, soft_rules: List
+    ) -> tuple[int, List[str]]:
+        """Return points and descriptions for satisfied soft rules."""
+        soft_rule_points = 0
+        soft_rule_matches = []
+
+        for rule in soft_rules:
+            if not self._check_rule_compliance(room, demanda, rule):
+                continue
+
+            soft_rule_points += rule.prioridade
+            description = (
+                rule.descricao.strip()
+                if rule.descricao
+                else self._get_rule_description(rule)
+            )
+            soft_rule_matches.append(f"Regra suave: {description}")
+
+        return soft_rule_points, soft_rule_matches
+
     def score_room_candidates_for_demand(
         self,
         demanda_id: int,
         semester_id: int,
         professor_override: Optional[Professor] = None,
+        continuity_context: Optional[ContinuityScoringContext] = None,
     ) -> List[RoomCandidate]:
         """
         Score all room candidates for a demand using advanced algorithm.
@@ -214,8 +294,9 @@ class RoomScoringService:
         # Get professor preferences
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
-        # Get hard rules for this demand
-        hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        # Get rules for this demand
+        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
         required_blocks = [block_code for block_code, _ in atomic_blocks]
@@ -234,23 +315,29 @@ class RoomScoringService:
 
             # Calculate detailed scoring breakdown
             scoring_breakdown = self._calculate_detailed_scoring_breakdown(
-                room, demanda, hard_rules, professor_prefs, semester_id
+                room,
+                demanda,
+                all_rules,
+                professor_prefs,
+                semester_id,
+                continuity_context,
             )
+
+            if hard_rules and not scoring_breakdown.hard_rules_compliant:
+                continue
 
             candidate.score = scoring_breakdown.total_score
             candidate.scoring_breakdown = scoring_breakdown
 
             # Extract rule violations for compatibility
             candidate.rule_violations = []
-            if (
-                not scoring_breakdown.capacity_satisfied
-                or not scoring_breakdown.hard_rules_satisfied
-            ):
-                # Build violations from what was missing
-                if not scoring_breakdown.capacity_satisfied:
-                    candidate.rule_violations.append("Capacidade insuficiente")
-                if not scoring_breakdown.hard_rules_satisfied:
-                    candidate.rule_violations.append("Regras rígidas não atendidas")
+            if not scoring_breakdown.capacity_satisfied:
+                candidate.rule_violations.append("Capacidade insuficiente")
+            if hard_rules and not scoring_breakdown.hard_rules_compliant:
+                candidate.rule_violations.append("Regras rígidas não atendidas")
+
+            if not candidate.rule_violations:
+                candidate.rule_violations = []
 
             # Check for conflicts within the specified semester
             conflicts = self._check_allocation_conflicts_semester_isolated(
@@ -284,6 +371,80 @@ class RoomScoringService:
                     f"vs Room {candidates[1].sala.nome} (occupancy: {get_room_occupancy(self.alocacao_repo, candidates[1].sala.id, semester_id)})"
                 )
 
+        return candidates
+
+    def score_room_candidates_for_full_continuity(
+        self,
+        demanda_id: int,
+        pending_blocks: List[tuple[str, int]],
+        semester_id: int,
+        professor_override: Optional[Professor] = None,
+        continuity_context: Optional[ContinuityScoringContext] = None,
+    ) -> List[RoomCandidate]:
+        """
+        Score rooms for allocating all pending blocks of a demand to a single room.
+
+        Unlike the legacy full-demand scorer, this method evaluates only the still-pending
+        atomic blocks for availability and conflicts. This is required for resumable
+        partial allocations and the discipline continuity phase.
+        """
+        demanda = self.demanda_repo.get_by_id(demanda_id)
+        if not demanda or not pending_blocks:
+            return []
+
+        professor = professor_override
+        if not professor:
+            professor_map = self._lookup_professors_for_demands_from_objects([demanda])
+            professor = professor_map.get(demanda_id)
+
+        professor_prefs = self._get_professor_preferences_for_professor(professor)
+        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
+
+        required_blocks = sorted({block_code for block_code, _ in pending_blocks})
+        all_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
+
+        candidates = []
+        for room in all_rooms:
+            candidate = RoomCandidate(sala=room)
+            candidate.atomic_blocks = pending_blocks
+
+            scoring_breakdown = self._calculate_detailed_scoring_breakdown(
+                room,
+                demanda,
+                all_rules,
+                professor_prefs,
+                semester_id,
+                continuity_context,
+            )
+
+            if hard_rules and not scoring_breakdown.hard_rules_compliant:
+                continue
+
+            candidate.score = scoring_breakdown.total_score
+            candidate.scoring_breakdown = scoring_breakdown
+            candidate.rule_violations = []
+            if not scoring_breakdown.capacity_satisfied:
+                candidate.rule_violations.append("Capacidade insuficiente")
+            if hard_rules and not scoring_breakdown.hard_rules_compliant:
+                candidate.rule_violations.append("Regras rígidas não atendidas")
+
+            conflicts = self._check_atomic_block_conflicts(
+                room.id, pending_blocks, semester_id
+            )
+            candidate.has_conflicts = len(conflicts) > 0
+            candidates.append(candidate)
+
+        candidates.sort(
+            key=lambda c: (
+                c.score,
+                not c.has_conflicts,
+                get_room_occupancy(self.alocacao_repo, c.sala.id, semester_id),
+            ),
+            reverse=True,
+        )
         return candidates
 
     # ========================================================================
@@ -341,6 +502,7 @@ class RoomScoringService:
         block_group: BlockGroup,
         semester_id: int,
         professor_override: Optional[Professor] = None,
+        continuity_context: Optional[ContinuityScoringContext] = None,
     ) -> List[BlockGroupRoomScore]:
         """
         Score all rooms for a specific block group.
@@ -371,8 +533,9 @@ class RoomScoringService:
         # Get professor preferences
         professor_prefs = self._get_professor_preferences_for_professor(professor)
 
-        # Get hard rules for this demand
-        hard_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        # Get rules for this demand
+        all_rules = self.regra_repo.find_rules_by_disciplina(demanda.codigo_disciplina)
+        hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         # Get only rooms enabled for this day's required blocks
         all_rooms = self.sala_repo.get_available_for_allocation(
@@ -386,10 +549,14 @@ class RoomScoringService:
                 room,
                 demanda,
                 block_group,
-                hard_rules,
+                all_rules,
                 professor_prefs,
                 semester_id,
+                continuity_context,
             )
+
+            if hard_rules and not breakdown.hard_rules_compliant:
+                continue
 
             # Check for conflicts for this block group specifically
             conflicts = self._check_block_group_conflicts(
@@ -467,9 +634,10 @@ class RoomScoringService:
         room: Sala,
         demanda,
         block_group: BlockGroup,
-        hard_rules: List,
+        rules: List,
         professor_prefs: Dict,
         semester_id: int,
+        continuity_context: Optional[ContinuityScoringContext] = None,
     ) -> BlockGroupScoringBreakdown:
         """
         Calculate detailed scoring breakdown for a specific block group.
@@ -487,31 +655,27 @@ class RoomScoringService:
             breakdown.capacity_points = 0
             breakdown.capacity_satisfied = False
 
-        # 2. Hard rules compliance (+20 points each by default)
-        hard_point_total = 0
-        hard_rules_satisfied_list = []
-
-        for rule in hard_rules:
-            if rule.prioridade == 0:  # Hard rule
-                compliance = self._check_rule_compliance(room, demanda, rule)
-
-                if compliance:
-                    hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
-                    hard_rules_satisfied_list.append(self._get_rule_description(rule))
-                else:
-                    # For hard rules, if any fails, no points
-                    hard_point_total = 0
-                    hard_rules_satisfied_list = []
-                    break
-
+        hard_rules, soft_rules = self._split_rules_by_priority(rules)
+        (
+            hard_rules_compliant,
+            hard_point_total,
+            hard_rules_satisfied_list,
+        ) = self._evaluate_hard_rules(room, demanda, hard_rules)
+        breakdown.hard_rules_compliant = hard_rules_compliant
         breakdown.hard_rules_points = hard_point_total
         breakdown.hard_rules_satisfied = hard_rules_satisfied_list
 
-        # 3. Professor preferences (+4 points each by default, only if hard rules pass)
+        # 3. Soft rules and professor preferences.
         soft_point_total = 0
         soft_preferences_satisfied_list = []
 
-        if breakdown.hard_rules_satisfied:  # Only check soft prefs if hard rules pass
+        if hard_rules_compliant:
+            soft_rule_points, soft_rule_matches = self._evaluate_soft_rules(
+                room, demanda, soft_rules
+            )
+            soft_point_total += soft_rule_points
+            soft_preferences_satisfied_list.extend(soft_rule_matches)
+
             # Room preferences
             prof_room_prefs = professor_prefs.get("preferred_rooms", [])
             if room.id in prof_room_prefs:
@@ -558,6 +722,19 @@ class RoomScoringService:
         breakdown.hybrid_bonus_points = hybrid_bonus
         breakdown.hybrid_room_type_match = hybrid_bonus > 0
 
+        breakdown.discipline_continuity_points = self._calculate_continuity_bonus(
+            room, continuity_context
+        )
+        breakdown.professor_anchor_points = self._calculate_professor_anchor_bonus(
+            room, continuity_context
+        )
+        breakdown.future_coverage_points = self._calculate_future_day_coverage_bonus(
+            room, continuity_context
+        )
+        breakdown.fragmentation_penalty = self._calculate_fragmentation_penalty(
+            room, continuity_context
+        )
+
         # Calculate total
         breakdown.total_score = (
             breakdown.capacity_points
@@ -565,6 +742,10 @@ class RoomScoringService:
             + breakdown.soft_preference_points
             + breakdown.historical_frequency_points
             + breakdown.hybrid_bonus_points
+            + breakdown.discipline_continuity_points
+            + breakdown.professor_anchor_points
+            + breakdown.future_coverage_points
+            - breakdown.fragmentation_penalty
         )
 
         return breakdown
@@ -723,9 +904,10 @@ class RoomScoringService:
         self,
         room: Sala,
         demanda,
-        hard_rules: List,
+        rules: List,
         professor_prefs: Dict,
         semester_id: int,
+        continuity_context: Optional[ContinuityScoringContext] = None,
     ) -> ScoringBreakdown:
         """
         Calculate detailed scoring breakdown with full transparency.
@@ -743,41 +925,27 @@ class RoomScoringService:
             breakdown.capacity_points = 0
             breakdown.capacity_satisfied = False
 
-        # 2. Hard rules compliance (+4 points each)
-        hard_point_total = 0
-        hard_rules_satisfied_list = []
-
-        for rule in hard_rules:
-            if rule.prioridade == 0:  # Hard rule
-                compliance = self._check_rule_compliance(room, demanda, rule)
-
-                # Debug logging
-                logger.debug(
-                    f"Hard rule check: {rule.descricao} | "
-                    f"Room: {room.nome} (tipo_sala_id={room.tipo_sala_id}) | "
-                    f"Compliant: {compliance}"
-                )
-
-                if compliance:
-                    hard_point_total += SCORING_WEIGHTS.HARD_RULE_COMPLIANCE
-                    # Add descriptive rule name for UI
-                    hard_rules_satisfied_list.append(self._get_rule_description(rule))
-                else:
-                    # For hard rules, if any fails, no points and no soft preferences checked
-                    hard_point_total = 0
-                    hard_rules_satisfied_list = []
-                    # Don't set to False here - let it be set after loop
-                    break
-
+        hard_rules, soft_rules = self._split_rules_by_priority(rules)
+        (
+            hard_rules_compliant,
+            hard_point_total,
+            hard_rules_satisfied_list,
+        ) = self._evaluate_hard_rules(room, demanda, hard_rules)
+        breakdown.hard_rules_compliant = hard_rules_compliant
         breakdown.hard_rules_points = hard_point_total
-        # Store list of satisfied rule names (empty list means failed, non-empty means satisfied)
         breakdown.hard_rules_satisfied = hard_rules_satisfied_list
 
-        # 3. Professor preferences (+2 points each category, but only if hard rules pass)
+        # 3. Soft rules and professor preferences.
         soft_point_total = 0
         soft_preferences_satisfied_list = []
 
-        if breakdown.hard_rules_satisfied:  # Only check soft prefs if hard rules pass
+        if hard_rules_compliant:
+            soft_rule_points, soft_rule_matches = self._evaluate_soft_rules(
+                room, demanda, soft_rules
+            )
+            soft_point_total += soft_rule_points
+            soft_preferences_satisfied_list.extend(soft_rule_matches)
+
             # Room preferences
             prof_room_prefs = professor_prefs.get("preferred_rooms", [])
             if room.id in prof_room_prefs:
@@ -815,15 +983,126 @@ class RoomScoringService:
             else 0
         )
 
+        breakdown.discipline_continuity_points = self._calculate_continuity_bonus(
+            room, continuity_context
+        )
+        breakdown.professor_anchor_points = self._calculate_professor_anchor_bonus(
+            room, continuity_context
+        )
+        breakdown.future_coverage_points = self._calculate_future_day_coverage_bonus(
+            room, continuity_context
+        )
+        breakdown.fragmentation_penalty = self._calculate_fragmentation_penalty(
+            room, continuity_context
+        )
+
         # Calculate total
         breakdown.total_score = (
             breakdown.capacity_points
             + breakdown.hard_rules_points
             + breakdown.soft_preference_points
             + breakdown.historical_frequency_points
+            + breakdown.discipline_continuity_points
+            + breakdown.professor_anchor_points
+            + breakdown.future_coverage_points
+            - breakdown.fragmentation_penalty
         )
 
         return breakdown
+
+    def _calculate_continuity_bonus(
+        self,
+        room: Sala,
+        continuity_context: Optional[ContinuityScoringContext],
+    ) -> int:
+        """Reward reusing a room already associated with the same discipline."""
+        if continuity_context is None:
+            return 0
+        return (
+            SCORING_WEIGHTS.DISCIPLINE_EXISTING_ROOM_BONUS
+            if room.id in continuity_context.discipline_existing_room_ids
+            else 0
+        )
+
+    def _calculate_professor_anchor_bonus(
+        self,
+        room: Sala,
+        continuity_context: Optional[ContinuityScoringContext],
+    ) -> int:
+        """Reward matching the current professor anchor context."""
+        if continuity_context is None:
+            return 0
+
+        bonus = 0
+        if continuity_context.professor_anchor_room_id == room.id:
+            bonus += SCORING_WEIGHTS.PROFESSOR_ANCHOR_ROOM_BONUS
+        if (
+            continuity_context.professor_anchor_building_id is not None
+            and continuity_context.professor_anchor_building_id == room.predio_id
+        ):
+            bonus += SCORING_WEIGHTS.PROFESSOR_ANCHOR_BUILDING_BONUS
+        if (
+            continuity_context.professor_anchor_room_type_id is not None
+            and continuity_context.professor_anchor_room_type_id == room.tipo_sala_id
+        ):
+            bonus += SCORING_WEIGHTS.PROFESSOR_ANCHOR_ROOM_TYPE_BONUS
+        return bonus
+
+    def _calculate_future_day_coverage_bonus(
+        self,
+        room: Sala,
+        continuity_context: Optional[ContinuityScoringContext],
+    ) -> int:
+        """Reward rooms that can likely absorb more pending day-groups later."""
+        if continuity_context is None:
+            return 0
+
+        coverage_count = continuity_context.future_day_coverage_by_room_id.get(
+            room.id,
+            continuity_context.future_day_coverage_count,
+        )
+        return max(coverage_count, 0) * SCORING_WEIGHTS.FUTURE_DAY_COVERAGE_PER_DAY
+
+    def _calculate_fragmentation_penalty(
+        self,
+        room: Sala,
+        continuity_context: Optional[ContinuityScoringContext],
+    ) -> int:
+        """Penalize opening a new room for a non-hybrid discipline already in progress."""
+        if continuity_context is None:
+            return 0
+        if continuity_context.is_hybrid:
+            return 0
+        if not continuity_context.discipline_existing_room_ids:
+            return 0
+        if room.id in continuity_context.discipline_existing_room_ids:
+            return 0
+        return SCORING_WEIGHTS.NON_HYBRID_FRAGMENTATION_PENALTY
+
+    def _check_atomic_block_conflicts(
+        self,
+        sala_id: int,
+        atomic_blocks: List[tuple[str, int]],
+        semester_id: int,
+    ) -> List[Dict]:
+        """Check conflicts for an arbitrary list of atomic blocks."""
+        conflicts = []
+        for bloco_codigo, dia_sigaa in atomic_blocks:
+            has_conflict = self.alocacao_repo.check_conflict(
+                sala_id,
+                dia_sigaa,
+                bloco_codigo,
+                semestre_id=semester_id,
+            )
+            if has_conflict:
+                conflicts.append(
+                    {
+                        "dia_sigaa": dia_sigaa,
+                        "codigo_bloco": bloco_codigo,
+                        "sala_id": sala_id,
+                    }
+                )
+        return conflicts
 
     def _check_rule_compliance(self, room, demanda, rule) -> bool:
         """Check if room complies with a specific rule."""

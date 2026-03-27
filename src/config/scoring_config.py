@@ -12,11 +12,23 @@ Configuration is loaded from JSON files for better maintainability.
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
+
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DEFAULTS_FILE = PROJECT_ROOT / "data" / "scoring_defaults.json"
+LEGACY_USER_CONFIG_FILE = PROJECT_ROOT / "data" / "scoring_config.json"
+USER_CONFIG_FILE = Path(
+    os.getenv(
+        "SCORING_CONFIG_PATH",
+        str(PROJECT_ROOT / "data" / "runtime" / "scoring_config.json"),
+    )
+)
 
 
 @dataclass
@@ -72,6 +84,14 @@ class ScoringWeights:
     # (lab room on lab day, classroom on classroom day)
     HYBRID_ROOM_TYPE_MATCH: int = 15
 
+    # Partial allocation continuity tuning
+    DISCIPLINE_EXISTING_ROOM_BONUS: int = 12
+    PROFESSOR_ANCHOR_ROOM_BONUS: int = 8
+    PROFESSOR_ANCHOR_BUILDING_BONUS: int = 4
+    PROFESSOR_ANCHOR_ROOM_TYPE_BONUS: int = 2
+    FUTURE_DAY_COVERAGE_PER_DAY: int = 2
+    NON_HYBRID_FRAGMENTATION_PENALTY: int = 6
+
     # Priority constants for autonomous allocation demand ordering
     PRIORITY_SPECIFIC_ROOM_REQUIRED: int = 50
     PRIORITY_MOBILITY_CONSTRAINTS: int = 30
@@ -97,24 +117,25 @@ def _load_config_from_json() -> Dict[str, Any]:
     Returns:
         Dictionary containing weights and rules configuration
     """
-    project_root = Path(__file__).parent.parent.parent
-    config_file = project_root / "data" / "scoring_config.json"
-    defaults_file = project_root / "data" / "scoring_defaults.json"
-
     # Start with defaults
     config = {}
 
     # Load defaults first (fallback)
     try:
-        with open(defaults_file, "r", encoding="utf-8") as f:
+        with open(DEFAULTS_FILE, "r", encoding="utf-8") as f:
             defaults = json.load(f)
             config.update(defaults)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning(f"Could not load defaults from {defaults_file}: {e}")
+        logger.warning(f"Could not load defaults from {DEFAULTS_FILE}: {e}")
+
+    user_config_path = get_existing_scoring_config_path()
+    if user_config_path is None:
+        logger.info("No user scoring override found. Using defaults only.")
+        return config
 
     # Load user config (overrides defaults)
     try:
-        with open(config_file, "r", encoding="utf-8") as f:
+        with open(user_config_path, "r", encoding="utf-8") as f:
             user_config = json.load(f)
             # Merge user config with defaults
             for key in user_config:
@@ -125,10 +146,52 @@ def _load_config_from_json() -> Dict[str, Any]:
                         config[key] = user_config[key]
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.warning(
-            f"Could not load user config from {config_file}: {e}. Using defaults."
+            f"Could not load user config from {user_config_path}: {e}. Using defaults."
         )
 
     return config
+
+
+def get_scoring_config_path() -> Path:
+    """Return the writable path for user scoring overrides."""
+    return USER_CONFIG_FILE
+
+
+def get_existing_scoring_config_path() -> Path | None:
+    """Return the active user scoring config file, preferring runtime override."""
+    if USER_CONFIG_FILE.exists():
+        return USER_CONFIG_FILE
+    if LEGACY_USER_CONFIG_FILE.exists():
+        return LEGACY_USER_CONFIG_FILE
+    return None
+
+
+def ensure_user_scoring_config_file() -> Path:
+    """
+    Ensure the writable user scoring config exists in the runtime data directory.
+
+    Priority:
+    1. Keep existing runtime override when present
+    2. Migrate legacy tracked file into runtime override
+    3. Seed runtime override from defaults
+    """
+    USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    if USER_CONFIG_FILE.exists():
+        return USER_CONFIG_FILE
+
+    source_path = LEGACY_USER_CONFIG_FILE
+    if not source_path.exists():
+        source_path = DEFAULTS_FILE
+
+    with open(source_path, "r", encoding="utf-8") as src:
+        config = json.load(src)
+
+    with open(USER_CONFIG_FILE, "w", encoding="utf-8") as dst:
+        json.dump(config, dst, indent=4, ensure_ascii=False)
+
+    logger.info("Created runtime scoring override at %s", USER_CONFIG_FILE)
+    return USER_CONFIG_FILE
 
 
 def _create_scoring_weights_from_config(config: Dict[str, Any]) -> ScoringWeights:
@@ -145,6 +208,20 @@ def _create_scoring_weights_from_config(config: Dict[str, Any]) -> ScoringWeight
         ),
         HISTORICAL_FREQUENCY_MAX_CAP=weights.get("HISTORICAL_FREQUENCY_MAX_CAP", 12),
         HYBRID_ROOM_TYPE_MATCH=weights.get("HYBRID_ROOM_TYPE_MATCH", 15),
+        DISCIPLINE_EXISTING_ROOM_BONUS=weights.get(
+            "DISCIPLINE_EXISTING_ROOM_BONUS", 12
+        ),
+        PROFESSOR_ANCHOR_ROOM_BONUS=weights.get("PROFESSOR_ANCHOR_ROOM_BONUS", 8),
+        PROFESSOR_ANCHOR_BUILDING_BONUS=weights.get(
+            "PROFESSOR_ANCHOR_BUILDING_BONUS", 4
+        ),
+        PROFESSOR_ANCHOR_ROOM_TYPE_BONUS=weights.get(
+            "PROFESSOR_ANCHOR_ROOM_TYPE_BONUS", 2
+        ),
+        FUTURE_DAY_COVERAGE_PER_DAY=weights.get("FUTURE_DAY_COVERAGE_PER_DAY", 2),
+        NON_HYBRID_FRAGMENTATION_PENALTY=weights.get(
+            "NON_HYBRID_FRAGMENTATION_PENALTY", 6
+        ),
         PRIORITY_SPECIFIC_ROOM_REQUIRED=weights.get(
             "PRIORITY_SPECIFIC_ROOM_REQUIRED", 50
         ),
@@ -183,6 +260,10 @@ def get_scoring_breakdown_template() -> Dict[str, int]:
         "hard_rules_points": 0,
         "soft_preference_points": 0,
         "historical_frequency_points": 0,
+        "discipline_continuity_points": 0,
+        "professor_anchor_points": 0,
+        "future_coverage_points": 0,
+        "fragmentation_penalty": 0,
         "total_score": 0,
     }
 
@@ -209,6 +290,12 @@ def validate_scoring_config(config: Dict[str, Any]) -> bool:
             "HISTORICAL_FREQUENCY_PER_ALLOCATION",
             "HISTORICAL_FREQUENCY_MAX_CAP",
             "HYBRID_ROOM_TYPE_MATCH",
+            "DISCIPLINE_EXISTING_ROOM_BONUS",
+            "PROFESSOR_ANCHOR_ROOM_BONUS",
+            "PROFESSOR_ANCHOR_BUILDING_BONUS",
+            "PROFESSOR_ANCHOR_ROOM_TYPE_BONUS",
+            "FUTURE_DAY_COVERAGE_PER_DAY",
+            "NON_HYBRID_FRAGMENTATION_PENALTY",
             "PRIORITY_SPECIFIC_ROOM_REQUIRED",
             "PRIORITY_MOBILITY_CONSTRAINTS",
             "PRIORITY_ROOM_PREFERENCES",

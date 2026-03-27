@@ -4,9 +4,10 @@ Data Transfer Object schemas for Academic domain.
 Schemas for: Semestre, Demanda, Professor, Usuario
 """
 
-from typing import Optional
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -41,8 +42,7 @@ class SemestreRead(SemestreBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -90,8 +90,7 @@ class DemandaRead(DemandaBase):
     updated_at: datetime
     id_oferta_externo: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -128,8 +127,7 @@ class ProfessorRead(ProfessorBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -170,5 +168,4 @@ class UsuarioRead(UsuarioBase):
     Usuario table only has username/password_hash/nome_completo/role.
     """
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

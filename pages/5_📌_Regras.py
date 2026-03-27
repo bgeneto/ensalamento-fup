@@ -92,7 +92,7 @@ def confirm_delete_rule(regra: RegraRead, regra_repo: RegraRepository):
                 config = json.loads(regra.config_json)
                 st.write("**Configuração:**")
                 st.json(config)
-            except:
+            except (TypeError, ValueError, json.JSONDecodeError):
                 st.write("*Não foi possível exibir configuração*")
 
     col_cancel, col_confirm = st.columns(2)

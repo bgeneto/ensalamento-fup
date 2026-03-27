@@ -59,7 +59,7 @@ def load_historical_allocations():
 
         print(f"  Loading {csv_file} for semester {semester}...")
         try:
-            result = subprocess.run(cmd, cwd=str(Path(__file__).parent), check=True)
+            subprocess.run(cmd, cwd=str(Path(__file__).parent), check=True)
             print(f"  ✅ Loaded {csv_file}")
         except subprocess.CalledProcessError as e:
             print(f"  ❌ Failed to load {csv_file}: {e}")

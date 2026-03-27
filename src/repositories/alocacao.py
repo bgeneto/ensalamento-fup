@@ -38,7 +38,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
         """
         demanda_dto = None
         if hasattr(orm_obj, "demanda") and orm_obj.demanda:
-            demanda_dto = DemandaRead.from_orm(orm_obj.demanda)
+            demanda_dto = DemandaRead.model_validate(orm_obj.demanda)
 
         return AlocacaoSemestralRead(
             id=orm_obj.id,

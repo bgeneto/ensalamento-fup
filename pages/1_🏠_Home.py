@@ -444,9 +444,6 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
                 if nome_disciplina
                 else codigo_disciplina
             )
-            turma = (
-                alloc.demanda.turma_disciplina if alloc.demanda is not None else "N/A"
-            )
             professor = (
                 alloc.demanda.professores_disciplina
                 if alloc.demanda is not None
@@ -506,9 +503,7 @@ try:
         horario_repo = HorarioBlocoRepository(session)
 
         # Get the active semester (status = 1)
-        active_semester = (
-            session.query(Semestre).filter(Semestre.status == True).first()
-        )
+        active_semester = session.query(Semestre).filter(Semestre.status).first()
         if not active_semester:
             st.warning(
                 "Nenhum semestre ativo encontrado. Configure um semestre ativo na página ⚙️ Configurações."

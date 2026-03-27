@@ -168,7 +168,6 @@ def render_rooms_tab():
                 # Process changes from data editor
                 if len(edited_df) != len(df):
                     changes_made = False
-                    errors_occurred = False
 
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
@@ -198,7 +197,6 @@ def render_rooms_tab():
                                 f"Erro ao deletar sala(s): {str(e)}",
                                 action="delete",
                             )
-                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
@@ -238,7 +236,6 @@ def render_rooms_tab():
                                             "Nome da sala é obrigatório",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     if not predio_id or pd.isna(predio_id):
@@ -248,7 +245,6 @@ def render_rooms_tab():
                                             "Prédio deve ser selecionado",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     if not tipo_sala_id or pd.isna(tipo_sala_id):
@@ -258,7 +254,6 @@ def render_rooms_tab():
                                             "Tipo de sala deve ser selecionado",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     if (
@@ -272,7 +267,6 @@ def render_rooms_tab():
                                             "Capacidade deve ser um número maior que 0",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     # Clean up optional fields
@@ -306,7 +300,6 @@ def render_rooms_tab():
                                 f"Erro ao criar sala(s): {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                         if created:
                             set_session_feedback(
@@ -323,7 +316,6 @@ def render_rooms_tab():
                 # Handle updates (rows with changes in existing records)
                 else:
                     changes_made = False
-                    errors_occurred = False
 
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
@@ -396,7 +388,6 @@ def render_rooms_tab():
                                         "Nome da sala é obrigatório",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if not predio_id or pd.isna(predio_id):
@@ -406,7 +397,6 @@ def render_rooms_tab():
                                         "Prédio deve ser selecionado",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if not tipo_sala_id or pd.isna(tipo_sala_id):
@@ -416,7 +406,6 @@ def render_rooms_tab():
                                         "Tipo de sala deve ser selecionado",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if (
@@ -430,7 +419,6 @@ def render_rooms_tab():
                                         "Capacidade deve ser um número maior que 0",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 # Clean up optional fields
@@ -469,7 +457,6 @@ def render_rooms_tab():
                                                         f"Sala '{nome}' já existe neste prédio",
                                                         action="update",
                                                     )
-                                                    errors_occurred = True
                                                     continue
 
                                             # Update fields
@@ -506,7 +493,6 @@ def render_rooms_tab():
                                         f"Erro ao atualizar sala: {str(e)}",
                                         action="update",
                                     )
-                                    errors_occurred = True
 
                     if changes_made:
                         st.rerun()
@@ -584,7 +570,6 @@ def render_rooms_tab():
                 # Process changes from data editor
                 if len(edited_df) != len(df):
                     changes_made = False
-                    errors_occurred = False
 
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
@@ -618,7 +603,6 @@ def render_rooms_tab():
                                 f"Erro ao deletar característica(s): {str(e)}",
                                 action="delete",
                             )
-                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
@@ -641,7 +625,6 @@ def render_rooms_tab():
                                             "Nome da característica é obrigatório",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     # Check if already exists
@@ -654,7 +637,6 @@ def render_rooms_tab():
                                             f"Característica '{nome}' já existe no banco de dados",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     caracteristica_dto = CaracteristicaCreate(nome=nome)
@@ -670,7 +652,6 @@ def render_rooms_tab():
                                 f"Erro ao criar característica: {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                         if created:
                             set_session_feedback(
@@ -688,7 +669,6 @@ def render_rooms_tab():
                 # Handle updates (rows with changes in existing records)
                 else:
                     changes_made = False
-                    errors_occurred = False
 
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
@@ -708,7 +688,6 @@ def render_rooms_tab():
                                         "Nome da característica é obrigatório",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 try:
@@ -739,7 +718,6 @@ def render_rooms_tab():
                                                         f"Característica '{nome}' já existe",
                                                         action="update",
                                                     )
-                                                    errors_occurred = True
                                                     continue
 
                                             # Update fields
@@ -764,7 +742,6 @@ def render_rooms_tab():
                                         f"Erro ao atualizar característica: {str(e)}",
                                         action="update",
                                     )
-                                    errors_occurred = True
 
                     if changes_made:
                         st.rerun()
@@ -832,7 +809,6 @@ def render_rooms_tab():
                 # Process changes from data editor
                 if len(edited_df) != len(df):
                     changes_made = False
-                    errors_occurred = False
 
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
@@ -862,7 +838,6 @@ def render_rooms_tab():
                                 f"Erro ao deletar tipo(s) sala: {str(e)}",
                                 action="delete",
                             )
-                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
@@ -883,7 +858,6 @@ def render_rooms_tab():
                                             "Nome do tipo de sala é obrigatório",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     # Check if already exists
@@ -898,7 +872,6 @@ def render_rooms_tab():
                                             f"Tipo de sala '{nome}' já existe no banco de dados",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     tipo_sala_dto = TipoSalaCreate(nome=nome)
@@ -912,7 +885,6 @@ def render_rooms_tab():
                                 f"Erro ao criar tipo(s) sala: {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                         if created:
                             set_session_feedback(
@@ -930,7 +902,6 @@ def render_rooms_tab():
                 # Handle updates (rows with changes in existing records)
                 else:
                     changes_made = False
-                    errors_occurred = False
 
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
@@ -950,7 +921,6 @@ def render_rooms_tab():
                                         "Nome do tipo de sala é obrigatório",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 try:
@@ -984,7 +954,6 @@ def render_rooms_tab():
                                                         f"Tipo de sala '{nome}' já existe",
                                                         action="update",
                                                     )
-                                                    errors_occurred = True
                                                     continue
 
                                             # Update fields
@@ -1007,7 +976,6 @@ def render_rooms_tab():
                                         f"Erro ao atualizar tipo de sala: {str(e)}",
                                         action="update",
                                     )
-                                    errors_occurred = True
 
                     if changes_made:
                         st.rerun()

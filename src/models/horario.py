@@ -2,10 +2,9 @@
 Time management models for Sigaa time blocks and weekdays.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from sqlalchemy import Column, DateTime, Integer, String
 
-from src.models.base import Base
+from src.models.base import Base, utc_now_naive
 
 
 class DiaSemana(Base):
@@ -15,9 +14,9 @@ class DiaSemana(Base):
 
     id_sigaa = Column(Integer, primary_key=True, autoincrement=False)
     nome = Column(String(50), nullable=False, unique=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False
     )
 
     def __repr__(self) -> str:
@@ -33,9 +32,9 @@ class HorarioBloco(Base):
     turno = Column(String(10), nullable=False)  # M (morning), T (afternoon), N (night)
     horario_inicio = Column(String(5), nullable=False)  # Store as HH:MM string
     horario_fim = Column(String(5), nullable=False)  # Store as HH:MM string
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False
     )
 
     def __repr__(self) -> str:

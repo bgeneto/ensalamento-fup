@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.config.settings import Settings
 from src.repositories.optimized_allocation_repo import OptimizedAllocationRepository
 from src.schemas.allocation import AlocacaoSemestralCreate
+from src.services.allocation_continuity_planner import AllocationContinuityPlanner
 from src.services.autonomous_allocation_report_service import (
     AutonomousAllocationReportService,
 )
@@ -23,9 +24,10 @@ from src.services.autonomous_allocation_service import (
     PhaseResult,
 )
 from src.services.hybrid_discipline_service import (
-    HybridDisciplineDetectionService,
     HybridDetectionResult,
+    HybridDisciplineDetectionService,
 )
+from src.services.room_scoring_service import ContinuityScoringContext
 from src.utils.allocation_debug_report import AllocationDebugReport
 from src.utils.allocation_logger import AllocationDecisionLogger
 
@@ -84,6 +86,29 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
         # Hybrid discipline detection service (Phase 0)
         self.hybrid_detection_service = HybridDisciplineDetectionService(session)
+        self.continuity_planner = AllocationContinuityPlanner(
+            session,
+            hybrid_service=self.hybrid_detection_service,
+        )
+        self._latest_continuity_profiles: Dict[int, Any] = {}
+
+    def _sync_continuity_planner(self) -> None:
+        """Keep planner dependencies aligned with the active hybrid service state."""
+        self.continuity_planner.hybrid_service = self.hybrid_detection_service
+        self.continuity_planner.scoring_service.set_hybrid_detection_service(
+            self.hybrid_detection_service
+        )
+
+    def _prepare_continuity_profiles(
+        self,
+        demands: List[Any],
+        semester_id: int,
+    ) -> Dict[int, Any]:
+        """Build continuity profiles for later phases without changing allocation flow."""
+        self._sync_continuity_planner()
+        profiles = self.continuity_planner.build_demand_profiles(demands, semester_id)
+        self._latest_continuity_profiles = profiles
+        return profiles
 
     # =========================================================================
     # PARTIAL ALLOCATION METHODS (Block-Group Level Scoring & Allocation)
@@ -111,6 +136,38 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
         return groups
 
+    def _get_pending_atomic_blocks_for_demand(
+        self, demanda_id: int, horario_sigaa: str
+    ) -> List[Tuple[str, int]]:
+        """Return only the atomic blocks that are still pending for a demand."""
+        atomic_blocks = self.parser.split_to_atomic_tuples(horario_sigaa)
+        if not atomic_blocks:
+            return []
+
+        existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        allocated_blocks = {
+            (alloc.codigo_bloco, alloc.dia_semana_id) for alloc in existing_allocations
+        }
+
+        return [
+            (bloco_codigo, dia_sigaa)
+            for bloco_codigo, dia_sigaa in atomic_blocks
+            if (bloco_codigo, dia_sigaa) not in allocated_blocks
+        ]
+
+    def _group_pending_blocks_by_day(
+        self, demanda_id: int, horario_sigaa: str
+    ) -> Dict[int, List[Tuple[str, int]]]:
+        """Group only pending atomic blocks by day for reruns."""
+        groups: Dict[int, List[Tuple[str, int]]] = {}
+
+        for bloco_codigo, dia_sigaa in self._get_pending_atomic_blocks_for_demand(
+            demanda_id, horario_sigaa
+        ):
+            groups.setdefault(dia_sigaa, []).append((bloco_codigo, dia_sigaa))
+
+        return groups
+
     def _score_rooms_for_block_group(
         self,
         demanda: Any,
@@ -118,6 +175,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         blocks: List[Tuple[str, int]],
         semester_id: int,
         professor: Optional[Any] = None,
+        continuity_context: Optional[ContinuityScoringContext] = None,
     ) -> List[BlockGroupCandidate]:
         """
         Score all rooms for a specific block group (day) of a demand.
@@ -153,6 +211,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             block_group=block_group,
             semester_id=semester_id,
             professor_override=professor,
+            continuity_context=continuity_context,
         )
 
         # Get rooms enabled for this block group to map room_id to room objects
@@ -215,9 +274,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 )
                 allocation_dtos.append(allocation_dto)
 
-            created_allocations = self.optimized_alocacao_repo.create_batch_atomic(
-                allocation_dtos
-            )
+            self.optimized_alocacao_repo.create_batch_atomic(allocation_dtos)
 
             logger.debug(
                 f"Allocated block group {candidate.day_name} ({len(candidate.blocks)} blocks) "
@@ -231,6 +288,244 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 f"day {candidate.day_name}: {e}"
             )
             return False
+
+    def _allocate_full_pending_demand_to_room(
+        self,
+        demanda: Any,
+        room: Any,
+        pending_blocks: List[Tuple[str, int]],
+        semester_id: int,
+    ) -> bool:
+        """Allocate all still-pending blocks of a demand to a single room.
+
+        This helper is the mechanical basis for the future continuity phase.
+        It is intentionally self-contained and conservative:
+
+        - it allocates only still-pending atomic blocks
+        - it performs a fresh batch conflict check immediately before creation
+        - it short-circuits safely when there is nothing left to allocate
+        """
+        if not pending_blocks:
+            logger.debug(
+                "Skipping full pending allocation for %s: no pending blocks",
+                getattr(demanda, "codigo_disciplina", getattr(demanda, "id", "?")),
+            )
+            return True
+
+        room_id = getattr(room, "id", None)
+        if room_id is None:
+            logger.error("Full pending allocation failed: room has no id")
+            return False
+
+        slots = [(room_id, day_id, block_code) for block_code, day_id in pending_blocks]
+        fresh_conflicts = self.optimized_alocacao_repo.check_conflicts_batch(
+            slots, semester_id
+        )
+        if any(fresh_conflicts.get(slot, False) for slot in slots):
+            logger.debug(
+                "Fresh conflict check blocked full pending allocation for demand %s in room %s",
+                getattr(demanda, "id", "?"),
+                room_id,
+            )
+            return False
+
+        allocation_dtos = [
+            AlocacaoSemestralCreate(
+                semestre_id=semester_id,
+                demanda_id=demanda.id,
+                sala_id=room_id,
+                dia_semana_id=day_id,
+                codigo_bloco=block_code,
+            )
+            for block_code, day_id in pending_blocks
+        ]
+
+        try:
+            self.optimized_alocacao_repo.create_batch_atomic(allocation_dtos)
+            logger.debug(
+                "Allocated %s pending blocks for demand %s to room %s",
+                len(allocation_dtos),
+                getattr(demanda, "id", "?"),
+                room_id,
+            )
+            return True
+        except Exception as exc:
+            logger.error(
+                "Full pending allocation failed for demand %s in room %s: %s",
+                getattr(demanda, "id", "?"),
+                room_id,
+                exc,
+            )
+            return False
+
+    def _is_hybrid_demand(self, codigo_disciplina: str) -> bool:
+        """Return whether the discipline is currently marked as hybrid."""
+        if not getattr(self.hybrid_detection_service, "_is_initialized", False):
+            return False
+        return bool(self.hybrid_detection_service.is_hybrid(codigo_disciplina))
+
+    def _get_existing_room_ids_for_demand(self, demanda_id: int) -> List[int]:
+        """Return currently used rooms for a demand ordered by frequency."""
+        allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        room_counts: Dict[int, int] = {}
+        for allocation in allocations:
+            room_counts[allocation.sala_id] = room_counts.get(allocation.sala_id, 0) + 1
+        return [
+            room_id
+            for room_id, _count in sorted(
+                room_counts.items(), key=lambda item: (-item[1], item[0])
+            )
+        ]
+
+    def _build_full_demand_continuity_context(
+        self,
+        demanda: Any,
+        semester_id: int,
+        professor: Optional[Any] = None,
+    ) -> ContinuityScoringContext:
+        """Build continuity context for whole-demand consolidation attempts."""
+        anchor = self.continuity_planner.resolve_professor_anchor(
+            professor, semester_id
+        )
+        return ContinuityScoringContext(
+            is_hybrid=self._is_hybrid_demand(demanda.codigo_disciplina),
+            discipline_existing_room_ids=self._get_existing_room_ids_for_demand(
+                demanda.id
+            ),
+            professor_anchor_room_id=anchor.room_id if anchor else None,
+            professor_anchor_building_id=anchor.building_id if anchor else None,
+            professor_anchor_room_type_id=anchor.room_type_id if anchor else None,
+        )
+
+    def _build_block_group_continuity_context(
+        self,
+        demanda: Any,
+        current_day_id: int,
+        current_blocks: List[Tuple[str, int]],
+        pending_blocks_by_day: Dict[int, List[Tuple[str, int]]],
+        semester_id: int,
+        professor: Optional[Any] = None,
+    ) -> ContinuityScoringContext:
+        """Build continuity context for partial per-day fallback scoring."""
+        anchor = self.continuity_planner.resolve_professor_anchor(
+            professor, semester_id
+        )
+        remaining_days = {
+            day_id: blocks
+            for day_id, blocks in pending_blocks_by_day.items()
+            if day_id != current_day_id
+        }
+        required_blocks = sorted({block_code for block_code, _ in current_blocks})
+        available_rooms = self.sala_repo.get_available_for_allocation(
+            required_blocks=required_blocks
+        )
+        future_coverage_by_room_id = {
+            room.id: self.continuity_planner.count_future_day_coverage(
+                demanda,
+                room.id,
+                remaining_days,
+                semester_id,
+            )
+            for room in available_rooms
+        }
+
+        return ContinuityScoringContext(
+            is_hybrid=self._is_hybrid_demand(demanda.codigo_disciplina),
+            discipline_existing_room_ids=self._get_existing_room_ids_for_demand(
+                demanda.id
+            ),
+            professor_anchor_room_id=anchor.room_id if anchor else None,
+            professor_anchor_building_id=anchor.building_id if anchor else None,
+            professor_anchor_room_type_id=anchor.room_type_id if anchor else None,
+            future_day_coverage_by_room_id=future_coverage_by_room_id,
+        )
+
+    def _execute_discipline_continuity_phase(
+        self,
+        demands: List[Any],
+        semester_id: int,
+        dry_run: bool,
+    ) -> PhaseResult:
+        """Phase 1.5: consolidate non-hybrid disciplines into one room when viable."""
+        result = PhaseResult()
+        if not demands:
+            return result
+
+        profiles = self._prepare_continuity_profiles(demands, semester_id)
+        prioritized_ids = self.continuity_planner.prioritize_demands_for_continuity(
+            profiles
+        )
+        demand_by_id = {demanda.id: demanda for demanda in demands}
+        professor_map = self._lookup_professors_for_demands_from_objects(demands)
+
+        for demanda_id in prioritized_ids:
+            demanda = demand_by_id.get(demanda_id)
+            profile = profiles.get(demanda_id)
+            if demanda is None or profile is None:
+                continue
+            if profile.is_hybrid:
+                continue
+            if not profile.compatible_full_room_ids:
+                continue
+
+            pending_blocks = self._get_pending_atomic_blocks_for_demand(
+                demanda_id,
+                demanda.horario_sigaa_bruto,
+            )
+            if not pending_blocks:
+                continue
+
+            professor = professor_map.get(demanda_id)
+            continuity_context = self._build_full_demand_continuity_context(
+                demanda,
+                semester_id,
+                professor,
+            )
+            candidates = self.scoring_service.score_room_candidates_for_full_continuity(
+                demanda_id=demanda_id,
+                pending_blocks=pending_blocks,
+                semester_id=semester_id,
+                professor_override=professor,
+                continuity_context=continuity_context,
+            )
+            valid_candidates = [
+                candidate for candidate in candidates if not candidate.has_conflicts
+            ]
+
+            if not valid_candidates:
+                continue
+
+            top_candidate = valid_candidates[0]
+            if dry_run:
+                result.allocations_completed += 1
+                logger.info(
+                    "Phase 1.5 dry-run would consolidate %s in room %s",
+                    demanda.codigo_disciplina,
+                    top_candidate.sala.nome,
+                )
+                continue
+
+            if self._allocate_full_pending_demand_to_room(
+                demanda,
+                top_candidate.sala,
+                pending_blocks,
+                semester_id,
+            ):
+                result.allocations_completed += 1
+                logger.info(
+                    "Phase 1.5 consolidated %s into room %s",
+                    demanda.codigo_disciplina,
+                    top_candidate.sala.nome,
+                )
+            else:
+                result.conflicts_found += 1
+
+        result.total_demands_processed = len(demands)
+        return result
+
+    def _get_demands_for_partial_fallback(self, semester_id: int) -> List[Any]:
+        """Return demands that still have pending work after earlier phases."""
+        return self.manual_service.get_unallocated_demands(semester_id)
 
     def _execute_partial_allocation_phase(
         self,
@@ -265,8 +560,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             demanda_id = demanda.id
             professor = professor_map.get(demanda_id)
 
-            # Group blocks by day
-            block_groups = self._group_demand_blocks_by_day(demanda.horario_sigaa_bruto)
+            # Group only pending blocks by day so reruns resume partial demands.
+            block_groups = self._group_pending_blocks_by_day(
+                demanda_id, demanda.horario_sigaa_bruto
+            )
+
+            if not block_groups:
+                logger.debug(f"Skipping {demanda.codigo_disciplina}: no pending blocks")
+                continue
 
             logger.debug(
                 f"Processing {demanda.codigo_disciplina}: "
@@ -275,10 +576,48 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             # Process each block group independently
             for day_id, blocks in block_groups.items():
+                continuity_context = self._build_block_group_continuity_context(
+                    demanda,
+                    day_id,
+                    blocks,
+                    block_groups,
+                    semester_id,
+                    professor,
+                )
+
                 # Score rooms for this specific block group
                 candidates = self._score_rooms_for_block_group(
-                    demanda, day_id, blocks, semester_id, professor
+                    demanda,
+                    day_id,
+                    blocks,
+                    semester_id,
+                    professor,
+                    continuity_context,
                 )
+
+                if not candidates:
+                    day_names = {
+                        2: "SEG",
+                        3: "TER",
+                        4: "QUA",
+                        5: "QUI",
+                        6: "SEX",
+                        7: "SAB",
+                    }
+                    day_name = day_names.get(day_id, f"DIA{day_id}")
+
+                    result.demands_skipped += 1
+                    block_group_results.append(
+                        BlockGroupAllocationResult(
+                            demanda_id=demanda_id,
+                            day_id=day_id,
+                            day_name=day_name,
+                            blocks=[b[0] for b in blocks],
+                            allocated=False,
+                            failure_reason="No rooms satisfy hard rules or availability for this block group",
+                        )
+                    )
+                    continue
 
                 # Filter out candidates with conflicts
                 valid_candidates = [c for c in candidates if not c.has_conflicts]
@@ -445,8 +784,41 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 logger.info("Phase 1 allocations committed")
 
             # Get remaining demands after Phase 1
-            remaining_demands = self.manual_service.get_unallocated_demands(semester_id)
+            remaining_demands = self._get_demands_for_partial_fallback(semester_id)
             logger.info(f"After Phase 1: {len(remaining_demands)} demands remaining")
+
+            continuity_profiles = self._prepare_continuity_profiles(
+                remaining_demands, semester_id
+            )
+            continuity_candidates = sum(
+                1
+                for profile in continuity_profiles.values()
+                if (not profile.is_hybrid) and profile.compatible_full_room_ids
+            )
+            logger.info(
+                "Continuity planner prepared %s profiles (%s non-hybrid demands have at least one full-room option)",
+                len(continuity_profiles),
+                continuity_candidates,
+            )
+
+            logger.info("=== PHASE 1.5: Discipline Continuity Allocation ===")
+            phase1_5_result = self._execute_discipline_continuity_phase(
+                remaining_demands,
+                semester_id,
+                dry_run,
+            )
+            self.decision_logger.log_phase_summary(
+                "discipline_continuity", phase1_5_result.__dict__
+            )
+
+            if not dry_run:
+                self.session.commit()
+                logger.info("Phase 1.5 allocations committed")
+
+            remaining_demands = self._get_demands_for_partial_fallback(semester_id)
+            continuity_profiles = self._prepare_continuity_profiles(
+                remaining_demands, semester_id
+            )
 
             # Phase 2+3 COMBINED: Partial Allocation Phase
             # (Replaces separate soft scoring + atomic allocation phases)
@@ -463,8 +835,6 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
             # Compile results
             execution_time = time.time() - start_time
-            semester = self.semestre_repo.get_by_id(semester_id)
-            semester_name = semester.nome if semester else f"Semestre {semester_id}"
 
             # Calculate statistics from block group results
             total_block_groups = len(block_group_results)
@@ -492,6 +862,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 "total_demands_initial": len(unallocated_demands),
                 "allocations_completed": (
                     phase1_result.allocations_completed
+                    + phase1_5_result.allocations_completed
                     + partial_result.allocations_completed
                 ),
                 "block_groups_processed": total_block_groups,
@@ -504,6 +875,10 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     "allocations": phase1_result.allocations_completed,
                     "conflicts": phase1_result.conflicts_found,
                 },
+                "phase1_5_continuity": {
+                    "allocations": phase1_5_result.allocations_completed,
+                    "conflicts": phase1_5_result.conflicts_found,
+                },
                 "phase_partial": {
                     "block_groups_allocated": allocated_block_groups,
                     "block_groups_failed": total_block_groups - allocated_block_groups,
@@ -511,6 +886,15 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 },
                 # Hybrid discipline detection results (Phase 0)
                 "hybrid_summary": self.decision_logger.get_hybrid_summary(),
+                "continuity_summary": {
+                    "profiles_built": len(continuity_profiles),
+                    "non_hybrid_candidates_for_phase_1_5": continuity_candidates,
+                    "hybrid_profiles": sum(
+                        1
+                        for profile in continuity_profiles.values()
+                        if profile.is_hybrid
+                    ),
+                },
                 "block_group_details": [
                     {
                         "demanda_id": r.demanda_id,
@@ -577,13 +961,11 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         # empty semester we're about to allocate. This was the bug - we were using
         # get_most_recent_semester_id() which returned semester 5 (empty), instead of
         # semester 4 (which has historical allocations).
-        detection_semester_id = self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations(
-            exclude_semester_id=current_semester_id  # Exclude current semester
+        detection_semester_id = (
+            self.hybrid_detection_service.resolve_detection_semester(
+                current_semester_id
+            )
         )
-
-        if not detection_semester_id:
-            # Fallback: maybe we're reallocating an existing semester that has data
-            detection_semester_id = self.hybrid_detection_service.alocacao_repo.get_most_recent_semester_with_allocations()
 
         if not detection_semester_id:
             logger.warning(
@@ -933,6 +1315,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             demanda_id = demanda.id
             hard_rules = all_hard_rules[demanda.codigo_disciplina]
             professor = professor_map.get(demanda_id)
+
+            # Demands already partially allocated are resumed in the partial phase.
+            if self.alocacao_repo.get_by_demanda(demanda_id):
+                logger.debug(
+                    f"Skipping hard-rules single-room attempt for partially allocated demand {demanda.codigo_disciplina}"
+                )
+                continue
+
             atomic_blocks = self.parser.split_to_atomic_tuples(
                 demanda.horario_sigaa_bruto
             )

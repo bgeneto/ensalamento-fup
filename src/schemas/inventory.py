@@ -4,9 +4,10 @@ Data Transfer Object schemas for Inventory domain.
 Schemas for: Campus, Predio, TipoSala, Sala, Caracteristica
 """
 
-from typing import Optional
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -41,8 +42,7 @@ class CampusRead(CampusBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -79,8 +79,7 @@ class PredioRead(PredioBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -113,8 +112,7 @@ class TipoSalaRead(TipoSalaBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -147,8 +145,7 @@ class CaracteristicaRead(CaracteristicaBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -193,5 +190,4 @@ class SalaRead(SalaBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

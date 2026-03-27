@@ -298,7 +298,7 @@ def create_and_activate_semester(semester_name: str) -> Dict[str, Any]:
             # Deactivate ALL existing semesters first
             deactivated_count = (
                 session.query(Semestre)
-                .filter(Semestre.status == True)
+                .filter(Semestre.status)
                 .update({"status": False})
             )
             logger.info(f"Deactivated {deactivated_count} existing active semesters")

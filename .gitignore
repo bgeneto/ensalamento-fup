@@ -250,6 +250,7 @@ tramp
 # user_data/
 # exported_data/
 data/reports/
+data/runtime/
 
 .clinerules
 memory-bank/

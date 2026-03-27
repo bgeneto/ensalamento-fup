@@ -98,7 +98,6 @@ def render_buildings_tab():
                 # Process changes from data editor
                 if len(edited_df) != len(df):
                     changes_made = False
-                    errors_occurred = False
 
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
@@ -128,7 +127,6 @@ def render_buildings_tab():
                                 f"Erro ao deletar prédio(s): {str(e)}",
                                 action="delete",
                             )
-                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
@@ -151,7 +149,6 @@ def render_buildings_tab():
                                             "Nome do prédio é obrigatório",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     if not descricao:
@@ -161,7 +158,6 @@ def render_buildings_tab():
                                             "Descrição do prédio é obrigatória",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     if not campus_id or pd.isna(campus_id):
@@ -171,7 +167,6 @@ def render_buildings_tab():
                                             "Campus deve ser selecionado",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     # Check if already exists
@@ -184,7 +179,6 @@ def render_buildings_tab():
                                             f"Prédio '{nome}' já existe no banco de dados",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     predio_dto = PredioCreate(
@@ -210,7 +204,6 @@ def render_buildings_tab():
                                 f"Erro ao criar prédio: {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                         if created:
                             changes_made = True
@@ -222,7 +215,6 @@ def render_buildings_tab():
                 # Handle updates (rows with changes in existing records)
                 else:
                     changes_made = False
-                    errors_occurred = False
 
                     for idx, row in edited_df.iterrows():
                         if idx < len(df):
@@ -248,7 +240,6 @@ def render_buildings_tab():
                                         "Nome do prédio é obrigatório",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if not descricao:
@@ -258,7 +249,6 @@ def render_buildings_tab():
                                         "Descrição do prédio é obrigatória",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if not campus_id or pd.isna(campus_id):
@@ -268,7 +258,6 @@ def render_buildings_tab():
                                         "Campus deve ser selecionado",
                                         action="update",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 try:
@@ -300,7 +289,6 @@ def render_buildings_tab():
                                                         f"Prédio '{nome}' já existe",
                                                         action="update",
                                                     )
-                                                    errors_occurred = True
                                                     continue
 
                                             # Update fields
@@ -330,7 +318,6 @@ def render_buildings_tab():
                                         f"Erro ao atualizar prédio: {str(e)}",
                                         action="update",
                                     )
-                                    errors_occurred = True
 
                     if changes_made:
                         st.rerun()

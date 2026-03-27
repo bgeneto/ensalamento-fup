@@ -12,12 +12,12 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.config.database import get_db_session
-from src.repositories.alocacao import AlocacaoRepository
-from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
-
 
 def main():
+    from src.config.database import get_db_session
+    from src.repositories.alocacao import AlocacaoRepository
+    from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
+
     print("=" * 70)
     print("PHASE 0: HYBRID DISCIPLINE DETECTION - DEBUG TEST")
     print("=" * 70)

@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.schemas.academic import DemandaRead
 
@@ -76,8 +76,8 @@ class RegraSemanal(RegraRecorrenciaBase):
     tipo: TipoRecorrencia = Field(default=TipoRecorrencia.SEMANAL, frozen=True)
     dias: List[int] = Field(
         ...,
-        min_items=1,
-        max_items=7,
+        min_length=1,
+        max_length=7,
         description="Days of week (2=SEG, 3=TER, ..., 7=SAB)",
     )
     fim: str = Field(..., description="End date in YYYY-MM-DD format")
@@ -156,8 +156,7 @@ class RegraRead(RegraBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -197,8 +196,7 @@ class AlocacaoSemestralRead(AlocacaoSemestralBase):
     id: int
     demanda: Optional[DemandaRead] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -241,8 +239,7 @@ class ReservaEsporadicaRead(ReservaEsporadicaBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -370,8 +367,7 @@ class ReservaEventoRead(ReservaEventoBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReservaEventoReadWithOccurrences(ReservaEventoRead):
@@ -379,8 +375,7 @@ class ReservaEventoReadWithOccurrences(ReservaEventoRead):
 
     ocorrencias: List["ReservaOcorrenciaRead"] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -419,8 +414,7 @@ class ReservaOcorrenciaRead(ReservaOcorrenciaBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReservaOcorrenciaReadWithEvent(ReservaOcorrenciaRead):
@@ -428,8 +422,7 @@ class ReservaOcorrenciaReadWithEvent(ReservaOcorrenciaRead):
 
     evento: Optional[ReservaEventoRead] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Forward reference resolution
@@ -472,8 +465,7 @@ class BlockGroupBase(BaseModel):
         """Get list of (block_code, day_id) tuples for this group."""
         return [(block, self.day_id) for block in self.blocks]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BlockGroupRead(BlockGroupBase):
@@ -498,6 +490,9 @@ class BlockGroupScoringBreakdownSchema(BaseModel):
     historical_frequency_points: int = Field(
         default=0, description="Points from historical frequency (per day)"
     )
+    hybrid_bonus_points: int = Field(
+        default=0, description="Points from hybrid room-type match bonus"
+    )
 
     # Details
     capacity_satisfied: bool = Field(
@@ -512,9 +507,12 @@ class BlockGroupScoringBreakdownSchema(BaseModel):
     historical_allocations: int = Field(
         default=0, description="Count of historical allocations for THIS DAY"
     )
+    hybrid_room_type_match: bool = Field(
+        default=False,
+        description="Whether the room type matches the historical hybrid pattern for this day",
+    )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BlockGroupRoomScoreSchema(BaseModel):
@@ -541,8 +539,7 @@ class BlockGroupRoomScoreSchema(BaseModel):
         default_factory=list, description="List of conflict descriptions"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PartialAllocationRequest(BaseModel):
@@ -572,8 +569,7 @@ class PartialAllocationRequest(BaseModel):
                     raise ValueError(f"Invalid day_id: {day_id}. Must be 2-7 (MON-SAT)")
         return v
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PartialAllocationResult(BaseModel):
@@ -593,5 +589,4 @@ class PartialAllocationResult(BaseModel):
     room_id: Optional[int] = Field(default=None, description="Room ID allocated to")
     room_name: Optional[str] = Field(default=None, description="Room name allocated to")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

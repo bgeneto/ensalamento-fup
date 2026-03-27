@@ -28,8 +28,6 @@ def print_box(content, width=96, indent=2):
 
 def analyze_room_competition(session, sala_id, sala_nome, semester_id):
     """Analisa todas as disciplinas alocadas em uma sala e seus históricos."""
-    parser = SigaaScheduleParser()
-
     # Buscar todas as demandas alocadas nesta sala
     demands = session.execute(
         text(

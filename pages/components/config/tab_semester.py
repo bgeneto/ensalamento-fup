@@ -86,7 +86,6 @@ def render_semester_tab():
 
                 # Process changes
                 changes_made = False
-                errors_occurred = False
 
                 # Detect additions or deletions
                 original_ids = set(df["ID"].astype(int))
@@ -128,7 +127,6 @@ def render_semester_tab():
                             f"Erro ao deletar semestre(s): {str(e)}",
                             action="delete",
                         )
-                        errors_occurred = True
 
                 # Handle additions
                 new_rows = edited_df[
@@ -146,7 +144,6 @@ def render_semester_tab():
                                 "Nome do semestre é obrigatório",
                                 action="create",
                             )
-                            errors_occurred = True
                             continue
 
                         try:
@@ -164,7 +161,6 @@ def render_semester_tab():
                                         f"Nome '{validated_name}' já existe no banco de dados",
                                         action="create",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 session.query(Semestre).update({"status": False})
@@ -198,7 +194,6 @@ def render_semester_tab():
                                 f"Erro de validação: {str(ve)}",
                                 action="create",
                             )
-                            errors_occurred = True
                         except Exception as e:
                             set_session_feedback(
                                 "crud_result",
@@ -206,7 +201,6 @@ def render_semester_tab():
                                 f"Erro ao criar semestre: {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                     if created > 0:
                         changes_made = True
@@ -231,7 +225,6 @@ def render_semester_tab():
                                     "Nome do semestre é obrigatório",
                                     action="update",
                                 )
-                                errors_occurred = True
                                 continue
 
                             try:
@@ -255,7 +248,6 @@ def render_semester_tab():
                                                     f"Nome '{validated_name}' já existe",
                                                     action="update",
                                                 )
-                                                errors_occurred = True
                                                 continue
 
                                         if nome_changed:
@@ -335,7 +327,6 @@ def render_semester_tab():
                                     f"Erro de validação: {str(ve)}",
                                     action="update",
                                 )
-                                errors_occurred = True
                             except Exception as e:
                                 set_session_feedback(
                                     "crud_result",
@@ -343,7 +334,6 @@ def render_semester_tab():
                                     f"Erro ao atualizar semestre: {str(e)}",
                                     action="update",
                                 )
-                                errors_occurred = True
 
                 if changes_made:
                     get_semester_options.clear()

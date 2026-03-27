@@ -80,7 +80,6 @@ def render_campus_tab():
                 if len(edited_df) != len(df):
                     # Batch additions/deletions to avoid repeated reruns
                     changes_made = False
-                    errors_occurred = False
 
                     # Detect additions or deletions
                     original_ids = set(df["ID"].astype(int))
@@ -110,7 +109,6 @@ def render_campus_tab():
                                 f"Erro ao deletar campus: {str(e)}",
                                 action="delete",
                             )
-                            errors_occurred = True
 
                     # Handle additions (new rows with NaN or 0 ID)
                     new_rows = edited_df[
@@ -136,7 +134,6 @@ def render_campus_tab():
                                             "Nome do campus é obrigatório",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     # Check if already exists
@@ -149,7 +146,6 @@ def render_campus_tab():
                                             f"Campus '{nome}' já existe no banco de dados",
                                             action="create",
                                         )
-                                        errors_occurred = True
                                         continue
 
                                     campus_dto = CampusCreate(
@@ -166,7 +162,6 @@ def render_campus_tab():
                                 f"Erro ao criar campus: {str(e)}",
                                 action="create",
                             )
-                            errors_occurred = True
 
                         if created:
                             set_session_feedback(

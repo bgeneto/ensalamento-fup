@@ -389,7 +389,6 @@ class PDFReportService:
             # codigo = alloc.get("codigo", "N/A")
             codigo = None
             nome = alloc.get("nome", "")
-            turma = alloc.get("turma", "")
             professor = alloc.get("professor", "")
 
             # Build formatted text

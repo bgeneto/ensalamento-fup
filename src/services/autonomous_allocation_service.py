@@ -762,9 +762,6 @@ class AutonomousAllocationService:
         candidates = []
         demanda_id = demanda.id
 
-        # Get professor preferences (match expectation of _calculate_compatibility_score)
-        professor_prefs = self._get_professor_preferences_for_professor(professor)
-
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
         required_blocks = [block_code for block_code, _ in atomic_blocks]
 

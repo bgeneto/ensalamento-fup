@@ -7,6 +7,8 @@ Includes CRUD operations for campuses, buildings, and rooms.
 Refactored with modular components for better maintainability.
 """
 
+import streamlit as st
+
 # Import the auth and setup module
 from pages.components.auth import initialize_page
 from pages.components.inventory.tab_campus import render_campus_tab
@@ -27,8 +29,6 @@ if not initialize_page(
 # ============================================================================
 # PAGE HEADER
 # ============================================================================
-import streamlit as st
-
 st.title("🏢 Gerenciamento de Inventário")
 st.markdown(
     "Gerencie campi, prédios, salas e características da infraestrutura física."

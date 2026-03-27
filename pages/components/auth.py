@@ -56,8 +56,6 @@ def initialize_page(
     # ============================================================================
     # AUTHENTICATION CHECK (only if required)
     # ============================================================================
-    auth_success = True
-
     if requires_auth:
         # Retrieve authenticator from session state (set by 0_🔓_Login.py)
         authenticator = st.session_state.get("authenticator")

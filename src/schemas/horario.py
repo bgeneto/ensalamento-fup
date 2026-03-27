@@ -5,7 +5,8 @@ Schemas for: DiaSemana, HorarioBloco
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -36,8 +37,7 @@ class DiaSemanaUpdate(BaseModel):
 class DiaSemanaRead(DiaSemanaBase):
     """Schema for reading DiaSemana."""
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -74,5 +74,4 @@ class HorarioBlocoUpdate(BaseModel):
 class HorarioBlocoRead(HorarioBlocoBase):
     """Schema for reading HorarioBloco."""
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

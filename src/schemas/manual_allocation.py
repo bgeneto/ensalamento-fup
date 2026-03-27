@@ -1,8 +1,9 @@
 """DTO schemas for Manual Allocation domain."""
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
 from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -61,8 +62,7 @@ class RoomSuggestion(BaseModel):
         None, description="Detailed breakdown of how this room was scored"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AllocationSuggestions(BaseModel):
@@ -73,8 +73,7 @@ class AllocationSuggestions(BaseModel):
     other_available: List[RoomSuggestion] = Field(default_factory=list)
     conflicting_rooms: List[RoomSuggestion] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -110,8 +109,7 @@ class AllocationResult(BaseModel):
     allocated_blocks_count: int = Field(default=0)
     atomic_blocks_preview: List[str] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -132,8 +130,7 @@ class AllocationFilters(BaseModel):
     )
     course_filter: Optional[str] = Field(None, description="Filter by course code")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AllocationProgress(BaseModel):
@@ -145,5 +142,4 @@ class AllocationProgress(BaseModel):
     unallocated_demands: int = Field(default=0)
     allocation_percent: float = Field(default=0.0)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

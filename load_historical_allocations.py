@@ -503,10 +503,6 @@ class CSVAllocator:
 
             if not allocation.is_reservation:
                 # For courses, ensure demanda exists before creating allocations
-                # Use space-separated atomic blocks as horario_sigaa_bruto
-                horario_bruto = " ".join(
-                    [f"{dia_sigaa}{bloco}" for bloco in atomic_blocks]
-                )
                 # Since demandas are pre-populated with complete aggregated schedules,
                 # just match by code only (no partial horario needed)
                 if self.debug:

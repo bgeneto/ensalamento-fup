@@ -437,7 +437,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
         # Check for field updates (same number of rows, but changed data)
         elif len(edited_df) == len(df):
             changes_made = False
-            errors_occurred = False
             updated_eventos = set()  # Track which eventos we've already updated
 
             try:
@@ -495,7 +494,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                         False,
                                         "O título do evento é obrigatório",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 if not solicitante:
@@ -504,7 +502,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                         False,
                                         "O nome do solicitante é obrigatório",
                                     )
-                                    errors_occurred = True
                                     continue
 
                                 # Validate full names
@@ -520,7 +517,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                                 False,
                                                 f"Campo '{field_name}' deve conter nome completo (nome + sobrenome)",
                                             )
-                                            errors_occurred = True
                                             continue
                                         elif any(len(part) < 2 for part in parts):
                                             set_session_feedback(
@@ -528,7 +524,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                                 False,
                                                 f"Campo '{field_name}' deve ter palavras com pelo menos 2 caracteres",
                                             )
-                                            errors_occurred = True
                                             continue
 
                                 # Create update DTO and call repository
@@ -554,7 +549,6 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                         False,
                                         f"Erro ao atualizar reserva de ID {evento_id}",
                                     )
-                                    errors_occurred = True
 
                 if changes_made:
                     st.rerun()
@@ -581,7 +575,7 @@ with get_db_session() as session:
 
     semestre_repo = SemestreRepository(session)
     # Find active semester by checking status=True
-    semestre_atual = session.query(Semestre).filter(Semestre.status == True).first()
+    semestre_atual = session.query(Semestre).filter(Semestre.status).first()
     if not semestre_atual:
         st.error("❌ Nenhum semestre ativo encontrado. Contate o administrador.")
         st.stop()

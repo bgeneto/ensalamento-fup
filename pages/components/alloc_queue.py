@@ -100,7 +100,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
             demanda_id = getattr(demanda, "id")
             allocation_info = allocation_info_map.get(demanda_id)
             action_taken = _render_demand_card(
-                demanda, prof_repo, allocation_info, context_id
+                demanda, prof_repo, allocation_info, context_id, semester_id
             )
             if action_taken:
                 action_triggered = True
@@ -161,10 +161,21 @@ def _get_allocation_info(
     }
     """
     allocation_info_map = {}
+    parser = get_sigaa_parser()
 
     for demanda in demandas:
         demanda_id = getattr(demanda, "id")
         allocations = alocacao_repo.get_by_demanda(demanda_id)
+        total_blocks = len(
+            set(parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto))
+        )
+        allocated_blocks = {
+            (alloc.codigo_bloco, alloc.dia_semana_id) for alloc in allocations
+        }
+        allocated_count = len(allocated_blocks)
+        pending_blocks = max(total_blocks - allocated_count, 0)
+        is_fully_allocated = total_blocks > 0 and pending_blocks == 0
+        is_partially_allocated = allocated_count > 0 and pending_blocks > 0
 
         if allocations:
             # Get ALL unique room IDs from allocations
@@ -182,18 +193,28 @@ def _get_allocation_info(
             is_split = len(unique_room_ids) > 1
 
             allocation_info_map[demanda_id] = {
-                "is_allocated": True,
+                "is_allocated": is_fully_allocated,
+                "is_fully_allocated": is_fully_allocated,
+                "is_partially_allocated": is_partially_allocated,
                 "room_name": room_name_display,
                 "room_names": room_names,
                 "is_split": is_split,
+                "allocated_blocks": allocated_count,
+                "pending_blocks": pending_blocks,
+                "total_blocks": total_blocks,
                 "allocations": allocations,
             }
         else:
             allocation_info_map[demanda_id] = {
                 "is_allocated": False,
+                "is_fully_allocated": False,
+                "is_partially_allocated": False,
                 "room_name": None,
                 "room_names": [],
                 "is_split": False,
+                "allocated_blocks": 0,
+                "pending_blocks": total_blocks,
+                "total_blocks": total_blocks,
                 "allocations": [],
             }
 
@@ -205,6 +226,7 @@ def _render_demand_card(
     prof_repo: ProfessorRepository,
     allocation_info: Optional[Dict] = None,
     context_id: str = "",
+    semester_id: Optional[int] = None,
 ) -> bool:
     """
     Render a single demand card.
@@ -236,11 +258,20 @@ def _render_demand_card(
             st.caption(f"👥 **Vagas:** {capacity}")
 
             # Room allocation info for allocated demands
-            if allocation_info and allocation_info.get("is_allocated"):
+            if allocation_info and (
+                allocation_info.get("is_fully_allocated")
+                or allocation_info.get("is_partially_allocated")
+            ):
                 room_name = allocation_info.get("room_name", "N/A")
                 is_split = allocation_info.get("is_split", False)
+                allocated_blocks = allocation_info.get("allocated_blocks", 0)
+                total_blocks = allocation_info.get("total_blocks", 0)
 
-                if is_split:
+                if allocation_info.get("is_partially_allocated"):
+                    st.caption(
+                        f"🏢 **Alocação Parcial:** {room_name} ({allocated_blocks}/{total_blocks} blocos)"
+                    )
+                elif is_split:
                     # Multiple rooms - show with split indicator
                     st.caption(f"🏢 **Salas Alocadas:** {room_name} 🔀")
                 else:
@@ -257,17 +288,20 @@ def _render_demand_card(
 
             # Rule warnings (simplified - would need more logic in real implementation)
             # Could check for hard rules that apply to this discipline
-            rule_warnings = _check_rule_warnings(demanda)
+            rule_warnings = _check_rule_warnings(demanda, semester_id)
             if rule_warnings:
                 st.warning("⚠️ " + "; ".join(rule_warnings))
 
         with col_action:
             demanda_id = getattr(demanda, "id")
-            is_allocated = allocation_info and allocation_info.get(
-                "is_allocated", False
+            is_fully_allocated = allocation_info and allocation_info.get(
+                "is_fully_allocated", False
+            )
+            is_partially_allocated = allocation_info and allocation_info.get(
+                "is_partially_allocated", False
             )
 
-            if is_allocated:
+            if is_fully_allocated:
                 # Show deallocation button for allocated demands
                 button_key = f"dealloc_demand_{demanda_id}_{context_id}"
                 if st.button(
@@ -281,13 +315,17 @@ def _render_demand_card(
                     st.session_state.deallocation_selected_demand = demanda_id
                     return True
             else:
-                # Show allocation button for unallocated demands
+                # Show allocation button for unallocated or partially allocated demands
                 button_key = f"alloc_demand_{demanda_id}_{context_id}"
                 if st.button(
-                    "Alocar Sala",
+                    "Continuar" if is_partially_allocated else "Alocar Sala",
                     icon="🎯",
                     key=button_key,
-                    help=f"Iniciar alocação para {discipline_code}",
+                    help=(
+                        f"Continuar alocação para {discipline_code}"
+                        if is_partially_allocated
+                        else f"Iniciar alocação para {discipline_code}"
+                    ),
                     width="stretch",
                 ):
                     # Set session state to show allocation assistant
@@ -297,7 +335,7 @@ def _render_demand_card(
     return False
 
 
-def _check_rule_warnings(demanda) -> List[str]:
+def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str]:
     """
     Check for rule-related warnings for this demand.
 
@@ -319,7 +357,7 @@ def _check_rule_warnings(demanda) -> List[str]:
 
     # Check for hybrid discipline detection (from historical data)
     # This is the CONFIRMED detection from Phase 0
-    is_hybrid_detected = _check_hybrid_discipline(discipline_code)
+    is_hybrid_detected = _check_hybrid_discipline(discipline_code, semester_id)
 
     if is_hybrid_detected:
         # Strong indication - detected from historical allocation data
@@ -339,7 +377,9 @@ def _check_rule_warnings(demanda) -> List[str]:
     return warnings
 
 
-def _check_hybrid_discipline(discipline_code: str) -> bool:
+def _check_hybrid_discipline(
+    discipline_code: str, current_semester_id: Optional[int] = None
+) -> bool:
     """
     Check if a discipline is detected as hybrid from historical data.
 
@@ -353,7 +393,9 @@ def _check_hybrid_discipline(discipline_code: str) -> bool:
         True if discipline is detected as hybrid
     """
     # Check if we have cached hybrid detection in session state
-    if "hybrid_disciplines_cache" not in st.session_state:
+    hybrid_cache = st.session_state.setdefault("hybrid_disciplines_cache", {})
+
+    if current_semester_id not in hybrid_cache:
         # Perform fresh detection
         try:
             with get_db_session() as session:
@@ -362,17 +404,18 @@ def _check_hybrid_discipline(discipline_code: str) -> bool:
                 )
 
                 hybrid_service = HybridDisciplineDetectionService(session)
-                result = hybrid_service.detect_hybrid_disciplines()
+                detection_semester_id = hybrid_service.resolve_detection_semester(
+                    current_semester_id
+                )
+                result = hybrid_service.detect_hybrid_disciplines(detection_semester_id)
 
                 # Cache the results
-                st.session_state.hybrid_disciplines_cache = set(
-                    result.hybrid_disciplines
-                )
+                hybrid_cache[current_semester_id] = set(result.hybrid_disciplines)
         except Exception:
             # If detection fails, return empty set
-            st.session_state.hybrid_disciplines_cache = set()
+            hybrid_cache[current_semester_id] = set()
 
-    return discipline_code in st.session_state.hybrid_disciplines_cache
+    return discipline_code in hybrid_cache[current_semester_id]
 
 
 def _sort_demands_by_priority(demandas, allocation_info_map) -> List:
@@ -391,7 +434,7 @@ def _sort_demands_by_priority(demandas, allocation_info_map) -> List:
         allocation_info = allocation_info_map.get(demanda_id, {})
 
         # Already allocated - lowest priority
-        if allocation_info.get("is_allocated"):
+        if allocation_info.get("is_fully_allocated"):
             return (0, 0, 0)
 
         # Unallocated - calculate priority

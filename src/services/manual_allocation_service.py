@@ -12,16 +12,14 @@ from src.repositories.regra import RegraRepository
 from src.repositories.reserva import ReservaRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.semestre import SemestreRepository
-from src.schemas.allocation import (
-    AlocacaoSemestralCreate,
-    PartialAllocationResult,
-)
+from src.schemas.allocation import AlocacaoSemestralCreate, PartialAllocationResult
 from src.schemas.manual_allocation import (
     AllocationResult,
     AllocationSuggestions,
     ConflictDetail,
     RoomSuggestion,
 )
+from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
 from src.services.room_scoring_service import BlockGroup, RoomScoringService
 from src.utils.sigaa_parser import SigaaScheduleParser
 
@@ -39,7 +37,76 @@ class ManualAllocationService:
         self.sala_repo = SalaRepository(session)
         self.regra_repo = RegraRepository(session)
         self.parser = SigaaScheduleParser()
+        self.hybrid_detection_service = HybridDisciplineDetectionService(session)
         self.scoring_service = RoomScoringService(session)
+        self._hybrid_detection_semester_id: Optional[int] = None
+
+    def _ensure_hybrid_detection_initialized(self, current_semester_id: int) -> None:
+        """Initialize hybrid detection so manual day suggestions match autonomous flow."""
+        detection_semester_id = (
+            self.hybrid_detection_service.resolve_detection_semester(
+                current_semester_id
+            )
+        )
+
+        if detection_semester_id != self._hybrid_detection_semester_id or not getattr(
+            self.hybrid_detection_service, "_is_initialized", False
+        ):
+            self.hybrid_detection_service.detect_hybrid_disciplines(
+                detection_semester_id
+            )
+            self._hybrid_detection_semester_id = detection_semester_id
+
+        self.scoring_service.set_hybrid_detection_service(self.hybrid_detection_service)
+
+    def _get_pending_atomic_blocks_for_demand(
+        self, demanda_id: int, horario_sigaa: str
+    ) -> List[Tuple[str, int]]:
+        """Return only the atomic blocks that are still unallocated for a demand."""
+        all_atomic_blocks = self.parser.split_to_atomic_tuples(horario_sigaa)
+        if not all_atomic_blocks:
+            return []
+
+        existing_allocations = self.alocacao_repo.get_by_demanda(demanda_id)
+        allocated_blocks = {
+            (alloc.codigo_bloco, alloc.dia_semana_id) for alloc in existing_allocations
+        }
+
+        return [
+            (block_code, day_id)
+            for block_code, day_id in all_atomic_blocks
+            if (block_code, day_id) not in allocated_blocks
+        ]
+
+    def _get_semester_demand_completion_map(self, semester_id: int) -> Dict[int, Dict]:
+        """Compute per-demand completion status for a semester."""
+        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        allocations = self.alocacao_repo.get_by_semestre(semester_id)
+
+        allocations_by_demand: Dict[int, set] = {}
+        for alloc in allocations:
+            allocations_by_demand.setdefault(alloc.demanda_id, set()).add(
+                (alloc.codigo_bloco, alloc.dia_semana_id)
+            )
+
+        completion_map: Dict[int, Dict] = {}
+        for demanda in demandas:
+            total_blocks = len(
+                set(self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto))
+            )
+            allocated_blocks = allocations_by_demand.get(demanda.id, set())
+            allocated_count = len(allocated_blocks)
+            pending_count = max(total_blocks - allocated_count, 0)
+
+            completion_map[demanda.id] = {
+                "total_blocks": total_blocks,
+                "allocated_blocks": allocated_count,
+                "pending_blocks": pending_count,
+                "is_fully_allocated": total_blocks > 0 and pending_count == 0,
+                "is_partially_allocated": allocated_count > 0 and pending_count > 0,
+            }
+
+        return completion_map
 
     def allocate_demand(self, demanda_id: int, sala_id: int) -> AllocationResult:
         """
@@ -471,17 +538,30 @@ class ManualAllocationService:
 
         # Find the specific block group for this day
         target_group = None
+        pending_atomic_blocks = self._get_pending_atomic_blocks_for_demand(
+            demanda_id, demanda.horario_sigaa_bruto
+        )
+        pending_by_day: Dict[int, List[str]] = {}
+        for block_code, pending_day_id in pending_atomic_blocks:
+            pending_by_day.setdefault(pending_day_id, []).append(block_code)
+
         for group in block_groups_raw:
             if group["day_id"] == day_id:
+                pending_blocks = sorted(set(pending_by_day.get(day_id, [])))
+                if not pending_blocks:
+                    return []
+
                 target_group = BlockGroup(
                     day_id=group["day_id"],
                     day_name=group["day_name"],
-                    blocks=group["blocks"],
+                    blocks=pending_blocks,
                 )
                 break
 
         if not target_group:
             return []
+
+        self._ensure_hybrid_detection_initialized(semester_id)
 
         # Use scoring service to get per-block-group scores
         scores = self.scoring_service.score_rooms_for_block_group(
@@ -506,10 +586,12 @@ class ManualAllocationService:
                         "hard_rules_points": score.breakdown.hard_rules_points,
                         "soft_preference_points": score.breakdown.soft_preference_points,
                         "historical_frequency_points": score.breakdown.historical_frequency_points,
+                        "hybrid_bonus_points": score.breakdown.hybrid_bonus_points,
                         "capacity_satisfied": score.breakdown.capacity_satisfied,
                         "hard_rules_satisfied": score.breakdown.hard_rules_satisfied,
                         "soft_preferences_satisfied": score.breakdown.soft_preferences_satisfied,
                         "historical_allocations": score.breakdown.historical_allocations,
+                        "hybrid_room_type_match": score.breakdown.hybrid_room_type_match,
                     },
                 }
             )
@@ -629,14 +711,17 @@ class ManualAllocationService:
 
     def get_allocation_progress(self, semester_id: int) -> dict:
         """Get allocation progress summary for a semester."""
-        # Get total demands for semester
         demandas = self.demanda_repo.get_by_semestre(semester_id)
         total_demands = len(demandas)
+        completion_map = self._get_semester_demand_completion_map(semester_id)
 
-        # Get allocated demands (demands that have at least one allocation)
-        allocations = self.alocacao_repo.get_by_semestre(semester_id)
-        allocated_demand_ids = set(alloc.demanda_id for alloc in allocations)
-        allocated_demands = len(allocated_demand_ids)
+        allocated_demands = sum(
+            1 for status in completion_map.values() if status["is_fully_allocated"]
+        )
+        partially_allocated_demands = sum(
+            1 for status in completion_map.values() if status["is_partially_allocated"]
+        )
+        pending_demands = total_demands - allocated_demands
 
         # Calculate percentage
         allocation_percent = (
@@ -647,37 +732,24 @@ class ManualAllocationService:
             "semester_id": semester_id,
             "total_demands": total_demands,
             "allocated_demands": allocated_demands,
-            "unallocated_demands": total_demands - allocated_demands,
+            "partially_allocated_demands": partially_allocated_demands,
+            "unallocated_demands": pending_demands,
             "allocation_percent": allocation_percent,
         }
 
     def get_unallocated_demands(self, semester_id: int) -> List[dict]:
-        """Get all demands in a semester that haven't been allocated yet."""
-        # Get all demands for semester
+        """Get all demands in a semester that still have pending blocks."""
         demandas = self.demanda_repo.get_by_semestre(semester_id)
+        completion_map = self._get_semester_demand_completion_map(semester_id)
 
-        # Get allocated demand IDs
-        allocations = self.alocacao_repo.get_by_semestre(semester_id)
-        allocated_ids = set(alloc.demanda_id for alloc in allocations)
-
-        # Filter out allocated demands
-        unallocated = [d for d in demandas if d.id not in allocated_ids]
-
-        return [self.demanda_repo.orm_to_dto(d) for d in unallocated]
+        return [d for d in demandas if completion_map[d.id]["pending_blocks"] > 0]
 
     def get_allocated_demands(self, semester_id: int) -> List[dict]:
-        """Get all demands in a semester that have been allocated."""
-        # Get all demands for semester
+        """Get all demands in a semester that are fully allocated."""
         demandas = self.demanda_repo.get_by_semestre(semester_id)
+        completion_map = self._get_semester_demand_completion_map(semester_id)
 
-        # Get allocated demand IDs
-        allocations = self.alocacao_repo.get_by_semestre(semester_id)
-        allocated_ids = set(alloc.demanda_id for alloc in allocations)
-
-        # Filter to only allocated demands
-        allocated = [d for d in demandas if d.id in allocated_ids]
-
-        return [self.demanda_repo.orm_to_dto(d) for d in allocated]
+        return [d for d in demandas if completion_map[d.id]["is_fully_allocated"]]
 
     def get_all_demands(self, semester_id: int) -> List[dict]:
         """Get all demands in a semester regardless of allocation status."""
@@ -780,7 +852,7 @@ class ManualAllocationService:
             # ✅ Trust scoring service results instead of re-checking rules
             # The scoring service already validated hard rules compliance
             hard_compliant = (
-                bool(candidate.scoring_breakdown.hard_rules_satisfied)
+                candidate.scoring_breakdown.hard_rules_compliant
                 if candidate.scoring_breakdown
                 else True
             )
@@ -822,6 +894,7 @@ class ManualAllocationService:
                     "soft_preference_points": candidate.scoring_breakdown.soft_preference_points,
                     "historical_frequency_points": candidate.scoring_breakdown.historical_frequency_points,
                     "capacity_satisfied": candidate.scoring_breakdown.capacity_satisfied,
+                    "hard_rules_compliant": candidate.scoring_breakdown.hard_rules_compliant,
                     "hard_rules_satisfied": candidate.scoring_breakdown.hard_rules_satisfied,
                     "soft_preferences_satisfied": candidate.scoring_breakdown.soft_preferences_satisfied,
                     "historical_allocations": candidate.scoring_breakdown.historical_allocations,

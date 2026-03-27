@@ -8,6 +8,8 @@ room reservations using the Parent/Instance design pattern.
 import logging
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
+
+import streamlit as st
 from sqlalchemy.orm import Session
 
 from src.repositories.reserva_evento import ReservaEventoRepository
@@ -25,6 +27,11 @@ from src.schemas.allocation import (
 from src.utils.recurrence_calculator import RecurrenceCalculator
 
 logger = logging.getLogger(__name__)
+
+
+def ss_get(key: str, default: Any = None) -> Any:
+    """Safely read from Streamlit session state outside page modules."""
+    return st.session_state.get(key, default)
 
 
 class ReservaEventoService:

@@ -93,7 +93,6 @@ def render_associations_tab():
 
             # Create predio mapping for resolution
             predio_id_to_name = {p.id: p.nome for p in predios}
-            predio_name_to_id = {p.nome: p.id for p in predios}
 
             if not salas or not predios or not caracteristicas:
                 st.warning(
@@ -129,11 +128,7 @@ def render_associations_tab():
                         ]
 
                         # Display current characteristics status (full width)
-                        if sala_data["caracteristicas"]:
-                            current_names = [
-                                c.nome for c in sala_data["caracteristicas"]
-                            ]
-                        else:
+                        if not sala_data["caracteristicas"]:
                             st.warning(
                                 "⚠️ Esta sala não possui características associadas."
                             )

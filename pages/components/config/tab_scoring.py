@@ -188,12 +188,7 @@ def _save_scoring_config(df: pd.DataFrame) -> None:
         df: DataFrame with updated scoring values
     """
     import json
-    from pathlib import Path
     from datetime import datetime
-
-    config_path = (
-        Path(__file__).parent.parent.parent.parent / "data" / "scoring_config.json"
-    )
 
     # Create mapping from display name to config key
     param_mapping = {
@@ -205,9 +200,17 @@ def _save_scoring_config(df: pd.DataFrame) -> None:
         "Característica Preferida": "PREFERRED_CHARACTERISTIC",
     }
 
+    from src.config.scoring_config import (
+        ensure_user_scoring_config_file,
+        get_existing_scoring_config_path,
+    )
+
+    config_path = ensure_user_scoring_config_file()
+    source_path = get_existing_scoring_config_path() or config_path
+
     # Load current configuration
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(source_path, "r", encoding="utf-8") as f:
             config = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         st.error(f"Erro ao carregar configuração atual: {e}")

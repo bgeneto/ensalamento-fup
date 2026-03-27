@@ -288,9 +288,6 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
                 if nome_disciplina
                 else codigo_disciplina
             )
-            turma = (
-                alloc.demanda.turma_disciplina if alloc.demanda is not None else "N/A"
-            )
             professor = (
                 alloc.demanda.professores_disciplina
                 if alloc.demanda is not None

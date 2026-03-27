@@ -95,6 +95,9 @@ class HybridDisciplineDetectionService:
             detection_semester_id = self.alocacao_repo.get_most_recent_semester_id()
 
         if not detection_semester_id:
+            self._cache.clear()
+            self._detection_semester_id = None
+            self._is_initialized = True
             logger.warning("No semesters found for hybrid detection")
             return HybridDetectionResult()
 
@@ -126,6 +129,26 @@ class HybridDisciplineDetectionService:
             detection_semester_id=detection_semester_id,
             details=self._cache.copy(),
         )
+
+    def resolve_detection_semester(
+        self, current_semester_id: Optional[int] = None
+    ) -> Optional[int]:
+        """
+        Resolve the historical semester that should drive hybrid detection.
+
+        The current semester is excluded when possible because it may be empty or
+        partially allocated while the allocation workflow is still in progress.
+        """
+        detection_semester_id = (
+            self.alocacao_repo.get_most_recent_semester_with_allocations(
+                exclude_semester_id=current_semester_id
+            )
+        )
+
+        if detection_semester_id:
+            return detection_semester_id
+
+        return self.alocacao_repo.get_most_recent_semester_with_allocations()
 
     def _build_hybrid_info(
         self, codigo_disciplina: str, semester_id: int

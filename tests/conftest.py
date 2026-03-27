@@ -2,11 +2,11 @@
 Test fixtures and configuration for all tests.
 """
 
-import pytest
-from pathlib import Path
-
 # Add src to path for imports
 import sys
+from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -14,23 +14,21 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def test_db():
     """
-    Create a test database (in-memory SQLite).
+    Create an isolated test database (in-memory SQLite) per test.
     """
-    # Use in-memory database for tests
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Create all tables
     from src.models.base import Base
 
     Base.metadata.create_all(bind=engine)
 
     yield engine
 
-    # Cleanup
     Base.metadata.drop_all(bind=engine)
+    engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -54,10 +52,10 @@ def sample_campus(db_session):
     """
     Create a sample campus for testing.
     """
-    from src.models.inventory import Campus
-
     # Generate unique name per test
     import time
+
+    from src.models.inventory import Campus
 
     unique_name = f"Campus Central {int(time.time() * 1000000) % 1000000}"
 
@@ -128,8 +126,9 @@ def sample_usuario(db_session):
     NOTE: No password_hash here - passwords are stored in streamlit-authenticator
     YAML file, not in the database.
     """
-    from src.models.academic import Usuario
     import time
+
+    from src.models.academic import Usuario
 
     unique_id = int(time.time() * 1000000) % 1000000
 

@@ -5,20 +5,28 @@ Autonomous Allocation PDF Report Generator - Human-readable allocation decision 
 import io
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate,
+    PageBreak,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    PageBreak,
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib import colors
+from src.services.statistics_report_service import StatisticsReportService
+from src.utils.pdf_fonts import (
+    get_default_font,
+    get_table_cell_font,
+    get_table_header_font,
+    register_pdf_fonts,
+)
 
 # Suppress ReportLab logging completely
 logging.getLogger("reportlab").setLevel(logging.ERROR)
@@ -28,15 +36,6 @@ logging.getLogger("reportlab.platypus").setLevel(logging.ERROR)
 logging.getLogger("reportlab.pdfbase").setLevel(logging.ERROR)
 logging.getLogger("reportlab.pdfbase.pdfmetrics").setLevel(logging.ERROR)
 logging.getLogger("reportlab.pdfbase.ttfonts").setLevel(logging.ERROR)
-
-# Import existing styles from statistics service
-from src.services.statistics_report_service import StatisticsReportService
-from src.utils.pdf_fonts import (
-    register_pdf_fonts,
-    get_default_font,
-    get_table_header_font,
-    get_table_cell_font,
-)
 
 
 def _register_unicode_fonts():

@@ -251,9 +251,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         """
         orm_objs = (
             self.session.query(Demanda)
-            .filter(
-                (Demanda.semestre_id == semestre_id) & (Demanda.nao_alocar == False)
-            )
+            .filter((Demanda.semestre_id == semestre_id) & (~Demanda.nao_alocar))
             .order_by(Demanda.codigo_disciplina)
             .all()
         )
@@ -286,7 +284,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         """
         orm_objs = (
             self.session.query(Demanda)
-            .filter((Demanda.semestre_id == semestre_id) & (Demanda.nao_alocar == True))
+            .filter((Demanda.semestre_id == semestre_id) & Demanda.nao_alocar)
             .order_by(Demanda.codigo_disciplina)
             .all()
         )

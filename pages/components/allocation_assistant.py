@@ -349,7 +349,7 @@ def _render_block_group_room_card(
                             )
 
                     with col_b:
-                        st.markdown("**Preferências Professor:**")
+                        st.markdown("**Regras Suaves / Preferências:**")
                         soft_prefs = breakdown.get("soft_preferences_satisfied", [])
                         if soft_prefs:
                             st.success(
@@ -357,7 +357,7 @@ def _render_block_group_room_card(
                             )
                         else:
                             st.info(
-                                f"⏸️ Não verificadas (+{breakdown.get('soft_preference_points', 0)})"
+                                f"➖ Sem correspondências (+{breakdown.get('soft_preference_points', 0)})"
                             )
 
                         st.markdown("**Frequência Histórica:**")
@@ -370,6 +370,15 @@ def _render_block_group_room_card(
                             st.info(
                                 f"📉 Nunca alocada (+{breakdown.get('historical_frequency_points', 0)})"
                             )
+
+                        st.markdown("**Bônus Híbrido:**")
+                        hybrid_bonus = breakdown.get("hybrid_bonus_points", 0)
+                        if breakdown.get("hybrid_room_type_match", False):
+                            st.success(
+                                f"🧪 Tipo de sala compatível com o padrão histórico do dia (+{hybrid_bonus})"
+                            )
+                        else:
+                            st.info(f"➖ Não aplicado (+{hybrid_bonus})")
 
                     st.markdown(f"**Total: {score} pontos**")
 
@@ -583,7 +592,7 @@ def _render_room_suggestion_card(
                                 )
 
                         with col2:
-                            st.markdown("**Preferências Professor:**")
+                            st.markdown("**Regras Suaves / Preferências:**")
                             soft_prefs = breakdown.get("soft_preferences_satisfied", [])
                             if soft_prefs:
                                 prefs_details = " • ".join(soft_prefs)
@@ -592,7 +601,7 @@ def _render_room_suggestion_card(
                                 )
                             else:
                                 st.info(
-                                    f"⏸️ Não verificadas (+{breakdown.get('soft_preference_points', 0)})"
+                                    f"➖ Sem correspondências (+{breakdown.get('soft_preference_points', 0)})"
                                 )
 
                             st.markdown("**Frequência Histórica:**")

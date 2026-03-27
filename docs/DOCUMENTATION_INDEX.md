@@ -252,7 +252,42 @@ Then pick a phase to implement!
 
 ### Supporting Documentation
 
-#### 8. **streamlit-authenticator.md** - Authentication Guide
+#### 8. **PARTIAL_ALLOCATION_CONTINUITY_PLAN.md** - Continuidade de Sala no Modo Parcial ✨ **NEW**
+**Location:** `/docs/PARTIAL_ALLOCATION_CONTINUITY_PLAN.md`
+**Read Time:** 20 minutes
+**Purpose:** Plano técnico implementável para melhorar o modo parcial com foco em continuidade por disciplina e por professor
+
+**Contains:**
+- Nova fase 1.5 de consolidação de disciplinas não híbridas
+- Conceito de sala âncora do professor no semestre
+- Política de prioridades lexicográfica
+- Novo `AllocationContinuityPlanner`
+- Mudanças concretas por arquivo
+- Estratégia incremental de implementação e testes
+
+**When to Read:**
+- Antes de evoluir o motor de alocação parcial
+- Ao implementar preferências de continuidade espacial
+- Para calibrar score e heurísticas sem quebrar hard rules
+
+#### 9. **PARTIAL_ALLOCATION_CONTINUITY_EXECUTION_CHECKLIST.md** - Checklist de Execução ✨ **NEW**
+**Location:** `/docs/PARTIAL_ALLOCATION_CONTINUITY_EXECUTION_CHECKLIST.md`
+**Read Time:** 15 minutes
+**Purpose:** Quebra o plano de continuidade em tarefas técnicas pequenas, sequenciais e testáveis
+
+**Contains:**
+- Ordem exata de implementação
+- Arquivos-alvo por tarefa
+- Testes por etapa
+- Critérios de aceite
+- Comandos de verificação com `pytest`
+
+**When to Read:**
+- Antes de começar a implementação da continuidade do modo parcial
+- Para dividir o trabalho em commits curtos
+- Para acompanhar progresso por etapa
+
+#### 10. **streamlit-authenticator.md** - Authentication Guide
 **Location:** `/docs/streamlit-authenticator.md`
 **Read Time:** 20 minutes
 **Purpose:** How to implement user authentication

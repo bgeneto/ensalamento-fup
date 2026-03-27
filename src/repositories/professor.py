@@ -151,7 +151,7 @@ class ProfessorRepository(BaseRepository[Professor, ProfessorRead]):
         """
         orm_objs = (
             self.session.query(Professor)
-            .filter(Professor.tem_baixa_mobilidade == True)
+            .filter(Professor.tem_baixa_mobilidade)
             .order_by(Professor.nome_completo)
             .all()
         )
