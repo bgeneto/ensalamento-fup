@@ -74,7 +74,11 @@ def sample_predio(db_session, sample_campus):
     """
     from src.models.inventory import Predio
 
-    predio = Predio(nome="Bloco A", campus_id=sample_campus.id)
+    predio = Predio(
+        nome="Bloco A",
+        descricao="Prédio de teste",
+        campus_id=sample_campus.id,
+    )
     db_session.add(predio)
     db_session.commit()
     db_session.refresh(predio)
@@ -89,7 +93,7 @@ def sample_tipo_sala(db_session):
     """
     from src.models.inventory import TipoSala
 
-    tipo = TipoSala(nome="Sala de Aula", descricao="Regular classroom")
+    tipo = TipoSala(nome="Sala de Aula")
     db_session.add(tipo)
     db_session.commit()
     db_session.refresh(tipo)
@@ -192,8 +196,10 @@ def sample_demanda(db_session, sample_semestre):
         codigo_disciplina="COMP001",
         nome_disciplina="Programação I",
         professores_disciplina="Prof. João Silva",
-        horario_sigaa_bruto="M1;M2;SEG",
-        nao_alocar=False,
+        turma_disciplina="A",
+        vagas_disciplina=30,
+        horario_sigaa_bruto="24M12",
+        codigo_curso="TESTE",
     )
     db_session.add(demanda)
     db_session.commit()

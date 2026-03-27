@@ -1,7 +1,6 @@
-import logging
-
 """Optimized Allocation Repository - Batch operations for reduced I/O."""
 
+import logging
 from typing import Dict, List, Set, Tuple
 
 from sqlalchemy import and_, text
