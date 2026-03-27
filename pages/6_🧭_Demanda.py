@@ -29,10 +29,11 @@ if not initialize_page(
 
 from pages.components.ui import page_footer
 from src.config.database import get_db_session
+from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.semestre import SemestreRepository
-from src.schemas.academic import DemandaCreate
+from src.services.demanda_sync_service import DemandaSyncService
 from src.services.semester_service import sync_semester_from_api
 from src.utils.cache_helpers import (
     get_semester_options,
@@ -89,6 +90,14 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
                 "num_slots": num_slots,
                 "id_oferta_externo": data.get("id_oferta_externo"),
                 "codigo_curso": data.get("codigo_curso"),
+                "origem": data.get("origem") or "manual",
+                "sync_status": data.get("sync_status") or "manual",
+                "tem_override": "Sim"
+                if (data.get("local_overrides_json") or {})
+                else "",
+                "revalidation_required": "Sim"
+                if data.get("revalidation_required")
+                else "",
             }
         )
 
@@ -108,6 +117,10 @@ def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
                 "num_slots",
                 "id_oferta_externo",
                 "codigo_curso",
+                "origem",
+                "sync_status",
+                "tem_override",
+                "revalidation_required",
             ]
         )
 
@@ -239,6 +252,22 @@ with get_db_session() as session:
     col2.metric("Professores Envolvidos", f"{total_professores}")
     col3.metric("Slots de Horários", f"{total_slots_atomicos}")
 
+    removed_count = (
+        int((df["sync_status"] == "removed_in_api").sum()) if not df.empty else 0
+    )
+    revalidation_count = (
+        int((df["revalidation_required"] == "Sim").sum()) if not df.empty else 0
+    )
+
+    if removed_count:
+        st.warning(
+            f"⚠️ {removed_count} demanda(s) foram removidas na API e seguem preservadas localmente."
+        )
+    if revalidation_count:
+        st.error(
+            f"❗ {revalidation_count} demanda(s) exigem revalidação por mudança crítica na API ou remoção com alocação existente."
+        )
+
     # --- Avisos Acionáveis: Professores não cadastrados ---
     registered_profs = {p.nome_completo for p in prof_repo.get_all()}
     missing_profs = sorted(
@@ -346,6 +375,10 @@ with get_db_session() as session:
                     "Professores": row["professores_disciplina"],
                     "Horário": row["horario_legivel"],
                     "Slots": row["num_slots"],
+                    "Origem": row["origem"],
+                    "Status Sync": row["sync_status"],
+                    "Override": row["tem_override"],
+                    "Revalidar": row["revalidation_required"],
                 }
             )
 
@@ -366,7 +399,7 @@ with get_db_session() as session:
                 editor_keys_to_clean = [
                     k
                     for k in st.session_state.keys()
-                    if k.startswith("demanda_table_editor")
+                    if isinstance(k, str) and k.startswith("demanda_table_editor")
                 ]
                 for key in editor_keys_to_clean:
                     del st.session_state[key]
@@ -426,6 +459,26 @@ with get_db_session() as session:
                     disabled=True,  # Read-only, calculated from raw schedule
                     help="Número de slots de horário",
                 ),
+                "Origem": st.column_config.TextColumn(
+                    "Origem",
+                    disabled=True,
+                    help="Origem da demanda: API ou manual.",
+                ),
+                "Status Sync": st.column_config.TextColumn(
+                    "Status Sync",
+                    disabled=True,
+                    help="Estado atual da sincronização com a API.",
+                ),
+                "Override": st.column_config.TextColumn(
+                    "Override",
+                    disabled=True,
+                    help="Indica se há override local em algum campo sincronizado.",
+                ),
+                "Revalidar": st.column_config.TextColumn(
+                    "Revalidar",
+                    disabled=True,
+                    help="Indica se a demanda precisa ser revisada antes do ensalamento.",
+                ),
             },
             key=editor_key,
         )
@@ -444,21 +497,39 @@ with get_db_session() as session:
             try:
                 with get_db_session() as session:
                     demanda_repo_delete = DisciplinaRepository(session)
+                    allocation_repo = AlocacaoRepository(session)
                     deleted_list = []
+                    blocked_list = []
                     for demanda_id in deleted_ids:
                         demanda = demanda_repo_delete.get_by_id(int(demanda_id))
+                        allocations = allocation_repo.get_by_demanda(int(demanda_id))
+                        if allocations:
+                            if demanda:
+                                blocked_list.append(
+                                    f"{demanda.codigo_disciplina}-{demanda.turma_disciplina}"
+                                )
+                            continue
                         if demanda:
                             deleted_list.append(
                                 f"{demanda.codigo_disciplina}-{demanda.turma_disciplina}"
                             )
                         demanda_repo_delete.delete(int(demanda_id))
-                    set_session_feedback(
-                        "demanda_crud_result",
-                        True,
-                        f"{len(deleted_ids)} demanda(s) removida(s) com sucesso: {', '.join(deleted_list)}",
-                        action="delete",
-                    )
-                    changes_made = True
+                    if deleted_list:
+                        set_session_feedback(
+                            "demanda_crud_result",
+                            True,
+                            f"{len(deleted_list)} demanda(s) removida(s) com sucesso: {', '.join(deleted_list)}",
+                            action="delete",
+                        )
+                        changes_made = True
+                    if blocked_list:
+                        set_session_feedback(
+                            "demanda_crud_result",
+                            False,
+                            f"Não é possível remover demandas com alocações salvas. Remova antes as alocações de: {', '.join(blocked_list)}",
+                            action="delete",
+                        )
+                        errors_occurred = True
             except Exception as e:
                 set_session_feedback(
                     "demanda_crud_result",
@@ -469,9 +540,9 @@ with get_db_session() as session:
                 errors_occurred = True
 
         # Compare each row for changes (only for rows that still exist)
-        for idx, row in edited_df.iterrows():
-            if idx < len(edit_df):
-                original_row = edit_df.iloc[idx]
+        for row_position, row in enumerate(edited_df.to_dict("records")):
+            if row_position < len(edit_df):
+                original_row = edit_df.iloc[row_position]
 
                 # Check which fields changed
                 curso_changed = row["Curso"] != original_row["Curso"]
@@ -533,6 +604,7 @@ with get_db_session() as session:
                     try:
                         with get_db_session() as session:
                             demanda_repo_update = DisciplinaRepository(session)
+                            demanda_sync_service = DemandaSyncService(session)
                             current = demanda_repo_update.get_by_id(demanda_id)
 
                             if current:
@@ -551,12 +623,8 @@ with get_db_session() as session:
                                 if professores_changed:
                                     update_data["professores_disciplina"] = professores
 
-                                from src.schemas.academic import DemandaUpdate
-
-                                demanda_update_dto = DemandaUpdate(**update_data)
-
-                                demanda_repo_update.update(
-                                    demanda_id, demanda_update_dto
+                                demanda_sync_service.apply_manual_edit(
+                                    demanda_id, update_data
                                 )
 
                                 set_session_feedback(
@@ -606,10 +674,19 @@ if st.session_state.sync_semestre_processing:
         try:
             summary = sync_semester_from_api(current_semester_name, cursos_ignorados)
             # success
+            sync_message = (
+                f"Sincronização concluída: {summary['created']} nova(s), "
+                f"{summary['updated_from_api']} atualizada(s) da API, "
+                f"{summary['unchanged']} sem alteração, "
+                f"{summary['removed_in_api']} removida(s) na API e "
+                f"{summary['professores']} professor(es) criado(s)."
+            )
+            if summary.get("revalidation_required"):
+                sync_message += f" {summary['revalidation_required']} demanda(s) exigem revalidação."
             set_session_feedback(
                 "sync_semestre_result",
                 True,
-                f"Sincronização concluída: {summary['demandas']} demandas importadas, {summary['professores']} professores criados.",
+                sync_message,
                 ttl=8,
                 summary=summary,
             )
@@ -760,7 +837,7 @@ with st.form("form_demanda_manual"):
         else:
             try:
                 with get_db_session() as session:
-                    dem_repo = DisciplinaRepository(session)
+                    demanda_sync_service = DemandaSyncService(session)
 
                     # Clean input data
                     cleaned_codigo_curso = codigo_curso.strip().upper()
@@ -782,21 +859,19 @@ with st.form("form_demanda_manual"):
                         atomic_array
                     )  # Join atomic blocks with spaces
 
-                    # Create DemandaCreate DTO
-                    demanda_dto = DemandaCreate(
-                        semestre_id=selected_semester_id,
-                        codigo_disciplina=cleaned_codigo_disciplina,
-                        nome_disciplina=cleaned_nome_disciplina,
-                        professores_disciplina=cleaned_professores,
-                        turma_disciplina=cleaned_turma,
-                        vagas_disciplina=int(vagas_disciplina),
-                        horario_sigaa_bruto=horario_atomic,  # Store atomic format
-                        codigo_curso=cleaned_codigo_curso,
-                        id_oferta_externo=None,  # Manual entries don't have external ID
+                    demanda_sync_service.create_manual_demanda(
+                        {
+                            "semestre_id": selected_semester_id,
+                            "codigo_disciplina": cleaned_codigo_disciplina,
+                            "nome_disciplina": cleaned_nome_disciplina,
+                            "professores_disciplina": cleaned_professores,
+                            "turma_disciplina": cleaned_turma,
+                            "vagas_disciplina": int(vagas_disciplina),
+                            "horario_sigaa_bruto": horario_atomic,
+                            "codigo_curso": cleaned_codigo_curso,
+                            "id_oferta_externo": None,
+                        }
                     )
-
-                    # Create the demanda
-                    dem_repo.create(demanda_dto)
 
                     set_session_feedback(
                         "demanda_manual_form_result",

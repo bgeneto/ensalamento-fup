@@ -1,18 +1,16 @@
-from typing import Dict, Set, Any, List
 import logging
 import re
+from typing import Any, Dict, List, Set
+
 from sqlalchemy.exc import IntegrityError
 
 from src.config.database import get_db_session
-from src.services.oferta_api import fetch_ofertas, OfertaAPIError
-from src.repositories.semestre import SemestreRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.professor import ProfessorRepository
 from src.models.academic import Semestre
-from src.schemas.academic import (
-    DemandaCreate,
-    ProfessorCreate,
-)
+from src.repositories.professor import ProfessorRepository
+from src.repositories.semestre import SemestreRepository
+from src.schemas.academic import ProfessorCreate
+from src.services.demanda_sync_service import DemandaSyncService
+from src.services.oferta_api import OfertaAPIError, fetch_ofertas
 from src.utils.sigaa_parser import SigaaScheduleParser
 
 
@@ -68,7 +66,7 @@ def _extract_professores_string(prof_list: Any) -> str:
 
 def sync_semester_from_api(
     cod_semestre: str, cursos_ignorados: List[str] = None
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     """
     Sync ofertas for cod_semestre.
     Returns summary: {'created_semestre':0/1,'demandas':N,'professores':M,'skipped':K}
@@ -85,6 +83,11 @@ def sync_semester_from_api(
 
     summary = {
         "created_semestre": 0,
+        "created": 0,
+        "updated_from_api": 0,
+        "unchanged": 0,
+        "removed_in_api": 0,
+        "revalidation_required": 0,
         "demandas": 0,
         "professores": 0,
         "skipped": 0,
@@ -93,8 +96,8 @@ def sync_semester_from_api(
 
     with get_db_session() as session:
         sem_repo = SemestreRepository(session)
-        dem_repo = DisciplinaRepository(session)
         prof_repo = ProfessorRepository(session)
+        demanda_sync_service = DemandaSyncService(session)
 
         semestre = sem_repo.get_by_name(semestre_name)
         if not semestre:
@@ -105,6 +108,7 @@ def sync_semester_from_api(
 
         # collect all professor names to provision later
         prof_names_to_provision: Set[str] = set()
+        seen_external_ids: Set[str] = set()
 
         for oferta_key, oferta in ofertas.items():
             # Check if course should be ignored (filtering at sync time)
@@ -126,6 +130,7 @@ def sync_semester_from_api(
 
             # idempotency: use oferta_key as id_oferta_externo (string)
             id_oferta_externo = str(oferta_key)
+            seen_external_ids.add(id_oferta_externo)
 
             codigo = oferta.get("cod_disciplina")
             nome = oferta.get("nome_disciplina")
@@ -193,21 +198,6 @@ def sync_semester_from_api(
                 if nomep:
                     prof_names_to_provision.add(nomep)
 
-            # if demanda with same semestre_id + external id exists -> skip
-            if dem_repo.get_by_semestre_and_external_id(semestre.id, id_oferta_externo):
-                summary["skipped"] += 1
-                detail = {
-                    "oferta_key": id_oferta_externo,
-                    "codigo": oferta.get("cod_disciplina"),
-                    "turma": oferta.get("cod_turma")
-                    or oferta.get("turma_disciplina")
-                    or "",
-                    "reason": "external_id_exists",
-                }
-                summary["skipped_details"].append(detail)
-                logger.debug("Skipped oferta (external id exists): %s", detail)
-                continue
-
             codigo_curso = oferta.get("cod_curso", "")
 
             dto: Dict[str, Any] = {
@@ -223,11 +213,14 @@ def sync_semester_from_api(
             }
 
             try:
-                # Convert dict to DemandaCreate schema so repository dto_to_orm_create
-                # can access attributes (expects a DTO-like object)
-                demanda_dto = DemandaCreate(**dto)
-                dem_repo.create(demanda_dto)
-                summary["demandas"] += 1
+                result = demanda_sync_service.reconcile_imported_demanda(
+                    semestre.id, id_oferta_externo, dto
+                )
+                action = result.get("action")
+                if action in summary:
+                    summary[action] += 1
+                if result.get("revalidation_required"):
+                    summary["revalidation_required"] += 1
             except IntegrityError as ie:
                 session.rollback()
                 summary["skipped"] += 1
@@ -253,6 +246,13 @@ def sync_semester_from_api(
                 }
                 summary["skipped_details"].append(detail)
                 logger.exception("Exception while creating demanda: %s", detail)
+
+            removal_result = demanda_sync_service.mark_missing_offers_as_removed(
+                semestre.id, seen_external_ids
+            )
+            summary["removed_in_api"] = removal_result["removed_in_api"]
+            summary["revalidation_required"] += removal_result["revalidation_required"]
+            summary["demandas"] = summary["created"] + summary["updated_from_api"]
 
         # Provision professors (idempotent)
         for nome in sorted(prof_names_to_provision):

@@ -112,6 +112,20 @@ class AllocationResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SemesterDeallocationResult(BaseModel):
+    """Result of removing all allocations from a semester."""
+
+    success: bool = Field(default=False)
+    semester_id: int
+    deleted_allocations_count: int = Field(default=0, ge=0)
+    affected_demands_count: int = Field(default=0, ge=0)
+    preserved_manual_allocations_count: int = Field(default=0, ge=0)
+    preserved_manual_demands_count: int = Field(default=0, ge=0)
+    error_message: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ============================================================================
 # FILTER DTOs
 # ============================================================================

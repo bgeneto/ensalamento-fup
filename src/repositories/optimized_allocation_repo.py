@@ -31,6 +31,7 @@ class OptimizedAllocationRepository(
             sala_id=dto.sala_id,
             dia_semana_id=dto.dia_semana_id,
             codigo_bloco=dto.codigo_bloco,
+            origem_alocacao=dto.origem_alocacao,
         )
 
     def orm_to_dto(self, orm_obj: AlocacaoSemestral) -> AlocacaoSemestralRead:
@@ -42,6 +43,7 @@ class OptimizedAllocationRepository(
             sala_id=orm_obj.sala_id,
             dia_semana_id=orm_obj.dia_semana_id,
             codigo_bloco=orm_obj.codigo_bloco,
+            origem_alocacao=orm_obj.origem_alocacao,
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at,
         )

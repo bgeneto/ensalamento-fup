@@ -214,6 +214,8 @@ temp/
 local_*.py
 dev_*.py
 test_*.py
+!tests/test_alloc_queue_filters.py
+!tests/test_manual_allocation_service.py
 
 # Documentation build
 docs/build/

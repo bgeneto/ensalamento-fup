@@ -47,6 +47,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             sala_id=orm_obj.sala_id,
             dia_semana_id=orm_obj.dia_semana_id,
             codigo_bloco=orm_obj.codigo_bloco,
+            origem_alocacao=orm_obj.origem_alocacao,
             demanda=demanda_dto,
         )
 
@@ -65,6 +66,7 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             sala_id=dto.sala_id,
             dia_semana_id=dto.dia_semana_id,
             codigo_bloco=dto.codigo_bloco,
+            origem_alocacao=dto.origem_alocacao,
         )
 
     # ========================================================================
@@ -260,6 +262,28 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             .all()
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def delete_by_semestre(
+        self, semestre_id: int, preserve_manual_allocations: bool = False
+    ) -> int:
+        """Delete all allocations in a specific semester.
+
+        Args:
+            semestre_id: Semester ID
+            preserve_manual_allocations: Keep allocations tagged as manual
+
+        Returns:
+            Number of deleted allocations
+        """
+        query = self.session.query(AlocacaoSemestral).filter(
+            AlocacaoSemestral.semestre_id == semestre_id
+        )
+        if preserve_manual_allocations:
+            query = query.filter(AlocacaoSemestral.origem_alocacao != "manual")
+
+        deleted_count = query.delete(synchronize_session=False)
+        self.session.commit()
+        return deleted_count
 
     def get_by_semestre_filtered(
         self, sala_id: int, semestre_id: int

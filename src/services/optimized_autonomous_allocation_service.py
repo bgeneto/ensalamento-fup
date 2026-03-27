@@ -271,6 +271,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     sala_id=candidate.sala.id,
                     dia_semana_id=dia_sigaa,
                     codigo_bloco=bloco_codigo,
+                    origem_alocacao="autonoma",
                 )
                 allocation_dtos.append(allocation_dto)
 
@@ -336,6 +337,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 sala_id=room_id,
                 dia_semana_id=day_id,
                 codigo_bloco=block_code,
+                origem_alocacao="autonoma",
             )
             for block_code, day_id in pending_blocks
         ]
@@ -753,7 +755,8 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         """
         import time
 
-        start_time = time.time()
+        start_time = time.perf_counter()
+        phase_timings: Dict[str, float] = {}
 
         logger.info(
             f"Starting PARTIAL autonomous allocation for semester {semester_id}"
@@ -762,20 +765,32 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
         try:
             # Get unallocated demands
+            phase_start = time.perf_counter()
             unallocated_demands = self.manual_service.get_unallocated_demands(
                 semester_id
+            )
+            phase_timings["load_unallocated_demands"] = round(
+                time.perf_counter() - phase_start, 4
             )
             logger.info(f"Found {len(unallocated_demands)} unallocated demands")
 
             # Phase 0: Hybrid Discipline Detection (NEW!)
             logger.info("=== PHASE 0: Hybrid Discipline Detection ===")
+            phase_start = time.perf_counter()
             phase0_result = self._execute_hybrid_detection_phase(semester_id)
+            phase_timings["phase0_hybrid_detection"] = round(
+                time.perf_counter() - phase_start, 4
+            )
             logger.info(f"Detected {phase0_result.detected_count} hybrid disciplines")
 
             # Phase 1: Hard Rules (unchanged - allocates all blocks to one room)
             logger.info("=== PHASE 1: Hard Rules Allocation ===")
+            phase_start = time.perf_counter()
             phase1_result = self._execute_hard_rules_phase_optimized(
                 unallocated_demands, semester_id, dry_run
+            )
+            phase_timings["phase1_hard_rules"] = round(
+                time.perf_counter() - phase_start, 4
             )
             self.decision_logger.log_phase_summary("hard_rules", phase1_result.__dict__)
 
@@ -784,11 +799,15 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 logger.info("Phase 1 allocations committed")
 
             # Get remaining demands after Phase 1
+            phase_start = time.perf_counter()
             remaining_demands = self._get_demands_for_partial_fallback(semester_id)
             logger.info(f"After Phase 1: {len(remaining_demands)} demands remaining")
 
             continuity_profiles = self._prepare_continuity_profiles(
                 remaining_demands, semester_id
+            )
+            phase_timings["prepare_continuity_profiles_phase1_5"] = round(
+                time.perf_counter() - phase_start, 4
             )
             continuity_candidates = sum(
                 1
@@ -802,10 +821,14 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             )
 
             logger.info("=== PHASE 1.5: Discipline Continuity Allocation ===")
+            phase_start = time.perf_counter()
             phase1_5_result = self._execute_discipline_continuity_phase(
                 remaining_demands,
                 semester_id,
                 dry_run,
+            )
+            phase_timings["phase1_5_continuity"] = round(
+                time.perf_counter() - phase_start, 4
             )
             self.decision_logger.log_phase_summary(
                 "discipline_continuity", phase1_5_result.__dict__
@@ -815,18 +838,26 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 self.session.commit()
                 logger.info("Phase 1.5 allocations committed")
 
+            phase_start = time.perf_counter()
             remaining_demands = self._get_demands_for_partial_fallback(semester_id)
             continuity_profiles = self._prepare_continuity_profiles(
                 remaining_demands, semester_id
+            )
+            phase_timings["prepare_continuity_profiles_partial"] = round(
+                time.perf_counter() - phase_start, 4
             )
 
             # Phase 2+3 COMBINED: Partial Allocation Phase
             # (Replaces separate soft scoring + atomic allocation phases)
             logger.info("=== PHASE 2/3: Partial Allocation Phase ===")
+            phase_start = time.perf_counter()
             partial_result, block_group_results = (
                 self._execute_partial_allocation_phase(
                     remaining_demands, semester_id, dry_run
                 )
+            )
+            phase_timings["phase_partial"] = round(
+                time.perf_counter() - phase_start, 4
             )
 
             if not dry_run:
@@ -834,7 +865,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 logger.info("Partial allocation phase committed")
 
             # Compile results
-            execution_time = time.time() - start_time
+            execution_time = time.perf_counter() - start_time
 
             # Calculate statistics from block group results
             total_block_groups = len(block_group_results)
@@ -908,6 +939,10 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     for r in block_group_results[:50]  # Limit for performance
                 ],
                 "execution_time": execution_time,
+                "performance": {
+                    **phase_timings,
+                    "total_execution_time": round(execution_time, 4),
+                },
                 "progress_percentage": (
                     (allocated_block_groups / total_block_groups * 100)
                     if total_block_groups > 0
@@ -919,6 +954,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 f"Partial allocation complete: {allocated_block_groups}/{total_block_groups} "
                 f"block groups allocated, {split_demands} demands split across rooms"
             )
+            logger.info("Partial allocation performance: %s", final_result["performance"])
 
             return final_result
 
@@ -1925,6 +1961,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     sala_id=candidate.sala.id,
                     dia_semana_id=dia_sigaa,
                     codigo_bloco=bloco_codigo,
+                    origem_alocacao="autonoma",
                 )
                 allocation_dtos.append(allocation_dto)
 

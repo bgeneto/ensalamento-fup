@@ -53,9 +53,15 @@ Com isso, no container o arquivo fica em `/app/data/ensalamento.db`, persistido 
 
 ## Inicialização do Banco (Tabelas/Migrations/Seed)
 
+Em Docker, o container da aplicação agora executa `python init_db.py --init --migrate`
+automaticamente no startup antes de subir o Streamlit.
+
+Observação: este projeto não usa Alembic. As migrations são SQLs aplicadas por
+`init_db.py` + `src/db/migrations.py`.
+
 Depois de subir os containers, execute:
 
-1. Criar tabelas + aplicar migrations SQL:
+1. Criar tabelas + aplicar migrations SQL manualmente quando quiser reparar um banco já existente:
 
 ```bash
 docker compose exec ensalamento python init_db.py --init --migrate
@@ -138,5 +144,6 @@ docker compose exec ensalamento python init_db.py --seed
 - App principal: `0_🔓_Login.py`
 - Config app: `src/config/settings.py`
 - DB init/migrations: `init_db.py` e `src/db/migrations.py`
+- Comportamento de alocações manuais/autônomas: `docs/ENSALAMENTO_ALOCACOES_MANUAIS_E_AUTONOMAS.md`
 - Docker: `compose.yaml`, `Dockerfile`
 - Credenciais login: `.streamlit/secrets.yaml`

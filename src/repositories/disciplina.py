@@ -1,18 +1,14 @@
-"""
-Repository for Demanda (Course Demand) operations.
-
-Provides data access methods for course demand queries with filters,
-search capabilities, and enrollment information.
-"""
+"""Repository for Demanda (Course Demand) operations."""
 
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 from src.models.academic import Demanda
-from src.schemas.academic import DemandaRead, DemandaCreate
+from src.models.allocation import AlocacaoSemestral
 from src.repositories.base import BaseRepository
+from src.schemas.academic import DemandaCreate, DemandaRead
 
 
 class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
@@ -40,12 +36,22 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             semestre_id=orm_obj.semestre_id,
             codigo_disciplina=orm_obj.codigo_disciplina,
             nome_disciplina=orm_obj.nome_disciplina,
-            professores_disciplina=orm_obj.professores_disciplina,
-            turma_disciplina=orm_obj.turma_disciplina,
+            professores_disciplina=orm_obj.professores_disciplina or "",
+            turma_disciplina=orm_obj.turma_disciplina or "",
             vagas_disciplina=orm_obj.vagas_disciplina,
             horario_sigaa_bruto=orm_obj.horario_sigaa_bruto,
             id_oferta_externo=orm_obj.id_oferta_externo,
-            codigo_curso=orm_obj.codigo_curso,
+            codigo_curso=orm_obj.codigo_curso or "",
+            origem=orm_obj.origem,
+            sync_status=orm_obj.sync_status,
+            api_payload_hash=orm_obj.api_payload_hash,
+            api_snapshot_json=orm_obj.api_snapshot_json or {},
+            local_overrides_json=orm_obj.local_overrides_json or {},
+            last_seen_in_api_at=orm_obj.last_seen_in_api_at,
+            last_synced_at=orm_obj.last_synced_at,
+            removed_from_api_at=orm_obj.removed_from_api_at,
+            preservar_local_em_remocao_api=orm_obj.preservar_local_em_remocao_api,
+            revalidation_required=orm_obj.revalidation_required,
             created_at=getattr(orm_obj, "created_at", None),
             updated_at=getattr(orm_obj, "updated_at", None),
         )
@@ -75,6 +81,26 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         horario = _get("horario_sigaa_bruto") or ""
         id_oferta_externo = _get("id_oferta_externo")
         codigo_curso = _get("codigo_curso") or ""
+        explicitly_set_fields = getattr(dto, "model_fields_set", set())
+        origem = _get("origem") if "origem" in explicitly_set_fields else None
+        if not origem:
+            origem = "api" if id_oferta_externo else "manual"
+
+        sync_status = (
+            _get("sync_status") if "sync_status" in explicitly_set_fields else None
+        )
+        if not sync_status:
+            sync_status = "active" if origem == "api" else "manual"
+        api_payload_hash = _get("api_payload_hash")
+        api_snapshot_json = _get("api_snapshot_json") or {}
+        local_overrides_json = _get("local_overrides_json") or {}
+        last_seen_in_api_at = _get("last_seen_in_api_at")
+        last_synced_at = _get("last_synced_at")
+        removed_from_api_at = _get("removed_from_api_at")
+        preservar_local_em_remocao_api = bool(
+            _get("preservar_local_em_remocao_api", False)
+        )
+        revalidation_required = bool(_get("revalidation_required", False))
 
         return Demanda(
             semestre_id=semestre_id,
@@ -86,6 +112,16 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             horario_sigaa_bruto=horario,
             id_oferta_externo=id_oferta_externo,
             codigo_curso=codigo_curso,
+            origem=origem,
+            sync_status=sync_status,
+            api_payload_hash=api_payload_hash,
+            api_snapshot_json=api_snapshot_json,
+            local_overrides_json=local_overrides_json,
+            last_seen_in_api_at=last_seen_in_api_at,
+            last_synced_at=last_synced_at,
+            removed_from_api_at=removed_from_api_at,
+            preservar_local_em_remocao_api=preservar_local_em_remocao_api,
+            revalidation_required=revalidation_required,
         )
 
     def set_external_id_for_existing(
@@ -132,7 +168,9 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             return self.orm_to_dto(orm_obj)
         return None
 
-    def get_by_semestre(self, semestre_id: int) -> List[DemandaRead]:
+    def get_by_semestre(
+        self, semestre_id: int, include_removed: bool = True
+    ) -> List[DemandaRead]:
         """Get all course demands in a specific semester.
 
         Args:
@@ -141,9 +179,28 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         Returns:
             List of DemandaRead DTOs sorted by course code
         """
+        query = self.session.query(Demanda).filter(Demanda.semestre_id == semestre_id)
+        if not include_removed:
+            query = query.filter(Demanda.sync_status != "removed_in_api")
+        orm_objs = query.order_by(Demanda.codigo_disciplina).all()
+        return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def get_visible_for_allocation(self, semestre_id: int) -> List[DemandaRead]:
+        """Get demands visible to allocation workflows.
+
+        Removed API demands remain visible only when they already have allocations.
+        """
         orm_objs = (
             self.session.query(Demanda)
+            .outerjoin(AlocacaoSemestral, AlocacaoSemestral.demanda_id == Demanda.id)
             .filter(Demanda.semestre_id == semestre_id)
+            .filter(
+                or_(
+                    Demanda.sync_status != "removed_in_api",
+                    AlocacaoSemestral.id.isnot(None),
+                )
+            )
+            .distinct()
             .order_by(Demanda.codigo_disciplina)
             .all()
         )
@@ -251,7 +308,15 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         """
         orm_objs = (
             self.session.query(Demanda)
+            .outerjoin(AlocacaoSemestral, AlocacaoSemestral.demanda_id == Demanda.id)
             .filter((Demanda.semestre_id == semestre_id) & (~Demanda.nao_alocar))
+            .filter(
+                or_(
+                    Demanda.sync_status != "removed_in_api",
+                    AlocacaoSemestral.id.isnot(None),
+                )
+            )
+            .distinct()
             .order_by(Demanda.codigo_disciplina)
             .all()
         )
@@ -356,6 +421,7 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
             List of unique course codes (codigo_curso)
         """
         from sqlalchemy import distinct
+
         from src.models.academic import Demanda
 
         result = (

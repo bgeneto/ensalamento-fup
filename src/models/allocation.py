@@ -61,6 +61,7 @@ class AlocacaoSemestral(BaseModel):
     codigo_bloco = Column(
         String(10), ForeignKey("horarios_bloco.codigo_bloco"), nullable=False
     )
+    origem_alocacao = Column(String(20), nullable=False, default="autonoma")
 
     __table_args__ = (
         # UNIQUE constraint to prevent scheduling conflicts:

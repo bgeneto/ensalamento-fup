@@ -33,6 +33,7 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
     search_filter = filters.get("search_text", "")
     professor_filter = filters.get("professor_filter", "")
     course_filter = filters.get("course_filter", "")
+    discipline_filter = filters.get("discipline_filter", "")
     allocation_status_filter = filters.get("allocation_status", "unallocated")
 
     # Unique context identifier to avoid duplicate keys
@@ -64,22 +65,33 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
         # Get demands based on allocation status filter
         if allocation_status_filter == "allocated":
             demandas = alloc_service.get_allocated_demands(semester_id)
-            header_title = f"Demandas Alocadas ({len(demandas)})"
+            header_prefix = "Demandas Alocadas"
         elif allocation_status_filter == "all":
             demandas = alloc_service.get_all_demands(semester_id)
-            header_title = f"Todas as Demandas ({len(demandas)})"
+            header_prefix = "Todas as Demandas"
         else:  # "unallocated" or default
             demandas = alloc_service.get_unallocated_demands(semester_id)
-            header_title = f"Demandas Pendentes ({len(demandas)})"
+            header_prefix = "Demandas Pendentes"
 
         # Apply filters
         filtered_demands = _apply_filters(
-            demandas, search_filter, professor_filter, course_filter
+            demandas,
+            search_filter,
+            professor_filter,
+            course_filter,
+            discipline_filter,
         )
 
         if not filtered_demands:
             st.warning("Nenhuma demanda encontrada com os filtros aplicados.", icon="⚠️")
             return False
+
+        total_demands = len(demandas)
+        filtered_count = len(filtered_demands)
+        if filtered_count == total_demands:
+            header_title = f"{header_prefix} ({total_demands})"
+        else:
+            header_title = f"{header_prefix} ({filtered_count} de {total_demands})"
 
         # Create allocation info mapping for all visible demands
         allocation_info_map = _get_allocation_info(
@@ -109,10 +121,24 @@ def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = No
 
 
 def _apply_filters(
-    demandas: List[Dict], search_text: str, professor_filter: str, course_filter: str
-) -> List[Dict]:
+    demandas: List[Any],
+    search_text: str,
+    professor_filter: str,
+    course_filter: str,
+    discipline_filter: str = "",
+) -> List[Any]:
     """Apply text and category filters to demands."""
     filtered = demandas.copy()
+
+    # Discipline filter
+    if discipline_filter and discipline_filter != "all":
+        selected_code = str(discipline_filter).strip().upper()
+        filtered = [
+            d
+            for d in filtered
+            if str(_get_demand_value(d, "codigo_disciplina", "")).strip().upper()
+            == selected_code
+        ]
 
     # Text search filter
     if search_text:
@@ -121,26 +147,38 @@ def _apply_filters(
             d
             for d in filtered
             if (
-                search_lower in str(d.get("codigo_disciplina", "")).lower()
-                or search_lower in str(d.get("nome_disciplina", "")).lower()
+                search_lower
+                in str(_get_demand_value(d, "codigo_disciplina", "")).lower()
+                or search_lower
+                in str(_get_demand_value(d, "nome_disciplina", "")).lower()
             )
         ]
 
     # Professor filter
-    if professor_filter:
+    if professor_filter and professor_filter != "all":
         filtered = [
             d
             for d in filtered
-            if professor_filter in str(d.get("professores_disciplina", ""))
+            if professor_filter
+            in str(_get_demand_value(d, "professores_disciplina", ""))
         ]
 
     # Course filter
     if course_filter:
         filtered = [
-            d for d in filtered if course_filter == str(d.get("codigo_curso", ""))
+            d
+            for d in filtered
+            if course_filter == str(_get_demand_value(d, "codigo_curso", ""))
         ]
 
     return filtered
+
+
+def _get_demand_value(demanda: Any, field_name: str, default: Any = "") -> Any:
+    """Read a demand field from DTOs or plain dicts."""
+    if isinstance(demanda, dict):
+        return demanda.get(field_name, default)
+    return getattr(demanda, field_name, default)
 
 
 def _get_allocation_info(

@@ -1,12 +1,19 @@
-"""
-Academic domain models (Semester, Demand, Professor, User).
-"""
+"""Academic domain models (Semester, Demand, Professor, User)."""
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, Boolean, Table
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    Text,
+)
+from sqlalchemy.orm import declarative_base, relationship
 
 from src.models.base import BaseModel
-
 
 # Create Base for models that don't need BaseModel fields but use same metadata registry
 
@@ -90,6 +97,16 @@ class Demanda(BaseModel):
     codigo_curso = Column(
         String(50), nullable=True
     )  # Course code from API (e.g., "GEAGRO")
+    origem = Column(String(20), nullable=False, default="manual")
+    sync_status = Column(String(30), nullable=False, default="manual")
+    api_payload_hash = Column(String(255), nullable=True)
+    api_snapshot_json = Column(JSON, nullable=False, default=dict)
+    local_overrides_json = Column(JSON, nullable=False, default=dict)
+    last_seen_in_api_at = Column(DateTime, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    removed_from_api_at = Column(DateTime, nullable=True)
+    preservar_local_em_remocao_api = Column(Boolean, nullable=False, default=False)
+    revalidation_required = Column(Boolean, nullable=False, default=False)
 
     # Relationships
     semestre = relationship("Semestre", back_populates="demandas")

@@ -287,7 +287,41 @@ Then pick a phase to implement!
 - Para dividir o trabalho em commits curtos
 - Para acompanhar progresso por etapa
 
-#### 10. **streamlit-authenticator.md** - Authentication Guide
+#### 10. **DEMANDA_SYNC_RECONCILIATION_PLAN.md** - Reconciliação da Demanda com a API ✨ **NEW**
+**Location:** `/docs/DEMANDA_SYNC_RECONCILIATION_PLAN.md`
+**Read Time:** 20 minutes
+**Purpose:** Plano incremental para tornar a API do Sistema de Oferta a fonte de verdade do dado importado sem perder overrides e criações locais
+
+**Contains:**
+- Estratégia recomendada para este repositório
+- Modelo de snapshot importado + overrides locais
+- Política de update incremental e remoção lógica
+- Mudanças por camada (modelos, serviços, UI, migrations)
+- Plano de rollout com testes e mitigação de riscos
+
+**When to Read:**
+- Antes de evoluir a sincronização de demanda
+- Ao implementar update de ofertas já importadas
+- Ao tratar remoções da API sem perder alocações e ajustes locais
+
+#### 11. **AUTONOMOUS_ALLOCATION_PROFILING.md** - Profiling da Alocação Autônoma ✨ **NEW**
+**Location:** `/docs/AUTONOMOUS_ALLOCATION_PROFILING.md`
+**Read Time:** 10 minutes
+**Purpose:** Explica como perfilar a rotina `execute_autonomous_allocation_partial()` e lista os gargalos mais prováveis da implementação atual
+
+**Contains:**
+- Script `profile_autonomous_allocation.py`
+- Tempos por fase retornados pelo serviço parcial
+- Hipóteses concretas de gargalo
+- Passos de interpretação de `cProfile`
+- Direções de otimização antes de tentar paralelização
+
+**When to Read:**
+- Quando o botão `Executar Alocação Autônoma` estiver lento
+- Antes de otimizar ou paralelizar o ensalamento parcial
+- Para reproduzir profiling fora da UI Streamlit
+
+#### 12. **streamlit-authenticator.md** - Authentication Guide
 **Location:** `/docs/streamlit-authenticator.md`
 **Read Time:** 20 minutes
 **Purpose:** How to implement user authentication

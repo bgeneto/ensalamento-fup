@@ -18,6 +18,7 @@ from src.schemas.manual_allocation import (
     AllocationSuggestions,
     ConflictDetail,
     RoomSuggestion,
+    SemesterDeallocationResult,
 )
 from src.services.hybrid_discipline_service import HybridDisciplineDetectionService
 from src.services.room_scoring_service import BlockGroup, RoomScoringService
@@ -80,7 +81,7 @@ class ManualAllocationService:
 
     def _get_semester_demand_completion_map(self, semester_id: int) -> Dict[int, Dict]:
         """Compute per-demand completion status for a semester."""
-        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         allocations = self.alocacao_repo.get_by_semestre(semester_id)
 
         allocations_by_demand: Dict[int, set] = {}
@@ -199,6 +200,7 @@ class ManualAllocationService:
                     sala_id=sala_id,
                     dia_semana_id=dia_sigaa,
                     codigo_bloco=bloco_codigo,
+                    origem_alocacao="manual",
                 )
 
                 new_allocation = self.alocacao_repo.create(allocation_dto)
@@ -374,6 +376,7 @@ class ManualAllocationService:
                     sala_id=sala_id,
                     dia_semana_id=day_id,
                     codigo_bloco=block_code,
+                    origem_alocacao="manual",
                 )
 
                 new_allocation = self.alocacao_repo.create(allocation_dto)
@@ -711,7 +714,7 @@ class ManualAllocationService:
 
     def get_allocation_progress(self, semester_id: int) -> dict:
         """Get allocation progress summary for a semester."""
-        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         total_demands = len(demandas)
         completion_map = self._get_semester_demand_completion_map(semester_id)
 
@@ -739,14 +742,14 @@ class ManualAllocationService:
 
     def get_unallocated_demands(self, semester_id: int) -> List[dict]:
         """Get all demands in a semester that still have pending blocks."""
-        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         completion_map = self._get_semester_demand_completion_map(semester_id)
 
         return [d for d in demandas if completion_map[d.id]["pending_blocks"] > 0]
 
     def get_allocated_demands(self, semester_id: int) -> List[dict]:
         """Get all demands in a semester that are fully allocated."""
-        demandas = self.demanda_repo.get_by_semestre(semester_id)
+        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         completion_map = self._get_semester_demand_completion_map(semester_id)
 
         return [d for d in demandas if completion_map[d.id]["is_fully_allocated"]]
@@ -812,6 +815,78 @@ class ManualAllocationService:
                 success=False,
                 demanda_id=demanda_id,
                 error_message=f"Erro ao remover alocações: {str(e)}",
+            )
+
+    def deallocate_semester(
+        self, semester_id: int, preserve_manual_allocations: bool = False
+    ) -> SemesterDeallocationResult:
+        """Remove semester allocations without touching demands."""
+        semester = self.semestre_repo.get_by_id(semester_id)
+        if not semester:
+            return SemesterDeallocationResult(
+                success=False,
+                semester_id=semester_id,
+                error_message="Semestre não encontrado",
+            )
+
+        allocations = self.alocacao_repo.get_by_semestre(semester_id)
+        if not allocations:
+            return SemesterDeallocationResult(
+                success=False,
+                semester_id=semester_id,
+                error_message="Semestre não possui alocações para remover",
+            )
+
+        try:
+            manual_allocations = [
+                alloc for alloc in allocations if alloc.origem_alocacao == "manual"
+            ]
+            deletable_allocations = (
+                [alloc for alloc in allocations if alloc.origem_alocacao != "manual"]
+                if preserve_manual_allocations
+                else allocations
+            )
+            preserved_manual_allocations_count = (
+                len(manual_allocations) if preserve_manual_allocations else 0
+            )
+            preserved_manual_demands_count = (
+                len({alloc.demanda_id for alloc in manual_allocations})
+                if preserve_manual_allocations
+                else 0
+            )
+
+            if preserve_manual_allocations and not deletable_allocations:
+                return SemesterDeallocationResult(
+                    success=True,
+                    semester_id=semester_id,
+                    deleted_allocations_count=0,
+                    affected_demands_count=0,
+                    preserved_manual_allocations_count=preserved_manual_allocations_count,
+                    preserved_manual_demands_count=preserved_manual_demands_count,
+                )
+
+            affected_demands_count = len(
+                {alloc.demanda_id for alloc in deletable_allocations}
+            )
+            deleted_allocations_count = self.alocacao_repo.delete_by_semestre(
+                semester_id,
+                preserve_manual_allocations=preserve_manual_allocations,
+            )
+
+            return SemesterDeallocationResult(
+                success=True,
+                semester_id=semester_id,
+                deleted_allocations_count=deleted_allocations_count,
+                affected_demands_count=affected_demands_count,
+                preserved_manual_allocations_count=preserved_manual_allocations_count,
+                preserved_manual_demands_count=preserved_manual_demands_count,
+            )
+        except Exception as e:
+            self.session.rollback()
+            return SemesterDeallocationResult(
+                success=False,
+                semester_id=semester_id,
+                error_message=f"Erro ao remover alocações do semestre: {str(e)}",
             )
 
     def get_suggestions_for_demand(

@@ -54,6 +54,7 @@ RUN mkdocs build
 
 # Create necessary directories and set permissions
 RUN mkdir -p /app/data /app/static && \
+    chmod +x /app/docker-entrypoint.sh && \
     chown -R streamlit:streamlit /app
 
 # Switch to non-root user
@@ -65,6 +66,8 @@ EXPOSE 8501
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # Default command to run Streamlit
 CMD ["streamlit", "run", "0_🔓_Login.py", \

@@ -172,6 +172,7 @@ class AlocacaoSemestralBase(BaseModel):
     sala_id: int = Field(..., gt=0)
     dia_semana_id: int = Field(..., gt=0)
     codigo_bloco: str = Field(..., min_length=1, max_length=10)
+    origem_alocacao: str = Field(default="autonoma", max_length=20)
 
 
 class AlocacaoSemestralCreate(AlocacaoSemestralBase):
@@ -188,6 +189,7 @@ class AlocacaoSemestralUpdate(BaseModel):
     sala_id: Optional[int] = Field(None, gt=0)
     dia_semana_id: Optional[int] = Field(None, gt=0)
     codigo_bloco: Optional[str] = Field(None, min_length=1, max_length=10)
+    origem_alocacao: Optional[str] = Field(None, max_length=20)
 
 
 class AlocacaoSemestralRead(AlocacaoSemestralBase):

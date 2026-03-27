@@ -1,14 +1,9 @@
-"""
-Data Transfer Object schemas for Academic domain.
-
-Schemas for: Semestre, Demanda, Professor, Usuario
-"""
+"""Data Transfer Object schemas for Academic domain."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ============================================================================
 # SEMESTRE Schemas
@@ -62,6 +57,16 @@ class DemandaBase(BaseModel):
     horario_sigaa_bruto: str = Field(..., max_length=255)  # e.g., "24M12 6T34"
     id_oferta_externo: Optional[str] = Field(default=None, max_length=100)
     codigo_curso: str = Field(default="", max_length=50)
+    origem: str = Field(default="manual", max_length=20)
+    sync_status: str = Field(default="manual", max_length=30)
+    api_payload_hash: Optional[str] = Field(default=None, max_length=255)
+    api_snapshot_json: dict[str, Any] = Field(default_factory=dict)
+    local_overrides_json: dict[str, Any] = Field(default_factory=dict)
+    last_seen_in_api_at: Optional[datetime] = None
+    last_synced_at: Optional[datetime] = None
+    removed_from_api_at: Optional[datetime] = None
+    preservar_local_em_remocao_api: bool = Field(default=False)
+    revalidation_required: bool = Field(default=False)
 
 
 class DemandaCreate(DemandaBase):
@@ -80,6 +85,18 @@ class DemandaUpdate(BaseModel):
     turma_disciplina: Optional[str] = Field(None, max_length=50)
     vagas_disciplina: Optional[int] = Field(None, ge=0)
     horario_sigaa_bruto: Optional[str] = Field(None, max_length=255)
+    id_oferta_externo: Optional[str] = Field(None, max_length=100)
+    codigo_curso: Optional[str] = Field(None, max_length=50)
+    origem: Optional[str] = Field(None, max_length=20)
+    sync_status: Optional[str] = Field(None, max_length=30)
+    api_payload_hash: Optional[str] = Field(None, max_length=255)
+    api_snapshot_json: Optional[dict[str, Any]] = None
+    local_overrides_json: Optional[dict[str, Any]] = None
+    last_seen_in_api_at: Optional[datetime] = None
+    last_synced_at: Optional[datetime] = None
+    removed_from_api_at: Optional[datetime] = None
+    preservar_local_em_remocao_api: Optional[bool] = None
+    revalidation_required: Optional[bool] = None
 
 
 class DemandaRead(DemandaBase):
@@ -88,7 +105,6 @@ class DemandaRead(DemandaBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    id_oferta_externo: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

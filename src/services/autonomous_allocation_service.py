@@ -875,6 +875,7 @@ class AutonomousAllocationService:
                     sala_id=candidate.sala.id,
                     dia_semana_id=dia_sigaa,
                     codigo_bloco=bloco_codigo,
+                    origem_alocacao="autonoma",
                 )
 
                 self.alocacao_repo.create(allocation_dto)
