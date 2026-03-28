@@ -4,23 +4,24 @@ PDF Report Generation Service
 Creates formatted PDF reports for room allocation schedules.
 """
 
-from typing import List, Dict, Any, Optional
 import io
+from typing import Any, Dict, List, Optional
+
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
-    PageBreak,
-)
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from src.utils.cache_helpers import get_sigaa_parser
 
@@ -239,21 +240,8 @@ class PDFReportService:
                             ("RIGHTPADDING", (0, 0), (-1, -1), 2),
                             ("TOPPADDING", (0, 1), (-1, -1), 2),
                             ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
-                            # Zebra striping every two rows for better readability
-                            # rows 1-2 gray, 3-4 white, 5-6 gray, etc.
-                            *[
-                                (
-                                    "BACKGROUND",
-                                    (1, i),
-                                    (-1, i),
-                                    (
-                                        colors.HexColor("#f5f5f5")
-                                        if ((i - 1) // 2) % 2 == 0
-                                        else colors.white
-                                    ),
-                                )
-                                for i in range(1, len(table_data))
-                            ],
+                            # Zebra striping in pairs, resetting when entering night shift.
+                            *self._build_data_row_background_commands(),
                         ]
                     )
                 )
@@ -272,6 +260,43 @@ class PDFReportService:
         buffer.close()
 
         return pdf_content
+
+    def _get_visual_band_section(self, block_code: str) -> str:
+        """Return the visual striping section for a time block.
+
+        Morning and afternoon remain a continuous section so pairs can span the
+        noon transition. Night starts a new section so the gray band restarts at
+        19:00 instead of pairing visually with 18:00.
+        """
+        if str(block_code).startswith("N"):
+            return "night"
+        return "daytime"
+
+    def _build_data_row_background_commands(self) -> List[tuple]:
+        """Build background commands for schedule rows using section-aware pairs."""
+        time_blocks = sorted(
+            self.parser.MAP_SCHEDULE_TIMES.keys(), key=self._sort_time_block
+        )
+
+        commands = []
+        current_section = None
+        section_row_index = 0
+
+        for row_index, block_code in enumerate(time_blocks, start=1):
+            section = self._get_visual_band_section(block_code)
+            if section != current_section:
+                current_section = section
+                section_row_index = 0
+
+            background = (
+                colors.HexColor("#e3e3e3")
+                if ((section_row_index // 2) % 2 == 0)
+                else colors.white
+            )
+            commands.append(("BACKGROUND", (1, row_index), (-1, row_index), background))
+            section_row_index += 1
+
+        return commands
 
     def _build_schedule_table(self, allocations: List[Any]) -> List[List[Any]]:
         """
@@ -305,8 +330,24 @@ class PDFReportService:
 
         # Populate schedule grid with allocations
         for alloc in allocations:
-            # Skip reservations for now (handle in future version)
-            if isinstance(alloc, dict) and alloc.get("type") == "reservation":
+            if isinstance(alloc, dict) and alloc.get("type") in {
+                "reservation",
+                "semester_reservation",
+            }:
+                dia_id = alloc.get("day_id") or alloc.get("dia_semana_id")
+                bloco = alloc.get("codigo_bloco")
+
+                if dia_id not in weekdays or bloco not in time_blocks:
+                    continue
+
+                schedule_grid[dia_id][bloco].append(
+                    {
+                        "codigo": None,
+                        "nome": alloc.get("titulo", ""),
+                        "turma": "",
+                        "professor": "",
+                    }
+                )
                 continue
 
             dia_id = alloc.dia_semana_id

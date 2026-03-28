@@ -3,7 +3,7 @@ Repository for ReservaOcorrencia operations.
 """
 
 from datetime import date
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 from sqlalchemy import and_, or_
 
@@ -333,7 +333,9 @@ class ReservaOcorrenciaRepository(
         from src.models.allocation import ReservaEvento
 
         # Start with base query
-        query = self.session.query(self.model_class)
+        query = self.session.query(self.model_class).options(
+            joinedload(self.model_class.evento)
+        )
 
         # Apply date range filter
         query = query.filter(

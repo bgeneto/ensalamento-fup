@@ -5,10 +5,12 @@ Display and manage sporadic/recurrent room reservations with calendar-like inter
 Supports recurring reservations using Parent/Instance design pattern.
 """
 
-import streamlit as st
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, cast
+
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+import streamlit as st
+
 from pages.components.auth import initialize_page
 
 # Initialize page with authentication and configuration
@@ -24,22 +26,48 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
+from pages.components.ui import page_footer
 from src.config.database import get_db_session
-from src.schemas.allocation import (
-    ReservaEventoCreate,
-    ReservaEventoRead,
-)
+from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.reserva_evento import ReservaEventoRepository
 from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.semestre import SemestreRepository
-from src.repositories.alocacao import AlocacaoRepository
+from src.schemas.allocation import ReservaEventoCreate, ReservaEventoRead
 from src.services.reserva_evento_service import ReservaEventoService
-from src.utils.ui_feedback import set_session_feedback, display_session_feedback
-from src.utils.cache_helpers import (
-    get_sigaa_parser,
-)
-from pages.components.ui import page_footer
+from src.utils.cache_helpers import get_sigaa_parser
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+
+RECURRENCE_LABELS = {
+    "unica": "Evento Único (uma só data)",
+    "semestre_inteiro": "Semestre Inteiro",
+    "diaria": "Repetir Diariamente",
+    "semanal": "Repetir Semanalmente",
+    "mensal_dia": "Repetir Mensalmente (mesmo dia)",
+    "mensal_posicao": "Repetir Mensalmente (semana específica)",
+}
+
+
+def _recurrence_label(value: Any) -> str:
+    """Return a stable label for recurrence options."""
+    return RECURRENCE_LABELS.get(str(value), str(value))
+
+
+def _clear_unavailable_block_selections(
+    room_id: Optional[int], sala_allowed_blocks: Dict[int, List[str]]
+) -> None:
+    """Clear checked time blocks that are not enabled for the selected room."""
+    allowed_blocks = set(
+        sala_allowed_blocks.get(room_id, CANONICAL_BLOCK_ORDER.copy())
+        if room_id
+        else []
+    )
+
+    for bloco in CANONICAL_BLOCK_ORDER:
+        key = f"bloco_{bloco}"
+        if bloco not in allowed_blocks and st.session_state.get(key):
+            st.session_state[key] = False
+
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -173,6 +201,8 @@ def format_recurrence_pattern(evento: ReservaEventoRead) -> str:
                 return (
                     f"Mensal: {pos_map[rule['posicao']]} {dia_map[rule['dia_semana']]}"
                 )
+        elif tipo == "semestre_inteiro":
+            return "Semestre Inteiro"
 
         return "Desconhecido"
     except (json.JSONDecodeError, KeyError):
@@ -367,7 +397,7 @@ def create_reservations_editor(data: List[Dict]) -> None:
                 help="Padrão de recorrência (não editável)",
             ),
             "nome_solicitante": st.column_config.TextColumn(
-                "Solicitante", help="Nome do solicitante"
+                "Solicitante", help="Nome completo do solicitante"
             ),
             "nome_responsavel": st.column_config.TextColumn(
                 "Responsável", help="Nome do responsável (opcional)"
@@ -417,7 +447,7 @@ def create_reservations_editor(data: List[Dict]) -> None:
                             set_session_feedback(
                                 "reservas_crud",
                                 True,
-                                f"{deleted_count} reserva(s) excluída(s) com sucesso!",
+                                f"{deleted_count} reserva(s) excluída(s) com sucesso",
                             )
                             st.rerun()
                         else:
@@ -443,9 +473,9 @@ def create_reservations_editor(data: List[Dict]) -> None:
                 with get_db_session() as session:
                     evento_repo = ReservaEventoRepository(session)
 
-                    for idx, edited_row in edited_df.iterrows():
-                        if idx < len(df):
-                            original_row = df.iloc[idx]
+                    for position, (_, edited_row) in enumerate(edited_df.iterrows()):
+                        if position < len(df):
+                            original_row = df.iloc[position]
 
                             evento_id = edited_row.get("evento_id")
                             if pd.isna(evento_id):
@@ -500,7 +530,7 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                     set_session_feedback(
                                         "reservas_crud",
                                         False,
-                                        "O nome do solicitante é obrigatório",
+                                        "O nome completo do solicitante é obrigatório",
                                     )
                                     continue
 
@@ -526,21 +556,25 @@ def create_reservations_editor(data: List[Dict]) -> None:
                                             )
                                             continue
 
-                                # Create update DTO and call repository
-                                from src.schemas.allocation import ReservaEventoUpdate
+                                from src.models.allocation import ReservaEvento
 
-                                update_dto = ReservaEventoUpdate(
-                                    titulo_evento=titulo,
-                                    nome_solicitante=solicitante,
-                                    nome_responsavel=responsavel,
-                                )
-
-                                result = evento_repo.update(int(evento_id), update_dto)
-                                if result:
+                                evento = session.get(ReservaEvento, int(evento_id))
+                                if evento:
+                                    session.query(ReservaEvento).filter(
+                                        ReservaEvento.id == int(evento_id)
+                                    ).update(
+                                        {
+                                            "titulo_evento": titulo,
+                                            "nome_solicitante": solicitante,
+                                            "nome_responsavel": responsavel,
+                                        },
+                                        synchronize_session=False,
+                                    )
+                                    session.commit()
                                     set_session_feedback(
                                         "reservas_crud",
                                         True,
-                                        f"Reserva '{titulo}' atualizada com sucesso!",
+                                        f"Reserva '{titulo}' atualizada com sucesso",
                                     )
                                     changes_made = True
                                 else:
@@ -571,11 +605,8 @@ st.markdown("Crie, visualize e gerencie reservas esporádicas e recorrentes de s
 
 # Get current semester
 with get_db_session() as session:
-    from src.models.academic import Semestre
-
     semestre_repo = SemestreRepository(session)
-    # Find active semester by checking status=True
-    semestre_atual = session.query(Semestre).filter(Semestre.status).first()
+    semestre_atual = semestre_repo.get_active()
     if not semestre_atual:
         st.error("❌ Nenhum semestre ativo encontrado. Contate o administrador.")
         st.stop()
@@ -713,8 +744,10 @@ if selected_tab == "📅 Visualizar Reservas":
                 {
                     "evento_id": evento.id,  # Add for CRUD tracking
                     "data_reserva": ocorrencia.data_reserva,  # Already a string in YYYY-MM-DD format
-                    "horario": get_bloco_horario(ocorrencia.codigo_bloco),
-                    "codigo_bloco": ocorrencia.codigo_bloco,  # Add for merging reference
+                    "horario": get_bloco_horario(str(ocorrencia.codigo_bloco)),
+                    "codigo_bloco": str(
+                        ocorrencia.codigo_bloco
+                    ),  # Add for merging reference
                     "sala_codigo": sala.nome,
                     "sala_descricao": sala.descricao if sala.descricao else "",
                     "predio_nome": predio_nome,
@@ -781,17 +814,18 @@ elif selected_tab == "➕ Nova Reserva":
     st.header("➕ Criar Nova Reserva")
 
     # Recurrence pattern selection OUTSIDE form for dynamic UI updates
-    st.markdown("#### 🔄 Tipo de Recorrência")
+    st.markdown("#### 🔄 Tipo de Recorrência*")
     tipo_recorrencia = st.selectbox(
-        "Como esta reserva será repetida? *",
-        options=["unica", "diaria", "semanal", "mensal_dia", "mensal_posicao"],
-        format_func=lambda x: {
-            "unica": "Evento Único (uma só data)",
-            "diaria": "Repetir Diariamente",
-            "semanal": "Repetir Semanalmente",
-            "mensal_dia": "Repetir Mensalmente (mesmo dia)",
-            "mensal_posicao": "Repetir Mensalmente (semana específica)",
-        }.get(x, x),
+        "Como esta reserva será repetida?",
+        options=[
+            "unica",
+            "semestre_inteiro",
+            "diaria",
+            "semanal",
+            "mensal_dia",
+            "mensal_posicao",
+        ],
+        format_func=_recurrence_label,
         key="tipo_recorrencia_selector",
         help="Define como a reserva será repetida ao longo do tempo",
     )
@@ -800,6 +834,10 @@ elif selected_tab == "➕ Nova Reserva":
     if tipo_recorrencia == "unica":
         st.info(
             "ℹ️ **Evento Único:** A reserva será criada apenas para a data inicial selecionada, sem repetições."
+        )
+    elif tipo_recorrencia == "semestre_inteiro":
+        st.info(
+            "ℹ️ **Semestre Inteiro:** Os blocos selecionados serão reservados de segunda a sábado entre a data inicial e a data final configuradas no semestre ativo. Esta reserva aparecerá na visualização e no relatório PDF gerado."
         )
     elif tipo_recorrencia == "diaria":
         st.info(
@@ -818,8 +856,29 @@ elif selected_tab == "➕ Nova Reserva":
             "ℹ️ **Repetição Mensal (semana específica):** A reserva será repetida na mesma semana do mês (ex: toda 2ª segunda-feira), até a data final."
         )
 
+    st.markdown("#### 🚪 Sala*")
+    if sala_options:
+        sala_id = st.selectbox(
+            "Selecione a sala da reserva primeiro",
+            options=list(sala_options.keys()),
+            index=None,
+            placeholder="Escolha uma sala",
+            format_func=lambda x: sala_options.get(x, "N/A"),
+            key="form_sala_selector",
+            help="Ao trocar a sala, os blocos de horário abaixo são atualizados conforme o Inventário.",
+        )
+
+        previous_room_id = st.session_state.get("_previous_reservation_room_id")
+        if previous_room_id != sala_id:
+            _clear_unavailable_block_selections(sala_id, sala_allowed_blocks)
+            st.session_state["_previous_reservation_room_id"] = sala_id
+    else:
+        st.error("Nenhuma sala disponível para reserva.")
+        st.stop()
+
     with st.form("form_nova_reserva"):
         st.markdown("#### 📝 Informações do Evento")
+        data_inicio_evento: Optional[date] = None
 
         col1, col2 = st.columns(2)
 
@@ -833,7 +892,7 @@ elif selected_tab == "➕ Nova Reserva":
 
             # Required field: solicitante
             nome_solicitante = st.text_input(
-                "Nome do Solicitante *",
+                "Nome Completo do Solicitante *",
                 placeholder="Ex: João Silva Santos",
                 key="form_solicitante",
                 help="Nome completo de quem está solicitando a reserva",
@@ -847,48 +906,89 @@ elif selected_tab == "➕ Nova Reserva":
                 help="Nome completo do responsável pelo evento (opcional)",
             )
 
-            if sala_options:
-                sala_id = st.selectbox(
-                    "Sala *",
-                    options=list(sala_options.keys()),
-                    format_func=lambda x: sala_options.get(x, "N/A"),
-                    key="form_sala",
-                )
-            else:
-                st.error("Nenhuma sala disponível para reserva.")
-                st.stop()
+            st.text_input(
+                "Sala Selecionada *",
+                value=sala_options.get(sala_id, ""),
+                disabled=True,
+                key="form_sala_readonly",
+            )
 
         with col2:
-            data_inicio_evento = st.date_input(
-                "Data Inicial *",
-                value=datetime.now().date(),
-                min_value=datetime.now().date(),
-                key="form_data_inicio",
-                help="Data da primeira ocorrência da reserva",
-                format="DD/MM/YYYY",
-            )
+            if tipo_recorrencia == "semestre_inteiro":
+                data_inicio_evento = semestre_atual.data_inicial
+                data_fim_semestre = semestre_atual.data_final
+
+                if data_inicio_evento:
+                    st.date_input(
+                        "Data Inicial do Semestre *",
+                        value=data_inicio_evento,
+                        key="form_data_inicio_semestre",
+                        disabled=True,
+                        format="DD/MM/YYYY",
+                    )
+                else:
+                    st.error(
+                        "O semestre ativo ainda não possui Data Inicial configurada na página de Configurações."
+                    )
+
+                if data_fim_semestre:
+                    st.date_input(
+                        "Data Final do Semestre *",
+                        value=data_fim_semestre,
+                        key="form_data_fim_semestre_readonly",
+                        disabled=True,
+                        format="DD/MM/YYYY",
+                    )
+                else:
+                    st.error(
+                        "O semestre ativo ainda não possui Data Final configurada na página de Configurações."
+                    )
+            else:
+                data_inicio_evento = st.date_input(
+                    "Data Inicial *",
+                    value=datetime.now().date(),
+                    min_value=datetime.now().date(),
+                    key="form_data_inicio",
+                    help="Data da primeira ocorrência da reserva",
+                    format="DD/MM/YYYY",
+                )
+
+        start_date_value = data_inicio_evento or datetime.now().date()
 
         # Time blocks selection
         st.markdown("#### ⏰ Blocos de Horário *")
-        st.caption("Selecione um ou mais horários para a reserva")
-        allowed_blocks_for_room = sala_allowed_blocks.get(
-            sala_id, CANONICAL_BLOCK_ORDER.copy()
+        st.caption(
+            "Selecione um ou mais horários para a reserva. A lista abaixo é atualizada conforme a sala escolhida."
         )
-        blocos_disponiveis = get_blocos_disponiveis(allowed_blocks_for_room)
-
-        if not blocos_disponiveis:
-            st.error(
-                "A sala selecionada não possui blocos de horário habilitados para reserva."
-            )
-            st.stop()
-
-        cols = st.columns(5)
         blocos_selecionados = []
 
-        for i, bloco in enumerate(blocos_disponiveis):
-            with cols[i % 5]:
-                if st.checkbox(f"{get_bloco_horario(bloco)}", key=f"bloco_{bloco}"):
-                    blocos_selecionados.append(bloco)
+        if sala_id is None:
+            blocos_disponiveis = []
+            st.info(
+                "Selecione uma sala para carregar os blocos de horário habilitados."
+            )
+        else:
+            allowed_blocks_for_room = sala_allowed_blocks.get(
+                sala_id, CANONICAL_BLOCK_ORDER.copy()
+            )
+            blocos_disponiveis = get_blocos_disponiveis(allowed_blocks_for_room)
+
+            st.caption(
+                f"Sala atual: {sala_options.get(sala_id, 'N/A')} | {len(blocos_disponiveis)} bloco(s) habilitado(s)"
+            )
+
+            if not blocos_disponiveis:
+                st.warning(
+                    "A sala selecionada não possui blocos de horário habilitados para reserva."
+                )
+            else:
+                cols = st.columns(5)
+                for i, bloco in enumerate(blocos_disponiveis):
+                    with cols[i % 5]:
+                        if st.checkbox(
+                            f"{get_bloco_horario(bloco)}", key=f"bloco_{bloco}"
+                        ):
+                            blocos_selecionados.append(bloco)
 
         # Additional recurrence options
         regra_json = None
@@ -914,15 +1014,15 @@ elif selected_tab == "➕ Nova Reserva":
             with col_fim:
                 data_fim_evento = st.date_input(
                     "Data Final *",
-                    value=data_inicio_evento + timedelta(days=30),
-                    min_value=data_inicio_evento + timedelta(days=1),
-                    max_value=data_inicio_evento + timedelta(days=365),
+                    value=start_date_value + timedelta(days=30),
+                    min_value=start_date_value + timedelta(days=1),
+                    max_value=start_date_value + timedelta(days=365),
                     key="form_data_fim_diaria",
                     help="Última data possível para repetição (máximo 1 ano)",
                     format="DD/MM/YYYY",
                 )
             st.caption(
-                f"📅 Exemplo: Repetir a cada {intervalo_dias} dia(s) de {data_inicio_evento.strftime('%d/%m/%Y')} até {data_fim_evento.strftime('%d/%m/%Y')}"
+                f"📅 Exemplo: Repetir a cada {intervalo_dias} dia(s) de {start_date_value.strftime('%d/%m/%Y')} até {data_fim_evento.strftime('%d/%m/%Y')}"
             )
             regra_json = f'{{"tipo": "diaria", "intervalo": {intervalo_dias}, "fim": "{data_fim_evento}"}}'
 
@@ -942,8 +1042,8 @@ elif selected_tab == "➕ Nova Reserva":
                     options=list(dias_semana_opcoes.keys()),
                     format_func=lambda x: dias_semana_opcoes.get(x, ""),
                     default=(
-                        [data_inicio_evento.isoweekday() + 1]
-                        if data_inicio_evento.isoweekday() < 6
+                        [start_date_value.isoweekday() + 1]
+                        if start_date_value.isoweekday() < 6
                         else [2]
                     ),
                     key="form_dias_semana",
@@ -952,9 +1052,9 @@ elif selected_tab == "➕ Nova Reserva":
             with col_fim:
                 data_fim_evento = st.date_input(
                     "Data Final *",
-                    value=data_inicio_evento + timedelta(days=90),
-                    min_value=data_inicio_evento + timedelta(days=1),
-                    max_value=data_inicio_evento + timedelta(days=365),
+                    value=start_date_value + timedelta(days=90),
+                    min_value=start_date_value + timedelta(days=1),
+                    max_value=start_date_value + timedelta(days=365),
                     key="form_data_fim_semanal",
                     help="Última data possível para repetição (máximo 1 ano)",
                     format="DD/MM/YYYY",
@@ -964,7 +1064,7 @@ elif selected_tab == "➕ Nova Reserva":
                     [dias_semana_opcoes[d][:3] for d in sorted(dias_selecionados)]
                 )
                 st.caption(
-                    f"📅 Exemplo: Repetir toda(s) {dias_str} de {data_inicio_evento.strftime('%d/%m/%Y')} até {data_fim_evento.strftime('%d/%m/%Y')}"
+                    f"📅 Exemplo: Repetir toda(s) {dias_str} de {start_date_value.strftime('%d/%m/%Y')} até {data_fim_evento.strftime('%d/%m/%Y')}"
                 )
             dias_json = str(dias_selecionados).replace("'", "")
             regra_json = f'{{"tipo": "semanal", "dias": {dias_json}, "fim": "{data_fim_evento}"}}'
@@ -976,22 +1076,22 @@ elif selected_tab == "➕ Nova Reserva":
                     "Dia do Mês *",
                     min_value=1,
                     max_value=31,
-                    value=data_inicio_evento.day,
+                    value=start_date_value.day,
                     key="form_dia_mes",
                     help="Dia do mês em que a reserva se repetirá (ex: 15 = dia 15 de cada mês)",
                 )
             with col_fim:
                 data_fim_evento = st.date_input(
                     "Data Final *",
-                    value=data_inicio_evento + timedelta(days=180),
-                    min_value=data_inicio_evento + timedelta(days=1),
-                    max_value=data_inicio_evento + timedelta(days=365),
+                    value=start_date_value + timedelta(days=180),
+                    min_value=start_date_value + timedelta(days=1),
+                    max_value=start_date_value + timedelta(days=365),
                     key="form_data_fim_mensal_dia",
                     help="Última data possível para repetição (máximo 1 ano)",
                     format="DD/MM/YYYY",
                 )
             st.caption(
-                f"📅 Exemplo: Repetir todo dia {dia_mes} de cada mês, de {data_inicio_evento.strftime('%m/%Y')} até {data_fim_evento.strftime('%m/%Y')}"
+                f"📅 Exemplo: Repetir todo dia {dia_mes} de cada mês, de {start_date_value.strftime('%m/%Y')} até {data_fim_evento.strftime('%m/%Y')}"
             )
             regra_json = f'{{"tipo": "mensal", "dia_mes": {dia_mes}, "fim": "{data_fim_evento}"}}'
 
@@ -1033,17 +1133,34 @@ elif selected_tab == "➕ Nova Reserva":
             with col_fim:
                 data_fim_evento = st.date_input(
                     "Data Final *",
-                    value=data_inicio_evento + timedelta(days=180),
-                    min_value=data_inicio_evento + timedelta(days=1),
-                    max_value=data_inicio_evento + timedelta(days=365),
+                    value=start_date_value + timedelta(days=180),
+                    min_value=start_date_value + timedelta(days=1),
+                    max_value=start_date_value + timedelta(days=365),
                     key="form_data_fim_mensal_posicao",
                     help="Última data possível para repetição (máximo 1 ano)",
                     format="DD/MM/YYYY",
                 )
             st.caption(
-                f"📅 Exemplo: Repetir toda {pos_map[posicao_selecionada].lower()} {dia_semana_map[dia_semana_selecionado].lower()} do mês, de {data_inicio_evento.strftime('%m/%Y')} até {data_fim_evento.strftime('%m/%Y')}"
+                f"📅 Exemplo: Repetir toda {pos_map[posicao_selecionada].lower()} {dia_semana_map[dia_semana_selecionado].lower()} do mês, de {start_date_value.strftime('%m/%Y')} até {data_fim_evento.strftime('%m/%Y')}"
             )
             regra_json = f'{{"tipo": "mensal", "posicao": {posicao_selecionada}, "dia_semana": {dia_semana_selecionado}, "fim": "{data_fim_evento}"}}'
+
+        elif tipo_recorrencia == "semestre_inteiro":
+            data_fim_evento = semestre_atual.data_final
+            if semestre_atual.data_inicial and semestre_atual.data_final:
+                st.caption(
+                    f"📅 Os blocos selecionados serão reservados de segunda a sábado entre {semestre_atual.data_inicial.strftime('%d/%m/%Y')} e {semestre_atual.data_final.strftime('%d/%m/%Y')}."
+                )
+                regra_json = (
+                    '{"tipo": "semestre_inteiro", '
+                    f'"semestre_id": {semestre_atual.id}, '
+                    f'"fim": "{semestre_atual.data_final}"'
+                    "}"
+                )
+            else:
+                st.warning(
+                    "Configure a Data Inicial e a Data Final do semestre ativo em Configurações antes de criar uma reserva de semestre inteiro."
+                )
 
         # Submit button
         st.markdown("---")
@@ -1066,23 +1183,30 @@ elif selected_tab == "➕ Nova Reserva":
             if not titulo_evento.strip():
                 validation_errors.append("• O título do evento é obrigatório.")
 
+            if sala_id is None:
+                validation_errors.append(
+                    "• Selecione uma sala antes de criar a reserva."
+                )
+
             # Validate nome_solicitante (required, full name)
             if not nome_solicitante.strip():
-                validation_errors.append("• O nome do solicitante é obrigatório.")
+                validation_errors.append(
+                    "• O nome completo do solicitante é obrigatório."
+                )
             else:
                 # Check if it's a valid full name (at least 2 words, each >= 2 chars)
                 nome_parts = nome_solicitante.strip().split()
                 if len(nome_parts) < 2:
                     validation_errors.append(
-                        "• O nome do solicitante deve conter nome e sobrenome (mínimo 2 palavras)."
+                        "• O nome completo do solicitante deve conter nome e sobrenome (mínimo 2 palavras)."
                     )
                 elif any(len(part) < 2 for part in nome_parts):
                     validation_errors.append(
-                        "• O nome do solicitante deve ter palavras com pelo menos 2 caracteres cada."
+                        "• O nome completo do solicitante deve ter palavras com pelo menos 2 caracteres cada."
                     )
                 elif not all(part.replace("-", "").isalpha() for part in nome_parts):
                     validation_errors.append(
-                        "• O nome do solicitante deve conter apenas letras e hífens."
+                        "• O nome completo do solicitante deve conter apenas letras e hífens."
                     )
 
             # Validate nome_responsavel (optional, but if provided, must be full name)
@@ -1091,7 +1215,7 @@ elif selected_tab == "➕ Nova Reserva":
                 nome_parts = nome_responsavel.strip().split()
                 if len(nome_parts) < 2:
                     validation_errors.append(
-                        "• O nome do responsável deve conter nome e sobrenome (mínimo 2 palavras)."
+                        "• O nome completo do responsável deve conter nome e sobrenome (mínimo 2 palavras)."
                     )
                 elif any(len(part) < 2 for part in nome_parts):
                     validation_errors.append(
@@ -1112,9 +1236,19 @@ elif selected_tab == "➕ Nova Reserva":
                     "• Selecione pelo menos um dia da semana para recorrência semanal."
                 )
 
+            if tipo_recorrencia == "semestre_inteiro":
+                if not semestre_atual.data_inicial or not semestre_atual.data_final:
+                    validation_errors.append(
+                        "• O semestre ativo precisa ter Data Inicial e Data Final configuradas para usar a reserva de Semestre Inteiro."
+                    )
+
             # Validate end date for recurring events
             if tipo_recorrencia != "unica":
-                if not data_fim_evento:
+                if not data_inicio_evento:
+                    validation_errors.append(
+                        "• A data inicial é obrigatória para eventos recorrentes."
+                    )
+                elif not data_fim_evento:
                     validation_errors.append(
                         "• A data final é obrigatória para eventos recorrentes."
                     )
@@ -1143,15 +1277,20 @@ elif selected_tab == "➕ Nova Reserva":
             # CREATE RESERVATION
             # ============================================================
             try:
+                if sala_id is None or regra_json is None or data_inicio_evento is None:
+                    raise ValueError(
+                        "Dados obrigatórios da reserva não foram definidos corretamente."
+                    )
+
                 evento_dto = ReservaEventoCreate(
-                    sala_id=sala_id,
+                    sala_id=int(sala_id),
                     titulo_evento=titulo_evento.strip(),
                     username_criador=st.session_state.get("username", "unknown"),
                     nome_solicitante=nome_solicitante.strip(),
                     nome_responsavel=(
                         nome_responsavel.strip() if nome_responsavel.strip() else None
                     ),
-                    regra_recorrencia_json=regra_json,
+                    regra_recorrencia_json=cast(str, regra_json),
                 )
 
                 evento_criado, erros = reserva_service.criar_reserva_recorrente(
@@ -1164,7 +1303,7 @@ elif selected_tab == "➕ Nova Reserva":
                     set_session_feedback(
                         "reservas_feedback",
                         success=True,
-                        message=f"Reserva '{evento_criado.titulo_evento}' criada com sucesso!",
+                        message=f"Reserva '{evento_criado.titulo_evento}' criada com sucesso",
                         ttl=8,
                     )
                     st.rerun()

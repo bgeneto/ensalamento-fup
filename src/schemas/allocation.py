@@ -24,6 +24,7 @@ class TipoRecorrencia(str, Enum):
     DIARIA = "diaria"
     SEMANAL = "semanal"
     MENSAL = "mensal"
+    SEMESTRE_INTEIRO = "semestre_inteiro"
 
 
 class PosicaoMes(str, Enum):
@@ -112,9 +113,24 @@ class RegraMensalPosicao(RegraRecorrenciaBase):
     fim: str = Field(..., description="End date in YYYY-MM-DD format")
 
 
+class RegraSemestreInteiro(RegraRecorrenciaBase):
+    """Full-semester reservation rule bounded by semester start/end dates."""
+
+    tipo: TipoRecorrencia = Field(
+        default=TipoRecorrencia.SEMESTRE_INTEIRO,
+        frozen=True,
+    )
+    fim: str = Field(..., description="Semester end date in YYYY-MM-DD format")
+
+
 # Union type for all recurrence rules
 RegraRecorrencia = Union[
-    RegraUnica, RegraDiaria, RegraSemanal, RegraMensalDia, RegraMensalPosicao
+    RegraUnica,
+    RegraDiaria,
+    RegraSemanal,
+    RegraMensalDia,
+    RegraMensalPosicao,
+    RegraSemestreInteiro,
 ]
 
 

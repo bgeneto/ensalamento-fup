@@ -4,6 +4,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -62,6 +63,8 @@ class Semestre(BaseModel):
 
     nome = Column(String(50), nullable=False, unique=True)
     status = Column(Boolean, default=False)  # False = Past, True = Active/Current
+    data_inicial = Column(Date, nullable=True)
+    data_final = Column(Date, nullable=True)
 
     # Relationships - use lazy='select' to defer loading and avoid circular dependencies
     demandas = relationship(

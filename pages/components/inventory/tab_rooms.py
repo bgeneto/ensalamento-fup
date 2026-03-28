@@ -182,7 +182,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} sala(s) removida(s) com sucesso!",
+                                f"{len(deleted_ids)} sala(s) removida(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -295,7 +295,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{created} sala(s) adicionado(s) com sucesso!",
+                                f"{created} sala(s) adicionado(s) com sucesso",
                                 action="create",
                             )
                             changes_made = True
@@ -464,7 +464,7 @@ def render_rooms_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Sala {nome} atualizada com sucesso (Prédio: {predio_nome})!",
+                                                f"Sala {nome} atualizada com sucesso (Prédio: {predio_nome})",
                                                 action="update",
                                             )
                                             changes_made = True
@@ -574,7 +574,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} característica(s) removida(s) com sucesso!",
+                                f"{len(deleted_ids)} característica(s) removida(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -639,7 +639,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{created} característica(s) adicionada(s) com sucesso!",
+                                f"{created} característica(s) adicionada(s) com sucesso",
                                 action="create",
                             )
                             changes_made = True
@@ -713,7 +713,7 @@ def render_rooms_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Característica {nome} atualizada com sucesso!",
+                                                f"Característica {nome} atualizada com sucesso",
                                                 action="update",
                                             )
                                             changes_made = True
@@ -809,7 +809,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} tipo(s) sala removido(s) com sucesso!",
+                                f"{len(deleted_ids)} tipo(s) sala removido(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -872,7 +872,7 @@ def render_rooms_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{created} tipo(s) sala adicionado(s) com sucesso!",
+                                f"{created} tipo(s) sala adicionado(s) com sucesso",
                                 action="create",
                             )
                             changes_made = True
@@ -947,7 +947,7 @@ def render_rooms_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Tipo de sala {nome} atualizado com sucesso!",
+                                                f"Tipo de sala {nome} atualizado com sucesso",
                                                 action="update",
                                             )
                                             changes_made = True

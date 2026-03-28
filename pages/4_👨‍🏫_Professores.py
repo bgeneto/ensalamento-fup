@@ -5,8 +5,9 @@ Manage faculty members with import capabilities from CSV and API integration.
 Configure professor availability and preferences.
 """
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from pages.components.auth import initialize_page
 from pages.components.ui import page_footer
 
@@ -23,14 +24,11 @@ if not initialize_page(
 # IMPORTS
 # ============================================================================
 
+from src.config.database import get_db_session
+from src.models.academic import Professor
 from src.repositories.professor import ProfessorRepository
 from src.schemas.academic import ProfessorCreate
-from src.models.academic import Professor
-from src.config.database import get_db_session
-from src.utils.ui_feedback import (
-    display_session_feedback,
-    set_session_feedback,
-)
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 # ============================================================================
 # PAGE HEADER
@@ -138,7 +136,7 @@ with tab1:
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} professor(es) removido(s) com sucesso!",
+                                f"{len(deleted_ids)} professor(es) removido(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -212,7 +210,7 @@ with tab1:
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{created} professor(es) adicionado(s) com sucesso!",
+                                f"{created} professor(es) adicionado(s) com sucesso",
                                 action="create",
                             )
                             changes_made = True
@@ -292,7 +290,7 @@ with tab1:
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Professor(a) {nome} atualizado com sucesso!",
+                                                f"Professor(a) {nome} atualizado com sucesso",
                                                 action="update",
                                             )
                                             changes_made = True
@@ -417,7 +415,7 @@ with tab2:
 
                             # Store result in session state to persist across reruns
                             message = (
-                                f"{count} professores importados com sucesso!"
+                                f"{count} professores importados com sucesso"
                                 if not errors
                                 else f"{count} professores importados; {len(errors)} linhas com problemas."
                             )
@@ -498,7 +496,7 @@ with tab2:
                                 set_session_feedback(
                                     "form_result",
                                     True,
-                                    f"Professor {nome_completo} adicionado com sucesso!",
+                                    f"Professor {nome_completo} adicionado com sucesso",
                                 )
                         st.rerun()
                     except Exception as e:

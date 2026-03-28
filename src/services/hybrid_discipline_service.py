@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Regular classroom type ID (Sala de Aula)
 REGULAR_CLASSROOM_TYPE_ID = 2
+HYBRID_HISTORY_SEMESTER_LIMIT = 4
 
 
 @dataclass
@@ -128,10 +129,20 @@ class HybridDisciplineDetectionService:
             return str(codigo_disciplina)
         return self.build_offering_key(codigo_disciplina, turma_disciplina)
 
-    def _fetch_historical_allocations(self, detection_semester_id: int):
+    def _get_historical_semester_ids(self, detection_semester_id: int) -> List[int]:
+        """Return the recent semester IDs considered for hybrid detection."""
+        return self.alocacao_repo.get_recent_semester_ids_with_allocations(
+            up_to_semester_id=detection_semester_id,
+            limit=HYBRID_HISTORY_SEMESTER_LIMIT,
+        )
+
+    def _fetch_historical_allocations(self, semester_ids: List[int]):
         from src.models.academic import Demanda
         from src.models.allocation import AlocacaoSemestral
         from src.models.inventory import Sala, TipoSala
+
+        if not semester_ids:
+            return []
 
         return (
             self.session.query(
@@ -147,7 +158,7 @@ class HybridDisciplineDetectionService:
             .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
             .join(Sala, AlocacaoSemestral.sala_id == Sala.id)
             .join(TipoSala, Sala.tipo_sala_id == TipoSala.id)
-            .filter(AlocacaoSemestral.semestre_id <= detection_semester_id)
+            .filter(AlocacaoSemestral.semestre_id.in_(semester_ids))
             .all()
         )
 
@@ -183,7 +194,17 @@ class HybridDisciplineDetectionService:
         # Clear previous cache
         self._cache.clear()
 
-        historical_rows = self._fetch_historical_allocations(detection_semester_id)
+        historical_semester_ids = self._get_historical_semester_ids(
+            detection_semester_id
+        )
+        historical_rows = self._fetch_historical_allocations(historical_semester_ids)
+
+        logger.info(
+            "Hybrid detection historical window: last %s semester(s) with allocations up to %s -> %s",
+            HYBRID_HISTORY_SEMESTER_LIMIT,
+            detection_semester_id,
+            historical_semester_ids,
+        )
 
         offerings: Dict[str, Dict] = {}
         for row in historical_rows:

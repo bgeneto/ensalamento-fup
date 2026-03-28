@@ -704,3 +704,25 @@ class AlocacaoRepository(BaseRepository[AlocacaoSemestral, AlocacaoSemestralRead
             return None
 
         return max(semester_ids)
+
+    def get_recent_semester_ids_with_allocations(
+        self,
+        up_to_semester_id: int,
+        limit: int = 4,
+    ) -> List[int]:
+        """Return the most recent semester IDs with allocations up to a cutoff semester."""
+        if limit <= 0:
+            return []
+
+        semester_ids = [
+            row[0]
+            for row in (
+                self.session.query(AlocacaoSemestral.semestre_id)
+                .filter(AlocacaoSemestral.semestre_id <= up_to_semester_id)
+                .group_by(AlocacaoSemestral.semestre_id)
+                .order_by(AlocacaoSemestral.semestre_id.desc())
+                .limit(limit)
+                .all()
+            )
+        ]
+        return sorted(semester_ids)

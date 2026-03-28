@@ -5,18 +5,20 @@ Supports daily, weekly, and monthly recurrence patterns with
 one-year maximum limit enforcement.
 """
 
-from datetime import datetime, timedelta, date
-from typing import List, Dict, Any
-from dateutil.relativedelta import relativedelta, MO, TU, WE, TH, FR, SA
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List
+
+from dateutil.relativedelta import FR, MO, SA, TH, TU, WE, relativedelta
 
 from src.schemas.allocation import (
-    RegraRecorrencia,
-    TipoRecorrencia,
-    RegraUnica,
     RegraDiaria,
-    RegraSemanal,
     RegraMensalDia,
     RegraMensalPosicao,
+    RegraRecorrencia,
+    RegraSemanal,
+    RegraSemestreInteiro,
+    RegraUnica,
+    TipoRecorrencia,
 )
 
 
@@ -60,6 +62,8 @@ class RecurrenceCalculator:
             return RecurrenceCalculator._expand_monthly_day(rule, start_date)
         elif isinstance(rule, RegraMensalPosicao):
             return RecurrenceCalculator._expand_monthly_position(rule, start_date)
+        elif isinstance(rule, RegraSemestreInteiro):
+            return RecurrenceCalculator._expand_full_semester(rule, start_date)
         else:
             raise ValueError(f"Unsupported recurrence rule type: {type(rule)}")
 
@@ -206,6 +210,25 @@ class RecurrenceCalculator:
         return dates
 
     @staticmethod
+    def _expand_full_semester(
+        rule: RegraSemestreInteiro, start_date: date
+    ) -> List[date]:
+        """Expand a semester-wide reservation across all academic weekdays."""
+        end_date = RecurrenceCalculator._parse_date(rule.fim)
+        one_year_later = start_date + timedelta(days=365)
+        effective_end = min(end_date, one_year_later)
+
+        dates = []
+        current_date = start_date
+
+        while current_date <= effective_end:
+            if current_date.isoweekday() <= 6:
+                dates.append(current_date)
+            current_date += timedelta(days=1)
+
+        return dates
+
+    @staticmethod
     def _find_nth_weekday(year: int, month: int, weekday, position: int) -> date:
         """
         Find the nth weekday of a given month and year.
@@ -302,6 +325,9 @@ class RecurrenceCalculator:
                         and 2 <= rule["dia_semana"] <= 7
                         and "fim" in rule
                     )
+
+            if tipo == TipoRecorrencia.SEMESTRE_INTEIRO:
+                return "fim" in rule
 
             return False
         except Exception:

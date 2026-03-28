@@ -18,6 +18,7 @@ from src.repositories.reserva_evento import ReservaEventoRepository
 from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.allocation import (
+    RegraSemestreInteiro,
     RegraUnica,
     ReservaEventoCreate,
     ReservaEventoRead,
@@ -81,6 +82,7 @@ class ReservaEventoService:
             import json
 
             rule_dict = json.loads(evento_dto.regra_recorrencia_json)
+            is_full_semester_rule = rule_dict.get("tipo") == "semestre_inteiro"
 
             room = self.sala_repo.get_by_id(evento_dto.sala_id)
             if not room:
@@ -92,7 +94,7 @@ class ReservaEventoService:
                 return None, errors
 
             # Check past date restriction
-            if data_inicio < date.today():
+            if data_inicio < date.today() and not is_full_semester_rule:
                 errors.append("Data de início não pode ser no passado")
                 return None, errors
 
@@ -128,7 +130,9 @@ class ReservaEventoService:
 
             # Check for conflicts across all occurrences
             conflict_errors = self._check_conflicts_for_occurrences(
-                evento_dto.sala_id, occurrences_with_blocks
+                evento_dto.sala_id,
+                occurrences_with_blocks,
+                allocation_semester_id=rule_dict.get("semestre_id"),
             )
 
             if conflict_errors:
@@ -203,6 +207,8 @@ class ReservaEventoService:
                 dia_semana=rule_dict["dia_semana"],
                 fim=rule_dict["fim"],
             )
+        elif tipo == "semestre_inteiro":
+            rule = RegraSemestreInteiro(fim=rule_dict["fim"])
         else:
             logger.error(f"Unknown recurrence type: {tipo}")
             return []
@@ -217,7 +223,10 @@ class ReservaEventoService:
         return occurrences
 
     def _check_conflicts_for_occurrences(
-        self, room_id: int, occurrences_with_blocks: List[Dict[str, Any]]
+        self,
+        room_id: int,
+        occurrences_with_blocks: List[Dict[str, Any]],
+        allocation_semester_id: Optional[int] = None,
     ) -> List[str]:
         """
         Check for conflicts in all occurrences against:
@@ -238,18 +247,20 @@ class ReservaEventoService:
             f"Checking conflicts for room {room_id} with {len(occurrences_with_blocks)} occurrences"
         )
 
-        # Only consider allocations from the most recent semester that has actual data.
-        # This avoids conflicts with historical/future semesters when validating concrete dates.
-        latest_alloc_semester_id = (
-            self.alocacao_repo.get_most_recent_semester_with_allocations()
-        )
-        if latest_alloc_semester_id is None:
+        target_alloc_semester_id = allocation_semester_id
+        if target_alloc_semester_id is None:
+            # Fallback for legacy reservation flows that do not bind to a specific semester.
+            target_alloc_semester_id = (
+                self.alocacao_repo.get_most_recent_semester_with_allocations()
+            )
+
+        if target_alloc_semester_id is None:
             logger.info(
                 "No semester with allocations found; skipping allocation conflict check"
             )
         else:
             logger.info(
-                f"Using latest semester with allocations for conflict check: {latest_alloc_semester_id}"
+                f"Using semester {target_alloc_semester_id} for allocation conflict check"
             )
 
         for occurrence in occurrences_with_blocks:
@@ -257,8 +268,8 @@ class ReservaEventoService:
             codigo_bloco = occurrence["codigo_bloco"]
             has_any_conflict = False
 
-            # Check conflicts with allocations only in latest allocated semester
-            if latest_alloc_semester_id is not None:
+            # Check conflicts with allocations only in the target semester.
+            if target_alloc_semester_id is not None:
                 weekday = (
                     datetime.strptime(data_reserva, "%Y-%m-%d").weekday() + 2
                 )  # SIGAA format
@@ -266,12 +277,12 @@ class ReservaEventoService:
                     room_id,
                     weekday,
                     codigo_bloco,
-                    semestre_id=latest_alloc_semester_id,
+                    semestre_id=target_alloc_semester_id,
                 )
                 if semester_conflict:
                     has_any_conflict = True
                     logger.warning(
-                        f"Conflict found: semester allocation (sem={latest_alloc_semester_id}) on {data_reserva} {codigo_bloco}"
+                        f"Conflict found: semester allocation (sem={target_alloc_semester_id}) on {data_reserva} {codigo_bloco}"
                     )
 
             # Check conflicts with recurring reservation occurrences

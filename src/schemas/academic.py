@@ -1,6 +1,6 @@
 """Data Transfer Object schemas for Academic domain."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +15,8 @@ class SemestreBase(BaseModel):
 
     nome: str = Field(..., min_length=5, max_length=50)  # e.g., "2025.1"
     status: bool = Field(default=False)
+    data_inicial: Optional[date] = None
+    data_final: Optional[date] = None
 
 
 class SemestreCreate(SemestreBase):

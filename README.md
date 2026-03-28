@@ -56,8 +56,18 @@ Com isso, no container o arquivo fica em `/app/data/ensalamento.db`, persistido 
 Em Docker, o container da aplicação agora executa `python init_db.py --init --migrate`
 automaticamente no startup antes de subir o Streamlit.
 
+Fora do Docker, o app Streamlit também passou a executar `init + migrate` no boot do
+processo. Isso cobre bancos novos e migrations pendentes sem exigir comando manual
+antes de abrir o sistema.
+
 Observação: este projeto não usa Alembic. As migrations são SQLs aplicadas por
 `init_db.py` + `src/db/migrations.py`.
+
+Se precisar desabilitar esse comportamento em algum cenário específico, use:
+
+```bash
+SKIP_DB_MIGRATIONS=1
+```
 
 Depois de subir os containers, execute:
 
@@ -126,6 +136,9 @@ Se estiver apontando para `localhost`, ajuste `DOCS_URL` ou `BASE_URL` no `.env`
 ### 2) `sqlalchemy.exc.OperationalError: no such table`
 
 Causa comum: banco novo sem init/migration.
+
+Observação: no fluxo normal isso agora roda automaticamente no boot do app e no
+startup do container. Os comandos abaixo continuam úteis para reparo manual.
 
 Execute:
 

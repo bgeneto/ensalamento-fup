@@ -27,17 +27,13 @@ if not initialize_page(
 # ============================================================================
 
 from pages.components.ui import page_footer
-from src.config.database import get_db_session
-from src.models.academic import Semestre
-from src.models.inventory import Predio, Sala
-from src.repositories.alocacao import AlocacaoRepository
-from src.repositories.dia_semana import DiaSemanaRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.horario_bloco import HorarioBlocoRepository
-from src.repositories.professor import ProfessorRepository
-from src.repositories.reserva import ReservaRepository
-from src.repositories.sala import SalaRepository
-from src.utils.cache_helpers import get_sigaa_parser
+from src.utils.cache_helpers import (
+    get_active_semester_snapshot,
+    get_room_display_metadata,
+    get_semester_demands_snapshot,
+    get_semester_schedule_snapshot,
+    get_sigaa_parser,
+)
 from src.utils.ui_feedback import (
     display_session_feedback,
 )
@@ -492,293 +488,221 @@ def create_room_schedule_grid(allocations: List[Any], room_name: str) -> pd.Data
 
 
 try:
-    with get_db_session() as session:
-        # Initialize repositories
-        aloc_repo = AlocacaoRepository(session)
-        reserva_repo = ReservaRepository(session)
-        sala_repo = SalaRepository(session)
-        prof_repo = ProfessorRepository(session)
-        disc_repo = DisciplinaRepository(session)
-        dia_repo = DiaSemanaRepository(session)
-        horario_repo = HorarioBlocoRepository(session)
+    active_semester = get_active_semester_snapshot()
+    if not active_semester:
+        st.warning(
+            "Nenhum semestre ativo encontrado. Configure um semestre ativo na página ⚙️ Configurações."
+        )
+        st.stop()
 
-        # Get the active semester (status = 1)
-        active_semester = session.query(Semestre).filter(Semestre.status).first()
-        if not active_semester:
-            st.warning(
-                "Nenhum semestre ativo encontrado. Configure um semestre ativo na página ⚙️ Configurações."
-            )
-            st.stop()
+    active_semester_id = active_semester["id"]
+    active_semester_name = active_semester["nome"]
 
-        active_semester_id = active_semester.id
-        active_semester_name = active_semester.nome
+    room_metadata = get_room_display_metadata()
+    salas_options = room_metadata["salas_options"]
+    predios_options = room_metadata["predios_options"]
+    room_to_predio = room_metadata["room_to_predio"]
 
-        # Get rooms data
-        salas_orm = session.query(Sala).join(Predio).all()
+    demandas = get_semester_demands_snapshot(active_semester_id)
 
-        # Create filter options
-        salas_options = {s.id: f"{s.predio.nome}: {s.nome}" for s in salas_orm}
-        predios_options = {p.id: p.nome for p in session.query(Predio).all()}
+    disciplina_options = {}
+    for demanda in demandas:
+        key = demanda.codigo_disciplina
+        display_name = f"{demanda.codigo_disciplina} - {demanda.nome_disciplina}"
+        if key not in disciplina_options:
+            disciplina_options[key] = display_name
 
-        # Get disciplines for the active semester
-        demandas = disc_repo.get_by_semestre(active_semester_id)
+    professor_options = {}
+    for demanda in demandas:
+        if demanda.professores_disciplina and demanda.professores_disciplina.strip():
+            professors = [
+                p.strip()
+                for p in demanda.professores_disciplina.replace(";", ",")
+                .replace("/", ",")
+                .split(",")
+                if p.strip()
+            ]
+            for professor in professors:
+                if professor and professor not in professor_options:
+                    professor_options[professor] = professor
 
-        # Create unique discipline options (codigo - nome format)
-        disciplina_options = {}
-        for demanda in demandas:
-            key = demanda.codigo_disciplina
-            display_name = f"{demanda.codigo_disciplina} - {demanda.nome_disciplina}"
-            if key not in disciplina_options:
-                disciplina_options[key] = display_name
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(
+            f"""
+            <div style="text-align:center;">
+                <img src="/app/static/unb-logo.png" width="60">
+                <h2>Ensalamento FUP/UnB {active_semester_name}</h2>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        # Create unique professor options from active semester allocations
-        professor_options = {}
-        for demanda in demandas:
+    if st.button(
+        "🔄 Limpar Filtros",
+        help="Limpa todos os filtros",
+        key="clear_filters",
+    ):
+        st.session_state.predio_filter = "all"
+        st.session_state.entity_filter = "all"
+        st.session_state.disciplina_filter = "all"
+        st.session_state.professor_filter = "all"
+        st.rerun()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        selected_predio = st.selectbox(
+            "🏢 Prédio:",
+            options=["all"] + list(predios_options.keys()),
+            format_func=lambda x: (
+                "Todas os prédios" if x == "all" else predios_options.get(x, f"ID {x}")
+            ),
+            key="predio_filter",
+        )
+        selected_disciplina = st.selectbox(
+            "📚 Disciplina:",
+            options=["all"] + list(disciplina_options.keys()),
+            format_func=lambda x: (
+                "Todas as disciplinas"
+                if x == "all"
+                else disciplina_options.get(x, f"Código {x}")
+            ),
+            key="disciplina_filter",
+        )
+
+    with col2:
+        selected_entity = st.selectbox(
+            "🚪 Sala:",
+            options=["all"] + list(salas_options.keys()),
+            format_func=lambda x: (
+                "Todas as salas" if x == "all" else salas_options.get(x, f"ID {x}")
+            ),
+            key="entity_filter",
+        )
+
+        selected_professor = st.selectbox(
+            "👨‍🏫 Professor:",
+            options=["all"] + list(professor_options.keys()),
+            format_func=lambda x: (
+                "Todos os professores"
+                if x == "all"
+                else professor_options.get(x, f"Professor {x}")
+            ),
+            key="professor_filter",
+        )
+
+    if "home_view_mode" not in st.session_state:
+        st.session_state.home_view_mode = "📋 Lista"
+
+    selected_view = st.segmented_control(
+        "👁️ Visualização:",
+        options=["📋 Lista", "📊 Tabela"],
+        key="home_view_mode",
+    )
+
+    with st.spinner("Carregando dados..."):
+        schedule_snapshot = get_semester_schedule_snapshot(active_semester_id)
+        allocacoes = schedule_snapshot["allocations"]
+
+        room_allocations = {}
+        for alloc in allocacoes:
+            room_id = alloc.sala_id
+
+            if selected_entity != "all" and room_id != selected_entity:
+                continue
+
             if (
-                demanda.professores_disciplina
-                and demanda.professores_disciplina.strip()
+                selected_predio != "all"
+                and room_to_predio.get(room_id) != selected_predio
             ):
-                # Split by common separators and clean up
-                professors = [
-                    p.strip()
-                    for p in demanda.professores_disciplina.replace(";", ",")
-                    .replace("/", ",")
-                    .split(",")
-                    if p.strip()
-                ]
-                for professor in professors:
-                    if professor and professor not in professor_options:
-                        professor_options[professor] = professor
+                continue
 
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown(
-                f"""
-                <div style="text-align:center;">
-                    <img src="/app/static/unb-logo.png" width="60">
-                    <h2>Ensalamento FUP/UnB {active_semester_name}</h2>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            if selected_disciplina != "all" and (
+                not alloc.demanda
+                or alloc.demanda.codigo_disciplina != selected_disciplina
+            ):
+                continue
+
+            if selected_professor != "all" and (
+                not alloc.demanda
+                or not alloc.demanda.professores_disciplina
+                or selected_professor not in alloc.demanda.professores_disciplina
+            ):
+                continue
+
+            room_allocations.setdefault(
+                room_id,
+                {
+                    "room_name": salas_options.get(room_id, f"Sala {room_id}"),
+                    "allocations": [],
+                },
             )
+            room_allocations[room_id]["allocations"].append(alloc)
 
-        # Clear filters button (must be before widgets that use session state)
-        if st.button(
-            "🔄 Limpar Filtros",
-            help="Limpa todos os filtros",
-            key="clear_filters",
-        ):
-            st.session_state.predio_filter = "all"
-            st.session_state.entity_filter = "all"
-            st.session_state.disciplina_filter = "all"
-            st.session_state.professor_filter = "all"
-            st.rerun()
+    rooms_displayed = sum(
+        1 for room_data in room_allocations.values() if room_data["allocations"]
+    )
 
-        col1, col2 = st.columns(2)
+    st.markdown("---")
 
-        with col1:
-            selected_predio = st.selectbox(
-                "🏢 Prédio:",
-                options=["all"] + list(predios_options.keys()),
-                format_func=lambda x: (
-                    "Todas os prédios"
-                    if x == "all"
-                    else predios_options.get(x, f"ID {x}")
-                ),
-                key="predio_filter",
-            )
-            selected_disciplina = st.selectbox(
-                "📚 Disciplina:",
-                options=["all"] + list(disciplina_options.keys()),
-                format_func=lambda x: (
-                    "Todas as disciplinas"
-                    if x == "all"
-                    else disciplina_options.get(x, f"Código {x}")
-                ),
-                key="disciplina_filter",
-            )
-
-        with col2:
-            selected_entity = st.selectbox(
-                "🚪 Sala:",
-                options=["all"] + list(salas_options.keys()),
-                format_func=lambda x: (
-                    "Todas as salas" if x == "all" else salas_options.get(x, f"ID {x}")
-                ),
-                key="entity_filter",
-            )
-
-            selected_professor = st.selectbox(
-                "👨‍🏫 Professor:",
-                options=["all"] + list(professor_options.keys()),
-                format_func=lambda x: (
-                    "Todos os professores"
-                    if x == "all"
-                    else professor_options.get(x, f"Professor {x}")
-                ),
-                key="professor_filter",
-            )
-
-        if "home_view_mode" not in st.session_state:
-            st.session_state.home_view_mode = "📋 Lista"
-
-        selected_view = st.segmented_control(
-            "👁️ Visualização:",
-            options=["📋 Lista", "📊 Tabela"],
-            key="home_view_mode",
-        )
-
-        show_reservations = False  # disable reservations display in this page
-
-        # Get data based on filters - LOAD DATA BEFORE BUTTONS
-        with st.spinner("Carregando dados..."):
-            # Get allocations for active semester
-            allocacoes = aloc_repo.get_by_semestre(active_semester_id)
-
-            # Get reservations only if checkbox is checked
-            reservas = reserva_repo.get_all() if show_reservations else []
-
-            # Group allocations by room
-            room_allocations = {}
-            for alloc in allocacoes:
-                room_id = alloc.sala_id
-
-                # Apply entity filter (specific room)
-                if selected_entity != "all" and room_id != selected_entity:
-                    continue
-
-                # Apply building filter (selected_predio)
-                if selected_predio != "all":
-                    # Get the room to check its building
-                    room = next((s for s in salas_orm if s.id == room_id), None)
-                    if room and room.predio_id != selected_predio:
-                        continue
-
-                # Apply discipline filter
-                if selected_disciplina != "all":
-                    # Check if allocation has a demanda and matches the selected discipline
-                    if (
-                        not alloc.demanda
-                        or alloc.demanda.codigo_disciplina != selected_disciplina
-                    ):
-                        continue
-
-                # Apply professor filter
-                if selected_professor != "all":
-                    # Check if allocation has a demanda and the professor name contains the selected professor
-                    if (
-                        not alloc.demanda
-                        or not alloc.demanda.professores_disciplina
-                        or selected_professor
-                        not in alloc.demanda.professores_disciplina
-                    ):
-                        continue
-
-                if room_id not in room_allocations:
-                    room_allocations[room_id] = {
-                        "room_name": salas_options.get(room_id, f"Sala {room_id}"),
-                        "allocations": [],
-                    }
-
-                room_allocations[room_id]["allocations"].append(alloc)
-
-            # Group reservations by room
-            for reserva in reservas:
-                room_id = reserva.sala_id
-
-                # Apply entity filter (specific room)
-                if selected_entity != "all" and room_id != selected_entity:
-                    continue
-
-                # Apply building filter (selected_predio)
-                if selected_predio != "all":
-                    # Get the room to check its building
-                    room = next((s for s in salas_orm if s.id == room_id), None)
-                    if room and room.predio_id != selected_predio:
-                        continue
-
-                if room_id not in room_allocations:
-                    room_allocations[room_id] = {
-                        "room_name": salas_options.get(room_id, f"Sala {room_id}"),
-                        "allocations": [],
-                    }
-
-                # Convert reservation to allocation-like format for consistency
-                reservation_alloc = {
-                    "type": "reservation",
-                    "titulo": reserva.titulo_evento,
-                    "solicitante": reserva.username_solicitante,
-                    "dia_semana_id": reserva.data_reserva,  # Placeholder - would need weekday mapping
-                    "codigo_bloco": reserva.codigo_bloco,
-                }
-                room_allocations[room_id]["allocations"].append(reservation_alloc)
-
-        # Count rooms with allocations for display
-        rooms_displayed = sum(
-            1 for room_data in room_allocations.values() if room_data["allocations"]
-        )
-
-        # Display schedule grids for each room
-        st.markdown("---")
-
-        if rooms_displayed == 0:
-            st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
+    if rooms_displayed == 0:
+        st.info("ℹ️ Nenhum dado encontrado com os filtros aplicados.")
+    else:
+        if selected_view == "📋 Lista":
+            items_displayed = render_allocation_list(room_allocations)
+            if items_displayed == 0:
+                st.info("ℹ️ Nenhum ensalamento encontrado com os filtros aplicados.")
         else:
-            if selected_view == "📋 Lista":
-                items_displayed = render_allocation_list(room_allocations)
-                if items_displayed == 0:
-                    st.info("ℹ️ Nenhum ensalamento encontrado com os filtros aplicados.")
-            else:
-                for room_id, room_data in room_allocations.items():
-                    room_name = room_data["room_name"]
-                    allocations = room_data["allocations"]
+            for room_id, room_data in room_allocations.items():
+                room_name = room_data["room_name"]
+                allocations = room_data["allocations"]
 
-                    if not allocations:
-                        continue
+                if not allocations:
+                    continue
 
-                    # Create room schedule grid
-                    room_grid = create_room_schedule_grid(allocations, room_name)
-                    if room_grid is not None and not room_grid.empty:
-                        st.write(f"🏢 **{room_name}**")
+                room_grid = create_room_schedule_grid(allocations, room_name)
+                if room_grid is None or room_grid.empty:
+                    continue
 
-                        # AgGrid expects regular columns; convert index ("Horário") to a column.
-                        room_grid_display = room_grid.reset_index()
-                        grid_options = create_grid_options(room_grid_display)
-                        aggrid_kwargs = {
-                            "gridOptions": grid_options,
-                            "height": 400,
-                            "width": "100%",
-                            "fit_columns_on_grid_load": True,
-                            "theme": "streamlit",
-                            "custom_css": AGGRID_CUSTOM_CSS,
-                            "key": f"room_grid_{room_id}_{active_semester_id}",
-                            "allow_unsafe_jscode": True,
-                        }
+                st.write(f"🏢 **{room_name}**")
 
-                        if USE_ADVANCED_GRID_FEATURES:
-                            aggrid_kwargs["enable_enterprise_modules"] = True
-                            AgGrid(room_grid_display, **aggrid_kwargs)
+                room_grid_display = room_grid.reset_index()
+                grid_options = create_grid_options(room_grid_display)
+                aggrid_kwargs = {
+                    "gridOptions": grid_options,
+                    "height": 400,
+                    "width": "100%",
+                    "fit_columns_on_grid_load": True,
+                    "theme": "streamlit",
+                    "custom_css": AGGRID_CUSTOM_CSS,
+                    "key": f"room_grid_{room_id}_{active_semester_id}",
+                    "allow_unsafe_jscode": True,
+                }
 
-                            col1, col2 = st.columns([1, 5])
-                            with col1:
-                                if st.button(
-                                    "📥 CSV",
-                                    key=f"export_csv_{room_id}_{active_semester_id}",
-                                    help=f"Exportar planilha de {room_name} para CSV",
-                                ):
-                                    csv_data = room_grid.to_csv(index=True)
-                                    st.download_button(
-                                        label="⬇️ Baixar CSV",
-                                        data=csv_data,
-                                        file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
-                                        mime="text/csv",
-                                        key=f"download_csv_{room_id}_{active_semester_id}",
-                                    )
-                        else:
-                            AgGrid(room_grid_display, **aggrid_kwargs)
+                if USE_ADVANCED_GRID_FEATURES:
+                    aggrid_kwargs["enable_enterprise_modules"] = True
+                    AgGrid(room_grid_display, **aggrid_kwargs)
 
-        # Display feedback
-        display_session_feedback("allocation_view")
+                    col1, col2 = st.columns([1, 5])
+                    with col1:
+                        if st.button(
+                            "📥 CSV",
+                            key=f"export_csv_{room_id}_{active_semester_id}",
+                            help=f"Exportar planilha de {room_name} para CSV",
+                        ):
+                            csv_data = room_grid.to_csv(index=True)
+                            st.download_button(
+                                label="⬇️ Baixar CSV",
+                                data=csv_data,
+                                file_name=f"sala_{room_name.replace(':', '_').replace(' ', '_')}.csv",
+                                mime="text/csv",
+                                key=f"download_csv_{room_id}_{active_semester_id}",
+                            )
+                else:
+                    AgGrid(room_grid_display, **aggrid_kwargs)
+
+    display_session_feedback("allocation_view")
 
 except Exception as e:
     st.error(f"❌ Erro ao carregar dados de ensalamento: {str(e)}")

@@ -36,10 +36,7 @@ from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.schemas.allocation import RegraCreate, RegraRead
-from src.utils.ui_feedback import (
-    display_session_feedback,
-    set_session_feedback,
-)
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 
 def _generate_rule_description(
@@ -109,7 +106,7 @@ def confirm_delete_rule(regra: RegraRead, regra_repo: RegraRepository):
                     set_session_feedback(
                         "rule_delete",
                         True,
-                        f"Regra '{regra.descricao}' excluída com sucesso!",
+                        f"Regra '{regra.descricao}' excluída com sucesso",
                     )
                     st.rerun()
                 else:
@@ -325,7 +322,7 @@ with tab1:
                             set_session_feedback(
                                 "prof_prefs",
                                 True,
-                                f"Preferências de {current_prof.nome_completo} atualizadas com sucesso!",
+                                f"Preferências de {current_prof.nome_completo} atualizadas com sucesso",
                             )
                             st.rerun()
 
@@ -828,7 +825,7 @@ with tab2:
                         set_session_feedback(
                             "rule_management",
                             True,
-                            f"Regra '{descricao}' criada com sucesso!",
+                            f"Regra '{descricao}' criada com sucesso",
                         )
                         st.rerun()
 

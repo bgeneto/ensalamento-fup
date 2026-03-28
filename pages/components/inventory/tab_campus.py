@@ -5,16 +5,18 @@ Handles CRUD operations for Campi (Campuses).
 Extracted from the main inventory page for better maintainability.
 """
 
-import streamlit as st
-import pandas as pd
-from src.repositories.campus import CampusRepository
-from src.schemas.inventory import CampusCreate
-from src.config.database import get_db_session
-from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+import os
 
 # Needs to be imported from auth module for shared imports
 import sys
-import os
+
+import pandas as pd
+import streamlit as st
+
+from src.config.database import get_db_session
+from src.repositories.campus import CampusRepository
+from src.schemas.inventory import CampusCreate
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -98,7 +100,7 @@ def render_campus_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} campus(s) removido(s) com sucesso!",
+                                f"{len(deleted_ids)} campus(s) removido(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -167,7 +169,7 @@ def render_campus_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{created} campus(s) adicionado(s) com sucesso!",
+                                f"{created} campus(s) adicionado(s) com sucesso",
                                 action="create",
                             )
                             changes_made = True
@@ -249,7 +251,7 @@ def render_campus_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Campus {nome} atualizado com sucesso!",
+                                                f"Campus {nome} atualizado com sucesso",
                                                 action="update",
                                             )
                                 except Exception as e:

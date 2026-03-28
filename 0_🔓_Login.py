@@ -11,16 +11,16 @@ Features:
 - Real-time database persistence
 """
 
+from pathlib import Path
+
 import streamlit as st
 import streamlit_authenticator as stauth
-
-
-from yaml.loader import SafeLoader
 import yaml
-from pathlib import Path
+from yaml.loader import SafeLoader
 
 # Import settings to configure logging
 from src.config.settings import settings
+from src.db.bootstrap import ensure_database_ready
 
 # Configure page
 st.set_page_config(
@@ -29,6 +29,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+try:
+    ensure_database_ready()
+except Exception as exc:
+    st.error(f"❌ Erro ao preparar o banco de dados: {str(exc)}")
+    st.stop()
 
 # Custom CSS for better styling
 st.markdown(

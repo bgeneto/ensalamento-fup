@@ -160,7 +160,7 @@ def test_check_rule_warnings_prefers_actual_mixed_hybrid_allocation(monkeypatch)
         },
     )
 
-    assert warnings == ["🧪 Disciplina HÍBRIDA detectada"]
+    assert warnings == ["Disciplina HÍBRIDA detectada 🧪"]
 
 
 def test_check_rule_warnings_marks_partial_hybrid_history_coverage(monkeypatch):
@@ -181,4 +181,4 @@ def test_check_rule_warnings_marks_partial_hybrid_history_coverage(monkeypatch):
 
     warnings = _check_rule_warnings(demanda, semester_id=5)
 
-    assert warnings == ["🧪 Disciplina HÍBRIDA detectada"]
+    assert warnings == ["Disciplina HÍBRIDA detectada 🧪"]

@@ -9,6 +9,8 @@ This eliminates code duplication and ensures consistent auth behavior.
 
 import streamlit as st
 
+from src.db.bootstrap import ensure_database_ready
+
 
 def initialize_page(
     page_title: str,
@@ -52,6 +54,12 @@ def initialize_page(
     except Exception:
         # Ignore error if config was already set (e.g. by a parent script)
         pass
+
+    try:
+        ensure_database_ready()
+    except Exception as exc:
+        st.error(f"❌ Erro ao preparar o banco de dados: {str(exc)}")
+        return False
 
     # ============================================================================
     # AUTHENTICATION CHECK (only if required)

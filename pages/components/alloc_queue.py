@@ -454,7 +454,7 @@ def _check_rule_warnings(
         warnings.append("Professor com restrição de mobilidade")
 
     if hybrid_status["is_hybrid"]:
-        warnings.append("🧪 Disciplina HÍBRIDA detectada")
+        warnings.append("Disciplina HÍBRIDA detectada 🧪")
     else:
         # Soft check for laboratory requirements (regex-based, less certain)
         if any(

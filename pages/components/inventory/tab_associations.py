@@ -5,17 +5,19 @@ Handles associations between rooms (Salas) and characteristics (Caracteristicas)
 Extracted from the main inventory page for better maintainability.
 """
 
-import streamlit as st
-import pandas as pd
-from src.repositories.sala import SalaRepository
-from src.repositories.caracteristica import CaracteristicaRepository
-from src.repositories.predio import PredioRepository
-from src.config.database import get_db_session
-from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+import os
 
 # Needs to be imported from auth module for shared imports
 import sys
-import os
+
+import pandas as pd
+import streamlit as st
+
+from src.config.database import get_db_session
+from src.repositories.caracteristica import CaracteristicaRepository
+from src.repositories.predio import PredioRepository
+from src.repositories.sala import SalaRepository
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -47,7 +49,7 @@ def confirm_clear_characteristics(
                     set_session_feedback(
                         "clear_result",
                         True,
-                        f"Todas as características removidas da sala '{sala_data['sala'].nome}' com sucesso!",
+                        f"Todas as características removidas da sala '{sala_data['sala'].nome}' com sucesso",
                     )
                     st.rerun()
                 else:
@@ -164,7 +166,7 @@ def render_associations_tab():
                                         set_session_feedback(
                                             "assoc_result",
                                             True,
-                                            f"Características da sala '{sala_data['sala'].nome}' atualizadas com sucesso!",
+                                            f"Características da sala '{sala_data['sala'].nome}' atualizadas com sucesso",
                                         )
                                         st.rerun()
                                     else:

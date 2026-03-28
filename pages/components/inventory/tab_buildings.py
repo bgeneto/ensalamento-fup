@@ -5,17 +5,19 @@ Handles CRUD operations for Prédios (Buildings).
 Extracted from the main inventory page for better maintainability.
 """
 
-import streamlit as st
-import pandas as pd
-from src.repositories.predio import PredioRepository
-from src.repositories.campus import CampusRepository
-from src.schemas.inventory import PredioCreate
-from src.config.database import get_db_session
-from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+import os
 
 # Needs to be imported from auth module for shared imports
 import sys
-import os
+
+import pandas as pd
+import streamlit as st
+
+from src.config.database import get_db_session
+from src.repositories.campus import CampusRepository
+from src.repositories.predio import PredioRepository
+from src.schemas.inventory import PredioCreate
+from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -116,7 +118,7 @@ def render_buildings_tab():
                             set_session_feedback(
                                 "crud_result",
                                 True,
-                                f"{len(deleted_ids)} prédio(s) removido(s) com sucesso!",
+                                f"{len(deleted_ids)} prédio(s) removido(s) com sucesso",
                                 action="delete",
                             )
                             changes_made = True
@@ -307,7 +309,7 @@ def render_buildings_tab():
                                             set_session_feedback(
                                                 "crud_result",
                                                 True,
-                                                f"Prédio {nome} ({descricao}) atualizado com sucesso!",
+                                                f"Prédio {nome} ({descricao}) atualizado com sucesso",
                                                 action="update",
                                             )
                                             changes_made = True

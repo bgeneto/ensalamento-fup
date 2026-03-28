@@ -737,7 +737,7 @@ with get_db_session() as session:
                                 set_session_feedback(
                                     "demanda_crud_result",
                                     True,
-                                    f"Demanda {codigo}-{turma} atualizada com sucesso!",
+                                    f"Demanda {codigo}-{turma} atualizada com sucesso",
                                     action="update",
                                 )
                                 changes_made = True
@@ -1004,7 +1004,7 @@ with st.form("form_demanda_manual"):
                     set_session_feedback(
                         "demanda_manual_form_result",
                         True,
-                        f"Demanda {cleaned_codigo_disciplina}-{cleaned_turma or 'única'} adicionada com sucesso!",
+                        f"Demanda {cleaned_codigo_disciplina}-{cleaned_turma or 'única'} adicionada com sucesso",
                     )
                     _clear_sigaa_compare_cache(selected_semester_id)
                     st.rerun()
