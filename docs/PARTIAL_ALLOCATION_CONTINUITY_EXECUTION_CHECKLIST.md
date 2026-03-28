@@ -1,5 +1,23 @@
 # Partial Allocation Continuity Execution Checklist
 
+## Status Atual
+
+Este documento permanece útil como checklist histórico de implementação, mas várias tarefas aqui listadas já foram executadas e parte da terminologia original foi refinada pelo código atual.
+
+Status em 2026-03-28:
+
+- a infraestrutura de continuidade já foi integrada ao pipeline parcial
+- a `Phase 1.5` já existe no serviço otimizado
+- a detecção híbrida já é por oferta (`codigo + turma`) e por slot
+- o agrupamento parcial atual é por `day_id + turno`, não apenas por dia
+- a disponibilidade operacional já é baseada em blocos habilitados, não na flag global ativa/inativa
+
+Para comportamento efetivo do sistema, usar como referência principal:
+
+- `docs/PARTIAL_ALLOCATION_IMPLEMENTATION.md`
+- `docs/UPDATED_ALLOCATION_SCORING_SYSTEM.md`
+- `docs/ALLOCATION SCORING SYSTEM.md`
+
 Checklist de execução incremental do plano de continuidade do modo parcial.
 
 Objetivo deste documento:
@@ -175,7 +193,7 @@ Adicionar:
 ### Casos de teste
 
 - planner monta profile básico de demanda
-- planner calcula `distinct_days` e `pending_blocks_by_day`
+- planner calcula `distinct_days` e `pending_blocks_by_day` por bloco-grupo (`day_id + turno`)
 - planner detecta salas compatíveis integrais
 - ordenação lexicográfica é determinística
 
@@ -223,7 +241,7 @@ ou adicionar:
 ### Casos de teste
 
 - serviço otimizado inicializa planner corretamente
-- pipeline ainda produz o mesmo comportamento quando a fase 1.5 não está ativa
+- pipeline preserva comportamento compatível quando a fase 1.5 não altera a decisão
 
 ### Comando de verificação
 

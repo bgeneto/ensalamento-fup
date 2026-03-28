@@ -406,7 +406,7 @@ class ManualAllocationService:
 
     def get_block_groups_for_demand(self, demanda_id: int) -> List[Dict]:
         """
-        Get block groups for a demand, organized by day.
+        Get block groups for a demand, organized by day and turno.
 
         Returns a list of block groups with allocation status for each.
         Useful for UI to show which day-groups are allocated and which are pending.
@@ -434,7 +434,7 @@ class ManualAllocationService:
             return []
 
         # Get block groups using parser
-        block_groups = self.parser.get_block_groups_with_names(
+        block_groups = self.parser.get_block_groups_with_names_and_turno(
             demanda.horario_sigaa_bruto
         )
 
@@ -457,6 +457,7 @@ class ManualAllocationService:
         result = []
         for group in block_groups:
             day_id = group["day_id"]
+            turno = group.get("turno", "")
             blocks = group["blocks"]
 
             # Check if ALL blocks in this day are allocated (and to the same room)
@@ -483,8 +484,11 @@ class ManualAllocationService:
 
             result.append(
                 {
+                    "group_id": group.get("group_id", f"{day_id}_{turno}"),
                     "day_id": day_id,
                     "day_name": group["day_name"],
+                    "turno": turno,
+                    "turno_label": group.get("turno_label", turno),
                     "blocks": blocks,
                     "time_range": self.parser.get_time_range_for_blocks(blocks),
                     "is_allocated": is_allocated,
@@ -501,6 +505,7 @@ class ManualAllocationService:
         demanda_id: int,
         day_id: int,
         semester_id: int,
+        turno: Optional[str] = None,
     ) -> List[Dict]:
         """
         Get room suggestions for a specific block group (day) of a demand.
@@ -521,7 +526,7 @@ class ManualAllocationService:
             return []
 
         # Get block groups for this demand
-        block_groups_raw = self.parser.get_block_groups_with_names(
+        block_groups_raw = self.parser.get_block_groups_with_names_and_turno(
             demanda.horario_sigaa_bruto
         )
 
@@ -530,19 +535,26 @@ class ManualAllocationService:
         pending_atomic_blocks = self._get_pending_atomic_blocks_for_demand(
             demanda_id, demanda.horario_sigaa_bruto
         )
-        pending_by_day: Dict[int, List[str]] = {}
+        pending_by_day: Dict[Tuple[int, str], List[str]] = {}
         for block_code, pending_day_id in pending_atomic_blocks:
-            pending_by_day.setdefault(pending_day_id, []).append(block_code)
+            pending_by_day.setdefault((pending_day_id, block_code[0]), []).append(
+                block_code
+            )
 
         for group in block_groups_raw:
-            if group["day_id"] == day_id:
-                pending_blocks = sorted(set(pending_by_day.get(day_id, [])))
+            if group["day_id"] == day_id and (
+                turno is None or group.get("turno") == turno
+            ):
+                pending_blocks = sorted(
+                    set(pending_by_day.get((day_id, group.get("turno", "")), []))
+                )
                 if not pending_blocks:
                     return []
 
                 target_group = BlockGroup(
                     day_id=group["day_id"],
                     day_name=group["day_name"],
+                    turno=group.get("turno", ""),
                     blocks=pending_blocks,
                 )
                 break

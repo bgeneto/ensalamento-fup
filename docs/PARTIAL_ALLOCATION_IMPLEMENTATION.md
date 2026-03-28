@@ -21,9 +21,9 @@ The system stores allocations by atomic block, so a discipline can be split acro
 
 In the current implementation:
 
-- same-day blocks are grouped together
-- each day-group can be allocated to a different room
-- already allocated day-groups can be left untouched while only pending blocks are resumed
+- blocks are grouped by weekday and turno (`day_id + turno`)
+- each block-group can be allocated to a different room
+- already allocated block-groups can be left untouched while only pending groups are resumed
 - this allows theory/lab splits and other multi-room patterns
 
 Example:
@@ -51,9 +51,10 @@ That flow currently works like this:
 1. detect hybrid disciplines from historical allocations
 2. allocate demands with hard rules to one room when possible
 3. skip Phase 1 full-room attempts for demands that are already partially allocated
-4. for remaining pending work, process one pending day-group at a time
-5. score rooms per day-group
-6. allocate the best currently conflict-free and hard-rule-compliant room
+4. run Phase 1.5 and try to consolidate non-hybrid demands into one room when viable
+5. for remaining pending work, process one pending block-group at a time
+6. score rooms per block-group
+7. allocate the best currently conflict-free and hard-rule-compliant room
 
 This is a greedy algorithm. It is not a global optimizer and it does not backtrack.
 
@@ -65,10 +66,18 @@ The original plan assumed hybrid behavior would emerge only from per-day scoring
 
 The code now has an explicit hybrid-detection phase based on historical allocations.
 
-A discipline is treated as hybrid when, in the selected historical semester:
+A discipline offering is treated as hybrid by offering key:
 
-- it used at least 2 distinct rooms
-- and at least one room was not a regular classroom
+- `codigo_disciplina + turma_disciplina`
+- it used both regular classrooms and laboratory-family rooms in historical allocations
+- and the historical data contains slot-level evidence for both room families
+
+Hybrid requirements are stored per slot:
+
+- key: `(day_id, turno)`
+- value: `lab` or `classroom`
+
+This prevents one turma from contaminating another turma of the same discipline code and also prevents different shifts on the same weekday from being merged into one rule.
 
 The current manual and autonomous flows both use the same detection-semester resolution:
 
@@ -77,15 +86,47 @@ The current manual and autonomous flows both use the same detection-semester res
 
 Both flows inject this hybrid information into `RoomScoringService`.
 
-This enables a real hybrid bonus:
+This enables slot-aware room-family enforcement and the hybrid bonus:
 
-- non-classroom room on a historical lab day: `+15`
-- regular classroom on a historical classroom-only day: `+15`
+- laboratory-family room on a historical `lab` slot: `+15`
+- regular classroom on a historical `classroom` slot: `+15`
 
 Important:
 
 - hybrid detection is based on historical allocations
+- hybrid detection is per offering (`codigo + turma`), not just per discipline code
+- hybrid matching is by slot (`day_id + turno`), not just by weekday
 - it is **not** based on multiple hard room-type rules as an inference rule
+
+---
+
+## Default Room-Type Eligibility Policy
+
+The current scorer now applies a room-type eligibility filter before ranking rooms.
+
+Current policy:
+
+- regular classrooms are the default eligible room type for ordinary disciplines
+- specialized rooms are excluded for ordinary disciplines unless one of these is true:
+  - there is an explicit hard or soft room/type override for the discipline
+  - the discipline is already partially allocated there and continuity should be preserved
+  - the discipline is hybrid and the current slot historically requires that room family
+
+This change closes the old gap where common disciplines could drift into labs or auditoriums purely because of availability or historical frequency.
+
+---
+
+## Operational Room Availability Model
+
+Operational availability is now driven by enabled blocks and turnos, not by the global `Sala.active` flag.
+
+Current behavior:
+
+- `SalaRepository.get_available_for_allocation()` filters rooms by enabled `SalaDisponibilidadeBloco` rows
+- `SalaRepository.is_room_enabled_for_blocks()` is the authoritative operational availability check
+- the inventory UI manages room operation through M/T/N availability instead of a global active/inactive toggle
+
+In practice, a room is considered operational for allocation if and only if it has the required blocks enabled.
 
 ---
 
@@ -127,9 +168,9 @@ Important scoring details:
 
 The allocation assistant supports:
 
-- viewing block groups per day
-- selecting which days to allocate
-- allocating selected day-groups to one room
+- viewing block groups per day and turno
+- selecting which exact block-groups to allocate
+- allocating selected block-groups to one room
 - continuing a partially allocated demand later
 - showing detailed score breakdown, including hybrid bonus
 
@@ -158,7 +199,7 @@ Current behavior:
 
 - `get_unallocated_demands()` returns demands that still have pending blocks
 - Phase 1 skips demands that already have some allocations, so it does not retry them as full single-room candidates
-- the partial phase groups only pending atomic blocks by day
+- the partial phase groups only pending atomic blocks by `day_id + turno`
 - autonomous reruns therefore continue unfinished demands instead of treating them as done
 
 ---
@@ -167,11 +208,11 @@ Current behavior:
 
 - supports split allocations without schema changes
 - uses day-specific historical scoring
-- respects room block availability
+- respects room block availability derived from enabled blocks/turnos
 - performs semester-scoped conflict checks
 - resumes partially allocated demands automatically on later autonomous runs
 - keeps manual and autonomous hybrid-aware scoring aligned
-- enables hybrid disciplines to end up in different room types across days
+- enables hybrid disciplines to end up in different room types across days and shifts
 
 ---
 

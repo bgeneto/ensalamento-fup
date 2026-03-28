@@ -39,12 +39,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BlockGroupCandidate:
-    """Represents a room candidate for a specific block group (day)."""
+    """Represents a room candidate for a specific block group."""
 
     sala: Any  # SalaRead DTO
     demanda_id: int
     day_id: int
     day_name: str
+    turno: str
     blocks: List[Tuple[str, int]]  # List of (block_code, day_sigaa)
     score: float
     professor_id: Optional[int] = None
@@ -62,6 +63,7 @@ class BlockGroupAllocationResult:
     day_name: str
     blocks: List[str]
     allocated: bool
+    turno: str = ""
     sala_id: Optional[int] = None
     sala_nome: Optional[str] = None
     score: float = 0.0
@@ -119,7 +121,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
     def _group_demand_blocks_by_day(
         self, horario_sigaa: str
-    ) -> Dict[int, List[Tuple[str, int]]]:
+    ) -> Dict[Tuple[int, str], List[Tuple[str, int]]]:
         """
         Group atomic blocks by day for a demand's schedule.
 
@@ -127,15 +129,18 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             horario_sigaa: Raw SIGAA schedule string (e.g., "24M12 35T34")
 
         Returns:
-            Dict[day_id, List[(block_code, day_sigaa)]] - blocks grouped by day
+            Dict[(day_id, turno), List[(block_code, day_sigaa)]]
         """
-        atomic_blocks = self.parser.split_to_atomic_tuples(horario_sigaa)
-        groups: Dict[int, List[Tuple[str, int]]] = {}
-
-        for bloco_codigo, dia_sigaa in atomic_blocks:
-            if dia_sigaa not in groups:
-                groups[dia_sigaa] = []
-            groups[dia_sigaa].append((bloco_codigo, dia_sigaa))
+        groups: Dict[Tuple[int, str], List[Tuple[str, int]]] = {}
+        for (
+            dia_sigaa,
+            turno,
+        ), block_codes in self.parser.group_blocks_by_day_and_turno(
+            horario_sigaa
+        ).items():
+            groups[(dia_sigaa, turno)] = [
+                (bloco_codigo, dia_sigaa) for bloco_codigo in block_codes
+            ]
 
         return groups
 
@@ -160,14 +165,16 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
 
     def _group_pending_blocks_by_day(
         self, demanda_id: int, horario_sigaa: str
-    ) -> Dict[int, List[Tuple[str, int]]]:
-        """Group only pending atomic blocks by day for reruns."""
-        groups: Dict[int, List[Tuple[str, int]]] = {}
+    ) -> Dict[Tuple[int, str], List[Tuple[str, int]]]:
+        """Group only pending atomic blocks by day+turno for reruns."""
+        groups: Dict[Tuple[int, str], List[Tuple[str, int]]] = {}
 
         for bloco_codigo, dia_sigaa in self._get_pending_atomic_blocks_for_demand(
             demanda_id, horario_sigaa
         ):
-            groups.setdefault(dia_sigaa, []).append((bloco_codigo, dia_sigaa))
+            groups.setdefault((dia_sigaa, bloco_codigo[0]), []).append(
+                (bloco_codigo, dia_sigaa)
+            )
 
         return groups
 
@@ -175,6 +182,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         self,
         demanda: Any,
         day_id: int,
+        turno: str,
         blocks: List[Tuple[str, int]],
         semester_id: int,
         professor: Optional[Any] = None,
@@ -205,6 +213,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         block_group = BlockGroup(
             day_id=day_id,
             day_name=day_name,
+            turno=turno,
             blocks=block_codes,
         )
 
@@ -235,6 +244,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                     demanda_id=demanda.id,
                     day_id=day_id,
                     day_name=day_name,
+                    turno=turno,
                     blocks=blocks,
                     score=room_score.score,
                     professor_id=professor.id if professor else None,
@@ -363,11 +373,17 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             )
             return False
 
-    def _is_hybrid_demand(self, codigo_disciplina: str) -> bool:
+    def _is_hybrid_demand(self, demanda: Any) -> bool:
         """Return whether the discipline is currently marked as hybrid."""
         if not getattr(self.hybrid_detection_service, "_is_initialized", False):
             return False
-        return bool(self.hybrid_detection_service.is_hybrid(codigo_disciplina))
+        if hasattr(self.hybrid_detection_service, "is_hybrid_demand"):
+            return bool(self.hybrid_detection_service.is_hybrid_demand(demanda))
+        return bool(
+            self.hybrid_detection_service.is_hybrid(
+                getattr(demanda, "codigo_disciplina", "")
+            )
+        )
 
     def _get_existing_room_ids_for_demand(self, demanda_id: int) -> List[int]:
         """Return currently used rooms for a demand ordered by frequency."""
@@ -399,7 +415,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             is_hybrid=(
                 profile.is_hybrid
                 if profile is not None
-                else self._is_hybrid_demand(demanda.codigo_disciplina)
+                else self._is_hybrid_demand(demanda)
             ),
             discipline_existing_room_ids=(
                 profile.existing_room_ids
@@ -427,8 +443,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
         self,
         demanda: Any,
         current_day_id: int,
+        current_turno: str,
         current_blocks: List[Tuple[str, int]],
-        pending_blocks_by_day: Dict[int, List[Tuple[str, int]]],
+        pending_blocks_by_day: Dict[Tuple[int, str], List[Tuple[str, int]]],
         semester_id: int,
         professor: Optional[Any] = None,
         profile: Optional[DemandContinuityProfile] = None,
@@ -440,9 +457,9 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 professor, semester_id
             )
         remaining_days = {
-            day_id: blocks
-            for day_id, blocks in pending_blocks_by_day.items()
-            if day_id != current_day_id
+            group_key: blocks
+            for group_key, blocks in pending_blocks_by_day.items()
+            if group_key != (current_day_id, current_turno)
         }
         required_blocks = sorted({block_code for block_code, _ in current_blocks})
         available_rooms = self.sala_repo.get_available_for_allocation(
@@ -462,7 +479,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             is_hybrid=(
                 profile.is_hybrid
                 if profile is not None
-                else self._is_hybrid_demand(demanda.codigo_disciplina)
+                else self._is_hybrid_demand(demanda)
             ),
             discipline_existing_room_ids=(
                 profile.existing_room_ids
@@ -626,10 +643,11 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             )
 
             # Process each block group independently
-            for day_id, blocks in block_groups.items():
+            for (day_id, turno), blocks in block_groups.items():
                 continuity_context = self._build_block_group_continuity_context(
                     demanda,
                     day_id,
+                    turno,
                     blocks,
                     block_groups,
                     semester_id,
@@ -641,6 +659,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 candidates = self._score_rooms_for_block_group(
                     demanda,
                     day_id,
+                    turno,
                     blocks,
                     semester_id,
                     professor,
@@ -664,6 +683,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                             demanda_id=demanda_id,
                             day_id=day_id,
                             day_name=day_name,
+                            turno=turno,
                             blocks=[b[0] for b in blocks],
                             allocated=False,
                             failure_reason="No rooms satisfy hard rules or availability for this block group",
@@ -691,6 +711,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                             demanda_id=demanda_id,
                             day_id=day_id,
                             day_name=day_name,
+                            turno=turno,
                             blocks=[b[0] for b in blocks],
                             allocated=False,
                             failure_reason="All rooms have conflicts for this block group",
@@ -732,6 +753,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                                     demanda_id=demanda_id,
                                     day_id=candidate.day_id,
                                     day_name=candidate.day_name,
+                                    turno=candidate.turno,
                                     blocks=[b[0] for b in candidate.blocks],
                                     allocated=True,
                                     sala_id=candidate.sala.id,
@@ -749,6 +771,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                                 demanda_id=demanda_id,
                                 day_id=candidate.day_id,
                                 day_name=candidate.day_name,
+                                turno=candidate.turno,
                                 blocks=[b[0] for b in candidate.blocks],
                                 allocated=True,
                                 sala_id=candidate.sala.id,
@@ -775,6 +798,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                             demanda_id=demanda_id,
                             day_id=day_id,
                             day_name=day_name,
+                            turno=turno,
                             blocks=[b[0] for b in blocks],
                             allocated=False,
                             failure_reason="All candidates failed fresh conflict check",

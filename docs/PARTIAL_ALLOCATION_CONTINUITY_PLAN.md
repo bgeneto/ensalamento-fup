@@ -1,5 +1,22 @@
 # Partial Allocation Continuity Plan
 
+## Status Atual
+
+Este documento continua útil como racional de projeto e histórico de decisões, mas não deve mais ser lido como descrição literal do comportamento corrente.
+
+Status em 2026-03-28:
+
+- a `Phase 1.5` de consolidação de disciplinas não híbridas já foi implementada
+- o agrupamento do modo parcial evoluiu de apenas `dia` para `day_id + turno`
+- a detecção de disciplinas híbridas evoluiu de disciplina por código para oferta (`codigo + turma`) e por slot
+- a disponibilidade operacional de salas deixou de depender da flag global ativa/inativa e passou a depender dos blocos habilitados
+
+Para comportamento de runtime, ler primeiro:
+
+- `docs/PARTIAL_ALLOCATION_IMPLEMENTATION.md`
+- `docs/UPDATED_ALLOCATION_SCORING_SYSTEM.md`
+- `docs/ALLOCATION SCORING SYSTEM.md`
+
 Plano técnico implementável para evoluir o modo de alocação parcial atual, preservando suas vantagens de flexibilidade, mas adicionando duas preferências de alto valor operacional:
 
 1. manter, sempre que possível, todos os blocos de uma disciplina não híbrida na mesma sala
@@ -19,7 +36,7 @@ Este plano foi desenhado para o código atual, especialmente:
 
 ### Objetivo principal
 
-Evoluir o fluxo parcial de um modelo puramente guloso por dia para um modelo híbrido com:
+Evoluir o fluxo parcial de um modelo puramente guloso por bloco-grupo para um modelo híbrido com:
 
 - tentativa explícita de consolidação por disciplina
 - fallback parcial por dia quando a consolidação não for viável
@@ -38,8 +55,8 @@ Evoluir o fluxo parcial de um modelo puramente guloso por dia para um modelo hí
 
 Hoje o modo parcial faz o seguinte:
 
-1. agrupa blocos pendentes por dia
-2. ranqueia salas para cada grupo de dia de forma independente
+1. agrupa blocos pendentes por `day_id + turno`
+2. ranqueia salas para cada bloco-grupo de forma independente
 3. escolhe a melhor candidata válida naquele momento
 
 Isso funciona bem para split allocation, mas não modela explicitamente:
@@ -103,7 +120,7 @@ Ela deve ser tratada como:
 
 #### Phase 0: Hybrid Detection
 
-Sem mudança conceitual. Continua detectando disciplinas híbridas e dias historicamente laboratoriais.
+Sem mudança conceitual principal, mas a implementação atual já refinou isso para oferta (`codigo + turma`) e por slot (`day_id + turno`).
 
 #### Phase 1: Hard Rules Allocation
 
@@ -145,7 +162,7 @@ class DemandContinuityProfile:
     total_pending_blocks: int
     distinct_days: int
     compatible_full_room_ids: list[int]
-    pending_blocks_by_day: dict[int, list[tuple[str, int]]]
+    pending_blocks_by_day: dict[tuple[int, str], list[tuple[str, int]]]
     existing_room_ids: list[int]
     preferred_existing_room_id: int | None
     professor_anchor_room_id: int | None
@@ -196,7 +213,7 @@ Para cada demanda:
 
 1. identificar se é híbrida
 2. calcular blocos pendentes
-3. agrupar blocos pendentes por dia
+3. agrupar blocos pendentes por `day_id + turno`
 4. calcular salas viáveis para todos os blocos pendentes da disciplina
 5. detectar se a própria disciplina já possui uma sala parcialmente usada
 6. resolver a âncora do professor
@@ -205,7 +222,7 @@ Para cada demanda:
 
 O conjunto `compatible_full_room_ids` deve considerar simultaneamente:
 
-- sala ativa
+- sala operacional para os blocos exigidos
 - sala habilitada para todos os blocos necessários
 - hard rules satisfeitas
 - ausência de conflito em todos os blocos pendentes

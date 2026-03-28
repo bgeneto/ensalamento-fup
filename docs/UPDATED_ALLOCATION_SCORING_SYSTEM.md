@@ -44,10 +44,11 @@ The actual collision rule is enforced in the database by the unique key on:
 
 ### Block groups
 
-For partial allocation, atomic blocks are grouped by day:
+For partial allocation, atomic blocks are grouped by weekday and turno:
 
-- same-day blocks must stay together
-- different-day groups can go to different rooms
+- same weekday + same turno blocks stay together
+- different turnos on the same weekday can go to different rooms
+- different weekdays can also go to different rooms
 
 Example:
 
@@ -74,7 +75,8 @@ Current detection logic:
 3. detect disciplines that:
    - used at least 2 distinct rooms
    - and used at least one non-classroom room
-4. cache which days were historically lab days vs classroom-only days
+4. build slot requirements by offering key `(codigo_disciplina + turma_disciplina)`
+5. cache whether each `(day_id, turno)` slot historically required `lab` or `classroom`
 
 Important implementation details:
 
@@ -85,8 +87,8 @@ Important implementation details:
 Output of this phase:
 
 - cached hybrid discipline info
-- lab days per discipline
-- classroom-only days per discipline
+- slot requirements per offering
+- historical laboratory room types and room ids per slot
 
 That cache is injected into the scoring service for both autonomous partial scoring and manual block-group suggestions.
 
@@ -104,7 +106,7 @@ What Phase 1 does:
 2. keep only demands that actually have hard rules
 3. skip demands that already have any allocation rows, so partial reruns do not retry them as full single-room candidates
 4. parse the full demand schedule into atomic blocks
-5. filter rooms to active rooms that are enabled for all required blocks
+5. filter rooms to operational rooms that are enabled for all required blocks
 6. keep only rooms that satisfy every hard rule
 7. batch-check conflicts for all candidate room-slot pairs in the current semester
 8. allocate the first room with no conflicts
@@ -130,8 +132,8 @@ Purpose:
 For each remaining demand:
 
 1. compute only the atomic blocks that are still pending
-2. group those pending blocks by day
-3. for each pending day-group, score all eligible rooms independently
+2. group those pending blocks by `day_id + turno`
+3. for each pending block-group, score all eligible rooms independently
 4. exclude rooms that violate hard rules before ranking
 5. check semester conflicts for that specific day-group
 6. allocate the best currently valid room
@@ -140,7 +142,8 @@ For each remaining demand:
 Important properties:
 
 - different days of the same discipline may end up in different rooms
-- if one day was already allocated earlier, reruns only process the remaining days
+- different shifts on the same weekday may also end up in different rooms
+- if one block-group was already allocated earlier, reruns only process the remaining groups
 - no global optimizer is used
 - there is no backtracking
 - allocation is greedy and local to the current demand and current day-group
@@ -183,6 +186,23 @@ Important nuances:
 
 ---
 
+## Default Room-Type Eligibility
+
+Before scoring, the scorer now filters by room-type eligibility as well as availability.
+
+Current policy:
+
+- regular classrooms are always eligible for ordinary disciplines
+- specialized rooms are excluded by default for ordinary disciplines
+- specialized rooms become eligible only through:
+  - explicit room or room-type rules
+  - continuity for rooms already in use by the same demand
+  - slot-aware hybrid requirements from historical allocations
+
+This is the mechanism that prevents common disciplines from being allocated to labs, auditoriums, and other specialized spaces by default.
+
+---
+
 ## What "Soft" Means In The Current Code
 
 The current code now treats two categories as soft score contributors:
@@ -214,6 +234,8 @@ The conflict query is based on:
 - semester id
 
 Reservations are still not part of the autonomous allocation conflict path.
+
+Operational availability is determined by enabled blocks, not by the global room active/inactive flag.
 
 ---
 

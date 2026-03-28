@@ -47,7 +47,7 @@ class DemandContinuityProfile:
     total_pending_blocks: int
     distinct_days: int
     compatible_full_room_ids: List[int] = field(default_factory=list)
-    pending_blocks_by_day: Dict[int, List[Tuple[str, int]]] = field(
+    pending_blocks_by_day: Dict[Tuple[int, str], List[Tuple[str, int]]] = field(
         default_factory=dict
     )
     existing_room_ids: List[int] = field(default_factory=list)
@@ -129,7 +129,7 @@ class AllocationContinuityPlanner:
             profiles[demanda_id] = DemandContinuityProfile(
                 demanda_id=demanda_id,
                 codigo_disciplina=demanda.codigo_disciplina,
-                is_hybrid=self._is_hybrid(demanda.codigo_disciplina),
+                is_hybrid=self._is_hybrid(demanda),
                 total_pending_blocks=len(pending_blocks),
                 distinct_days=len(pending_blocks_by_day),
                 compatible_full_room_ids=[room.id for room in compatible_full_rooms],
@@ -246,7 +246,7 @@ class AllocationContinuityPlanner:
         self,
         demanda: Any,
         room_id: int,
-        pending_by_day: Dict[int, List[Tuple[str, int]]],
+        pending_by_day: Dict[Tuple[int, str], List[Tuple[str, int]]],
         semester_id: int,
     ) -> int:
         """Count how many pending day-groups a room can still cover fully."""
@@ -294,10 +294,10 @@ class AllocationContinuityPlanner:
 
     def _group_atomic_blocks_by_day(
         self, atomic_blocks: List[Tuple[str, int]]
-    ) -> Dict[int, List[Tuple[str, int]]]:
-        grouped: Dict[int, List[Tuple[str, int]]] = {}
+    ) -> Dict[Tuple[int, str], List[Tuple[str, int]]]:
+        grouped: Dict[Tuple[int, str], List[Tuple[str, int]]] = {}
         for block_code, day_id in atomic_blocks:
-            grouped.setdefault(day_id, []).append((block_code, day_id))
+            grouped.setdefault((day_id, block_code[0]), []).append((block_code, day_id))
         return grouped
 
     def _get_existing_room_ids(
@@ -402,12 +402,16 @@ class AllocationContinuityPlanner:
             allocation_count=allocation_count,
         )
 
-    def _is_hybrid(self, codigo_disciplina: str) -> bool:
+    def _is_hybrid(self, demanda: Any) -> bool:
         if self.hybrid_service is None:
             return False
         if not getattr(self.hybrid_service, "_is_initialized", False):
             return False
-        return bool(self.hybrid_service.is_hybrid(codigo_disciplina))
+        if hasattr(self.hybrid_service, "is_hybrid_demand"):
+            return bool(self.hybrid_service.is_hybrid_demand(demanda))
+        return bool(
+            self.hybrid_service.is_hybrid(getattr(demanda, "codigo_disciplina", ""))
+        )
 
     def _is_room_enabled_for_blocks_cached(
         self, sala_id: int, block_codes: List[str]

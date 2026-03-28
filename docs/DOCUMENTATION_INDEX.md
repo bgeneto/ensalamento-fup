@@ -255,7 +255,7 @@ Then pick a phase to implement!
 #### 8. **PARTIAL_ALLOCATION_CONTINUITY_PLAN.md** - Continuidade de Sala no Modo Parcial ✨ **NEW**
 **Location:** `/docs/PARTIAL_ALLOCATION_CONTINUITY_PLAN.md`
 **Read Time:** 20 minutes
-**Purpose:** Plano técnico implementável para melhorar o modo parcial com foco em continuidade por disciplina e por professor
+**Purpose:** Plano técnico e histórico de decisões para a evolução do modo parcial com foco em continuidade por disciplina e por professor
 
 **Contains:**
 - Nova fase 1.5 de consolidação de disciplinas não híbridas
@@ -269,11 +269,12 @@ Then pick a phase to implement!
 - Antes de evoluir o motor de alocação parcial
 - Ao implementar preferências de continuidade espacial
 - Para calibrar score e heurísticas sem quebrar hard rules
+- Depois de ler os docs de runtime, para entender o racional da solução
 
 #### 9. **PARTIAL_ALLOCATION_CONTINUITY_EXECUTION_CHECKLIST.md** - Checklist de Execução ✨ **NEW**
 **Location:** `/docs/PARTIAL_ALLOCATION_CONTINUITY_EXECUTION_CHECKLIST.md`
 **Read Time:** 15 minutes
-**Purpose:** Quebra o plano de continuidade em tarefas técnicas pequenas, sequenciais e testáveis
+**Purpose:** Checklist histórico da implementação incremental da continuidade do modo parcial
 
 **Contains:**
 - Ordem exata de implementação
@@ -286,6 +287,7 @@ Then pick a phase to implement!
 - Antes de começar a implementação da continuidade do modo parcial
 - Para dividir o trabalho em commits curtos
 - Para acompanhar progresso por etapa
+- Para auditoria de quais etapas já foram incorporadas ao pipeline atual
 
 #### 10. **DEMANDA_SYNC_RECONCILIATION_PLAN.md** - Reconciliação da Demanda com a API ✨ **NEW**
 **Location:** `/docs/DEMANDA_SYNC_RECONCILIATION_PLAN.md`
@@ -321,7 +323,40 @@ Then pick a phase to implement!
 - Antes de otimizar ou paralelizar o ensalamento parcial
 - Para reproduzir profiling fora da UI Streamlit
 
-#### 12. **streamlit-authenticator.md** - Authentication Guide
+#### 12. **PARTIAL_ALLOCATION_IMPLEMENTATION.md** - Runtime atual do modo parcial
+**Location:** `/docs/PARTIAL_ALLOCATION_IMPLEMENTATION.md`
+**Read Time:** 12 minutes
+**Purpose:** Documenta o comportamento atualmente implementado no pipeline parcial usado pela UI
+
+**Contains:**
+- agrupamento por `day_id + turno`
+- política default de elegibilidade por tipo de sala
+- detecção híbrida por oferta (`codigo + turma`) e por slot
+- disponibilidade operacional baseada em blocos habilitados, não em flag global ativa/inativa
+- diferenças entre UI manual e fluxo autônomo parcial
+
+**When to Read:**
+- Ao depurar a alocação parcial real da página de ensalamento
+- Ao entender por que disciplinas comuns não devem cair em salas especializadas por default
+- Ao investigar comportamento de disciplinas híbridas
+
+#### 13. **ALLOCATION SCORING SYSTEM.md** - Regras atuais de scoring
+**Location:** `/docs/ALLOCATION SCORING SYSTEM.md`
+**Read Time:** 10 minutes
+**Purpose:** Descreve a filtragem e a pontuação efetivamente usadas pelo scorer atual
+
+**Contains:**
+- filtros de disponibilidade e elegibilidade antes do score
+- scoring full-demand e block-group
+- slot-aware hybrid bonus
+- observações sobre disponibilidade operacional por blocos
+
+**When to Read:**
+- Ao alterar pesos ou heurísticas do scorer
+- Ao validar a interação entre hard rules, preferências e histórico
+- Ao revisar a política de elegibilidade por tipo de sala
+
+#### 14. **streamlit-authenticator.md** - Authentication Guide
 **Location:** `/docs/streamlit-authenticator.md`
 **Read Time:** 20 minutes
 **Purpose:** How to implement user authentication
@@ -346,7 +381,7 @@ Then pick a phase to implement!
 
 ---
 
-#### 9. **sigaa_parser.py** - Schedule Parsing Reference
+#### 15. **sigaa_parser.py** - Schedule Parsing Reference
 **Location:** `/docs/sigaa_parser.py`
 **Read Time:** 15 minutes
 **Purpose:** Reference for Sigaa time block parsing logic
@@ -363,7 +398,7 @@ Then pick a phase to implement!
 
 ---
 
-#### 10. **ensalamento.md** - Example Data
+#### 16. **ensalamento.md** - Example Data
 **Location:** `/docs/ensalamento.md`
 **Read Time:** 10 minutes
 **Purpose:** Real-world example of room reservation data

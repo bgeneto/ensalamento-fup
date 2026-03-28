@@ -173,21 +173,35 @@ def _render_block_group_selection(
         ):
             for group in allocated_groups:
                 day_name = group.get("day_name", "N/A")
+                turno_label = group.get("turno_label", "")
                 blocks = ", ".join(group.get("blocks", []))
                 time_range = group.get("time_range", "")
                 room_name = group.get("allocated_room_name", "N/A")
-                st.caption(f"📍 **{day_name}** ({blocks}) {time_range} → {room_name}")
+                st.caption(
+                    f"📍 **{day_name} {turno_label}** ({blocks}) {time_range} → {room_name}"
+                )
 
     # Block group checkboxes for unallocated groups
     st.markdown("**Selecione os blocos a alocar:**")
 
     # Initialize session state for selected blocks if not exists
     session_key = f"selected_block_groups_{demanda_id}"
-    if session_key not in st.session_state:
+    expected_group_ids = {
+        g.get("group_id", f"{g['day_id']}_{g.get('turno', '')}")
+        for g in unallocated_groups
+    }
+    current_selection = st.session_state.get(session_key)
+    if (
+        not isinstance(current_selection, dict)
+        or set(current_selection.keys()) != expected_group_ids
+    ):
         # Default: select all unallocated groups
-        st.session_state[session_key] = {g["day_id"]: True for g in unallocated_groups}
+        st.session_state[session_key] = {
+            g.get("group_id", f"{g['day_id']}_{g.get('turno', '')}"): True
+            for g in unallocated_groups
+        }
 
-    selected_day_ids = []
+    selected_group_ids = []
 
     # Create columns for block group checkboxes
     cols = st.columns(min(len(unallocated_groups), 4))
@@ -195,6 +209,8 @@ def _render_block_group_selection(
     for idx, group in enumerate(unallocated_groups):
         day_id = group.get("day_id")
         day_name = group.get("day_name", "N/A")
+        group_id = group.get("group_id", f"{day_id}_{group.get('turno', '')}")
+        turno_label = group.get("turno_label", "")
         blocks = group.get("blocks", [])
         time_range = group.get("time_range", "")
         block_count = len(blocks)
@@ -202,33 +218,38 @@ def _render_block_group_selection(
         col_idx = idx % len(cols)
         with cols[col_idx]:
             # Checkbox for this block group
-            checkbox_key = f"block_group_{demanda_id}_{day_id}"
+            checkbox_key = f"block_group_{demanda_id}_{group_id}"
             is_selected = st.checkbox(
-                f"**{day_name}** ({block_count} blocos)",
-                value=st.session_state[session_key].get(day_id, True),
+                f"**{day_name} {turno_label}** ({block_count} blocos)",
+                value=st.session_state[session_key].get(group_id, True),
                 key=checkbox_key,
                 help=f"{', '.join(blocks)} • {time_range}",
             )
 
             # Update session state
-            st.session_state[session_key][day_id] = is_selected
+            st.session_state[session_key][group_id] = is_selected
 
             if is_selected:
-                selected_day_ids.append(day_id)
+                selected_group_ids.append(group_id)
 
             # Show blocks detail
             st.caption(f"{', '.join(blocks)}")
             st.caption(f"🕐 {time_range}")
 
-    if not selected_day_ids:
+    if not selected_group_ids:
         st.warning("⚠️ Selecione pelo menos um grupo de blocos para ver as sugestões.")
         return None
 
     # Show count of selected blocks
-    selected_groups = [g for g in unallocated_groups if g["day_id"] in selected_day_ids]
+    selected_groups = [
+        g
+        for g in unallocated_groups
+        if g.get("group_id", f"{g['day_id']}_{g.get('turno', '')}")
+        in selected_group_ids
+    ]
     total_selected_blocks = sum(len(g.get("blocks", [])) for g in selected_groups)
     st.info(
-        f"📊 **Selecionados:** {len(selected_day_ids)} dia(s), {total_selected_blocks} bloco(s)"
+        f"📊 **Selecionados:** {len(selected_group_ids)} grupo(s), {total_selected_blocks} bloco(s)"
     )
 
     # ================================================================
@@ -240,10 +261,13 @@ def _render_block_group_selection(
 
     # Get suggestions for the first selected day (they share similar scoring except historical)
     # For hybrid disciplines, user should allocate one day at a time for different rooms
-    primary_day_id = selected_day_ids[0]
+    primary_group = selected_groups[0]
 
     suggestions = alloc_service.get_suggestions_for_block_group(
-        demanda_id, primary_day_id, semester_id
+        demanda_id,
+        primary_group["day_id"],
+        semester_id,
+        turno=primary_group.get("turno"),
     )
 
     if not suggestions:
@@ -257,7 +281,7 @@ def _render_block_group_selection(
                 result = _render_block_group_room_card(
                     suggestion,
                     demanda_id,
-                    selected_day_ids,
+                    selected_groups,
                     alloc_service,
                     session,
                 )
@@ -278,13 +302,9 @@ def _render_block_group_selection(
     # ================================================================
 
     st.markdown("---")
-    selected_block_codes = sorted(
-        {block for g in selected_groups for block in g.get("blocks", [])}
-    )
     result = _render_manual_selection_partial(
         demanda_id,
-        selected_day_ids,
-        selected_block_codes,
+        selected_groups,
         sala_repo,
         alloc_service,
         session,
@@ -298,7 +318,7 @@ def _render_block_group_selection(
 def _render_block_group_room_card(
     suggestion: Dict,
     demanda_id: int,
-    selected_day_ids: List[int],
+    selected_groups: List[Dict],
     alloc_service: ManualAllocationService,
     session,
 ) -> Optional[dict]:
@@ -392,11 +412,17 @@ def _render_block_group_room_card(
                 type="primary",
                 help="Alocar blocos selecionados nesta sala",
             ):
+                selected_day_ids = sorted({g.get("day_id") for g in selected_groups})
+                selected_block_codes = sorted(
+                    {block for g in selected_groups for block in g.get("blocks", [])}
+                )
+
                 # Execute partial allocation
                 result = alloc_service.allocate_demand_partial(
                     demanda_id,
                     room_id,
                     day_ids=selected_day_ids,
+                    block_codes=selected_block_codes,
                 )
 
                 # Clear selection state
@@ -435,8 +461,7 @@ def _render_conflicting_room_brief(room: Dict):
 
 def _render_manual_selection_partial(
     demanda_id: int,
-    selected_day_ids: List[int],
-    required_blocks: List[str],
+    selected_groups: List[Dict],
     sala_repo: SalaRepository,
     alloc_service: ManualAllocationService,
     session,
@@ -447,6 +472,11 @@ def _render_manual_selection_partial(
     with st.expander("Selecionar Sala Manualmente", expanded=False):
         st.write(
             "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
+        )
+
+        selected_day_ids = sorted({g.get("day_id") for g in selected_groups})
+        required_blocks = sorted(
+            {block for g in selected_groups for block in g.get("blocks", [])}
         )
 
         # Get only rooms enabled for selected blocks
@@ -492,6 +522,7 @@ def _render_manual_selection_partial(
                         demanda_id,
                         selected_room_id,
                         day_ids=selected_day_ids,
+                        block_codes=required_blocks,
                     )
 
                     # Clear selection state

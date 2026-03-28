@@ -108,6 +108,7 @@ class BlockGroup:
 
     day_id: int  # SIGAA day code (2=MON, 3=TUE, ..., 7=SAT)
     day_name: str  # Human readable (SEG, TER, etc.)
+    turno: str = ""  # M, T or N
     blocks: List[str] = None  # Block codes (M1, M2, etc.)
 
     def __post_init__(self):
@@ -244,6 +245,103 @@ class RoomScoringService:
             return demanda.get("codigo_disciplina")
         return None
 
+    def _get_demanda_turma_disciplina(self, demanda: Any) -> Optional[str]:
+        """Extract turma from DTOs or dict-shaped demand objects."""
+        if demanda is None:
+            return None
+        if hasattr(demanda, "turma_disciplina"):
+            return getattr(demanda, "turma_disciplina")
+        if isinstance(demanda, dict):
+            return demanda.get("turma_disciplina")
+        return None
+
+    def _get_block_group_turno(
+        self, block_group: Optional[BlockGroup]
+    ) -> Optional[str]:
+        if block_group is None:
+            return None
+        if getattr(block_group, "turno", ""):
+            return block_group.turno
+        if block_group.blocks:
+            return block_group.blocks[0][0]
+        return None
+
+    def _is_hybrid_demand_with_service(self, demanda: Any) -> bool:
+        if self._hybrid_detection_service is None:
+            return False
+
+        codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
+        turma_disciplina = self._get_demanda_turma_disciplina(demanda)
+        if not codigo_disciplina:
+            return False
+
+        if hasattr(self._hybrid_detection_service, "is_hybrid_demand"):
+            return bool(self._hybrid_detection_service.is_hybrid_demand(demanda))
+
+        try:
+            return bool(
+                self._hybrid_detection_service.is_hybrid(
+                    codigo_disciplina,
+                    turma_disciplina,
+                )
+            )
+        except TypeError:
+            return bool(self._hybrid_detection_service.is_hybrid(codigo_disciplina))
+
+    def _get_slot_requirement_from_service(
+        self,
+        codigo_disciplina: Optional[str],
+        turma_disciplina: Optional[str],
+        day_id: int,
+        turno: str,
+    ) -> Optional[str]:
+        if (
+            not codigo_disciplina
+            or not turno
+            or self._hybrid_detection_service is None
+            or not hasattr(self._hybrid_detection_service, "get_slot_requirement")
+        ):
+            return None
+
+        return self._hybrid_detection_service.get_slot_requirement(
+            codigo_disciplina,
+            turma_disciplina,
+            day_id,
+            turno,
+        )
+
+    def _get_hybrid_info_from_service(
+        self,
+        codigo_disciplina: Optional[str],
+        turma_disciplina: Optional[str],
+    ) -> Optional[Any]:
+        if not codigo_disciplina or self._hybrid_detection_service is None:
+            return None
+        if not hasattr(self._hybrid_detection_service, "get_hybrid_info"):
+            return None
+
+        try:
+            return self._hybrid_detection_service.get_hybrid_info(
+                codigo_disciplina,
+                turma_disciplina,
+            )
+        except TypeError:
+            return self._hybrid_detection_service.get_hybrid_info(codigo_disciplina)
+
+    def _is_laboratory_room(self, room: Sala) -> bool:
+        room_type_name = self._get_room_type_name_by_id(room.tipo_sala_id)
+        normalized = (
+            room_type_name.lower()
+            .replace("á", "a")
+            .replace("à", "a")
+            .replace("â", "a")
+            .replace("ã", "a")
+            .replace("ó", "o")
+            .replace("ô", "o")
+            .replace("õ", "o")
+        )
+        return "laboratorio" in normalized
+
     def _has_explicit_non_classroom_override(
         self,
         room: Sala,
@@ -266,6 +364,7 @@ class RoomScoringService:
         demanda: Any,
         rules: Optional[List[Any]] = None,
         continuity_context: Optional[ContinuityScoringContext] = None,
+        block_group: Optional[BlockGroup] = None,
     ) -> bool:
         """Apply the default room-type policy before scoring.
 
@@ -275,15 +374,6 @@ class RoomScoringService:
           rules, when the discipline is hybrid, or when the demand is already in
           progress in that room and continuity must be preserved.
         """
-        if room.tipo_sala_id == REGULAR_CLASSROOM_TYPE_ID:
-            return True
-
-        if (
-            continuity_context is not None
-            and room.id in continuity_context.discipline_existing_room_ids
-        ):
-            return True
-
         if rules is None:
             codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
             rules = (
@@ -296,11 +386,31 @@ class RoomScoringService:
             return True
 
         codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
+        turma_disciplina = self._get_demanda_turma_disciplina(demanda)
+        turno = self._get_block_group_turno(block_group)
+        hybrid_requirement = self._get_slot_requirement_from_service(
+            codigo_disciplina,
+            turma_disciplina,
+            block_group.day_id if block_group else 0,
+            turno or "",
+        )
+
+        if hybrid_requirement == "lab":
+            return self._is_laboratory_room(room)
+
+        if hybrid_requirement == "classroom":
+            return room.tipo_sala_id == REGULAR_CLASSROOM_TYPE_ID
+
+        if room.tipo_sala_id == REGULAR_CLASSROOM_TYPE_ID:
+            return True
+
         if (
-            codigo_disciplina
-            and self._hybrid_detection_service is not None
-            and self._hybrid_detection_service.is_hybrid(codigo_disciplina)
+            continuity_context is not None
+            and room.id in continuity_context.discipline_existing_room_ids
         ):
+            return True
+
+        if self._is_hybrid_demand_with_service(demanda):
             return True
 
         return False
@@ -533,6 +643,7 @@ class RoomScoringService:
                 demanda,
                 all_rules,
                 continuity_context,
+                None,
             )
         ]
         conflict_map = self._build_conflict_lookup(
@@ -640,6 +751,7 @@ class RoomScoringService:
                 demanda,
                 all_rules,
                 continuity_context,
+                None,
             )
         ]
         conflict_map = self._build_conflict_lookup(
@@ -701,34 +813,14 @@ class RoomScoringService:
         Returns:
             List of BlockGroup objects, one per distinct day
         """
-        # Map SIGAA day codes to human-readable names
-        day_names = {
-            2: "SEG",
-            3: "TER",
-            4: "QUA",
-            5: "QUI",
-            6: "SEX",
-            7: "SAB",
-        }
-
-        # Parse to atomic tuples: [(block_code, day_id), ...]
-        atomic_tuples = self.parser.split_to_atomic_tuples(horario_sigaa)
-
-        # Group by day
-        day_blocks: Dict[int, List[str]] = {}
-        for block_code, day_id in atomic_tuples:
-            if day_id not in day_blocks:
-                day_blocks[day_id] = []
-            day_blocks[day_id].append(block_code)
-
-        # Create BlockGroup objects
         block_groups = []
-        for day_id in sorted(day_blocks.keys()):
+        for group in self.parser.get_block_groups_with_names_and_turno(horario_sigaa):
             block_groups.append(
                 BlockGroup(
-                    day_id=day_id,
-                    day_name=day_names.get(day_id, f"DIA{day_id}"),
-                    blocks=sorted(day_blocks[day_id]),
+                    day_id=group["day_id"],
+                    day_name=group["day_name"],
+                    turno=group["turno"],
+                    blocks=group["blocks"],
                 )
             )
 
@@ -784,6 +876,7 @@ class RoomScoringService:
                 demanda,
                 all_rules,
                 continuity_context,
+                block_group,
             )
         ]
         conflict_map = self._build_conflict_lookup(
@@ -968,9 +1061,9 @@ class RoomScoringService:
         # 5. Hybrid discipline bonus - NEW!
         # Apply bonus when room type matches historical pattern for this day
         hybrid_bonus = self._calculate_hybrid_bonus(
-            demanda.codigo_disciplina,
+            demanda,
             room,
-            block_group.day_id,
+            block_group,
         )
         breakdown.hybrid_bonus_points = hybrid_bonus
         breakdown.hybrid_room_type_match = hybrid_bonus > 0
@@ -1005,9 +1098,9 @@ class RoomScoringService:
 
     def _calculate_hybrid_bonus(
         self,
-        codigo_disciplina: str,
+        demanda: Any,
         room: Sala,
-        day_id: int,
+        block_group: BlockGroup,
     ) -> int:
         """
         Calculate hybrid discipline bonus for room type matching.
@@ -1017,9 +1110,9 @@ class RoomScoringService:
         - Room is a regular classroom AND day is a historical classroom-only day
 
         Args:
-            codigo_disciplina: Discipline code
+            demanda: Demand DTO/object
             room: Room to score
-            day_id: Day ID (2=MON, 3=TUE, etc.)
+            block_group: Current day+turno block group
 
         Returns:
             Bonus points if room type matches historical pattern, 0 otherwise
@@ -1028,34 +1121,49 @@ class RoomScoringService:
         if self._hybrid_detection_service is None:
             return 0
 
+        codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
+        turma_disciplina = self._get_demanda_turma_disciplina(demanda)
+        if not codigo_disciplina:
+            return 0
+
         # Check if this discipline is hybrid
-        if not self._hybrid_detection_service.is_hybrid(codigo_disciplina):
+        if not self._is_hybrid_demand_with_service(demanda):
             return 0
 
         # Get hybrid info
-        hybrid_info = self._hybrid_detection_service.get_hybrid_info(codigo_disciplina)
+        hybrid_info = self._get_hybrid_info_from_service(
+            codigo_disciplina,
+            turma_disciplina,
+        )
         if not hybrid_info:
             return 0
 
-        # Regular classroom type ID (Sala de Aula = 2)
-        REGULAR_CLASSROOM_TYPE_ID = 2
+        turno = self._get_block_group_turno(block_group)
+        if not turno:
+            return 0
 
-        is_lab_room = room.tipo_sala_id != REGULAR_CLASSROOM_TYPE_ID
-        is_lab_day = day_id in hybrid_info.lab_days
-        is_classroom_day = day_id in hybrid_info.classroom_days
+        requirement = hybrid_info.slot_requirements.get((block_group.day_id, turno))
+        if requirement is None:
+            return 0
+
+        is_lab_room = self._is_laboratory_room(room)
 
         # Apply bonus if room type matches the historical pattern for this day
-        if is_lab_day and is_lab_room:
-            # Lab room on a lab day - perfect match!
+        if requirement == "lab" and is_lab_room:
+            historical_types = hybrid_info.lab_room_types_by_slot.get(
+                (block_group.day_id, turno),
+                set(),
+            )
+            if historical_types and room.tipo_sala_id not in historical_types:
+                return 0
             logger.debug(
-                f"Hybrid bonus for {codigo_disciplina}: lab room {room.nome} on lab day {day_id}"
+                f"Hybrid bonus for {codigo_disciplina}/{turma_disciplina}: lab room {room.nome} on slot {(block_group.day_id, turno)}"
             )
             return SCORING_WEIGHTS.HYBRID_ROOM_TYPE_MATCH
 
-        if is_classroom_day and not is_lab_room:
-            # Regular classroom on a classroom-only day - perfect match!
+        if requirement == "classroom" and not is_lab_room:
             logger.debug(
-                f"Hybrid bonus for {codigo_disciplina}: classroom {room.nome} on classroom day {day_id}"
+                f"Hybrid bonus for {codigo_disciplina}/{turma_disciplina}: classroom {room.nome} on slot {(block_group.day_id, turno)}"
             )
             return SCORING_WEIGHTS.HYBRID_ROOM_TYPE_MATCH
 

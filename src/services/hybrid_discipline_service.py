@@ -28,6 +28,7 @@ class HybridDisciplineInfo:
     """Information about a detected hybrid discipline."""
 
     codigo_disciplina: str
+    turma_disciplina: str = ""
     lab_days: List[int] = field(
         default_factory=list
     )  # Days that historically used labs
@@ -40,6 +41,13 @@ class HybridDisciplineInfo:
     historical_lab_rooms: Dict[int, List[int]] = field(
         default_factory=dict
     )  # {day_id: [sala_ids used as labs]}
+    slot_requirements: Dict[tuple[int, str], str] = field(default_factory=dict)
+    lab_room_types_by_slot: Dict[tuple[int, str], Set[int]] = field(
+        default_factory=dict
+    )
+    historical_lab_rooms_by_slot: Dict[tuple[int, str], List[int]] = field(
+        default_factory=dict
+    )
     detection_semester_id: int = 0  # Semester used for detection
 
 
@@ -77,6 +85,72 @@ class HybridDisciplineDetectionService:
         self._detection_semester_id: Optional[int] = None
         self._is_initialized: bool = False
 
+    def _normalize_turma(self, turma_disciplina: Optional[str]) -> str:
+        raw = str(turma_disciplina or "").strip()
+        if not raw:
+            return ""
+        return raw.lstrip("0") or "0"
+
+    def build_offering_key(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> str:
+        code = str(codigo_disciplina or "").strip().upper()
+        turma = self._normalize_turma(turma_disciplina)
+        return f"{code}::{turma}" if turma else code
+
+    def _normalize_text(self, text: Optional[str]) -> str:
+        return (
+            str(text or "")
+            .strip()
+            .lower()
+            .replace("á", "a")
+            .replace("à", "a")
+            .replace("â", "a")
+            .replace("ã", "a")
+            .replace("é", "e")
+            .replace("ê", "e")
+            .replace("í", "i")
+            .replace("ó", "o")
+            .replace("ô", "o")
+            .replace("õ", "o")
+            .replace("ú", "u")
+            .replace("ç", "c")
+        )
+
+    def _is_laboratory_type_name(self, tipo_sala_nome: Optional[str]) -> bool:
+        normalized = self._normalize_text(tipo_sala_nome)
+        return "laboratorio" in normalized
+
+    def _resolve_cache_key(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> str:
+        if turma_disciplina is None and "::" in str(codigo_disciplina):
+            return str(codigo_disciplina)
+        return self.build_offering_key(codigo_disciplina, turma_disciplina)
+
+    def _fetch_historical_allocations(self, detection_semester_id: int):
+        from src.models.academic import Demanda
+        from src.models.allocation import AlocacaoSemestral
+        from src.models.inventory import Sala, TipoSala
+
+        return (
+            self.session.query(
+                AlocacaoSemestral.semestre_id,
+                Demanda.codigo_disciplina,
+                Demanda.turma_disciplina,
+                AlocacaoSemestral.dia_semana_id,
+                AlocacaoSemestral.codigo_bloco,
+                Sala.id.label("sala_id"),
+                Sala.tipo_sala_id,
+                TipoSala.nome.label("tipo_sala_nome"),
+            )
+            .join(Demanda, AlocacaoSemestral.demanda_id == Demanda.id)
+            .join(Sala, AlocacaoSemestral.sala_id == Sala.id)
+            .join(TipoSala, Sala.tipo_sala_id == TipoSala.id)
+            .filter(AlocacaoSemestral.semestre_id <= detection_semester_id)
+            .all()
+        )
+
     def detect_hybrid_disciplines(
         self, detection_semester_id: Optional[int] = None
     ) -> HybridDetectionResult:
@@ -109,23 +183,142 @@ class HybridDisciplineDetectionService:
         # Clear previous cache
         self._cache.clear()
 
-        # Detect hybrid discipline codes
-        hybrid_codes = self.alocacao_repo.detect_hybrid_disciplines(
-            detection_semester_id, REGULAR_CLASSROOM_TYPE_ID
-        )
+        historical_rows = self._fetch_historical_allocations(detection_semester_id)
 
-        logger.info(f"Found {len(hybrid_codes)} hybrid disciplines")
+        offerings: Dict[str, Dict] = {}
+        for row in historical_rows:
+            key = self.build_offering_key(
+                row.codigo_disciplina,
+                row.turma_disciplina,
+            )
+            offering = offerings.setdefault(
+                key,
+                {
+                    "codigo_disciplina": row.codigo_disciplina,
+                    "turma_disciplina": self._normalize_turma(row.turma_disciplina),
+                    "room_ids": set(),
+                    "families": set(),
+                    "slots": {},
+                },
+            )
 
-        # Build detailed info for each hybrid discipline
-        for codigo in hybrid_codes:
-            info = self._build_hybrid_info(codigo, detection_semester_id)
-            self._cache[codigo] = info
+            offering["room_ids"].add(row.sala_id)
+
+            room_family = "other"
+            if row.tipo_sala_id == REGULAR_CLASSROOM_TYPE_ID:
+                room_family = "classroom"
+            elif self._is_laboratory_type_name(row.tipo_sala_nome):
+                room_family = "lab"
+
+            if room_family in {"classroom", "lab"}:
+                offering["families"].add(room_family)
+
+            slot_key = (row.dia_semana_id, row.codigo_bloco[0])
+            slot_history = offering["slots"].setdefault(slot_key, {})
+            semester_slot = slot_history.setdefault(
+                row.semestre_id,
+                {
+                    "classroom_count": 0,
+                    "lab_count": 0,
+                    "lab_room_types": set(),
+                    "lab_room_ids": set(),
+                },
+            )
+
+            if room_family == "classroom":
+                semester_slot["classroom_count"] += 1
+            elif room_family == "lab":
+                semester_slot["lab_count"] += 1
+                semester_slot["lab_room_types"].add(row.tipo_sala_id)
+                semester_slot["lab_room_ids"].add(row.sala_id)
+
+        for key, offering in offerings.items():
+            if len(offering["room_ids"]) < 2:
+                continue
+            if not {"classroom", "lab"}.issubset(offering["families"]):
+                continue
+
+            slot_requirements: Dict[tuple[int, str], str] = {}
+            lab_room_types_by_slot: Dict[tuple[int, str], Set[int]] = {}
+            historical_lab_rooms_by_slot: Dict[tuple[int, str], List[int]] = {}
+            lab_days: Set[int] = set()
+            classroom_days: Set[int] = set()
+
+            for slot_key, semester_history in offering["slots"].items():
+                relevant_semesters = [
+                    semester_id
+                    for semester_id, slot_data in semester_history.items()
+                    if slot_data["classroom_count"] > 0 or slot_data["lab_count"] > 0
+                ]
+                if not relevant_semesters:
+                    continue
+
+                latest_semester = max(relevant_semesters)
+                latest_data = semester_history[latest_semester]
+
+                requirement = None
+                if latest_data["lab_count"] > latest_data["classroom_count"]:
+                    requirement = "lab"
+                elif latest_data["classroom_count"] > latest_data["lab_count"]:
+                    requirement = "classroom"
+                elif latest_data["lab_count"] > 0:
+                    requirement = "lab"
+                elif latest_data["classroom_count"] > 0:
+                    requirement = "classroom"
+
+                if requirement is None:
+                    continue
+
+                slot_requirements[slot_key] = requirement
+                if requirement == "lab":
+                    lab_days.add(slot_key[0])
+                    room_types = set()
+                    room_ids = set()
+                    for slot_data in semester_history.values():
+                        room_types.update(slot_data["lab_room_types"])
+                        room_ids.update(slot_data["lab_room_ids"])
+                    if room_types:
+                        lab_room_types_by_slot[slot_key] = room_types
+                    historical_lab_rooms_by_slot[slot_key] = sorted(room_ids)
+                else:
+                    classroom_days.add(slot_key[0])
+
+            if not {"lab", "classroom"}.issubset(set(slot_requirements.values())):
+                continue
+
+            historical_lab_rooms: Dict[int, List[int]] = {}
+            lab_room_types: Set[int] = set()
+            for slot_key, room_ids in historical_lab_rooms_by_slot.items():
+                day_id, _turno = slot_key
+                historical_lab_rooms.setdefault(day_id, [])
+                historical_lab_rooms[day_id] = sorted(
+                    set(historical_lab_rooms[day_id]).union(room_ids)
+                )
+            for room_types in lab_room_types_by_slot.values():
+                lab_room_types.update(room_types)
+
+            self._cache[key] = HybridDisciplineInfo(
+                codigo_disciplina=offering["codigo_disciplina"],
+                turma_disciplina=offering["turma_disciplina"],
+                lab_days=sorted(lab_days),
+                classroom_days=sorted(classroom_days),
+                lab_room_types=lab_room_types,
+                historical_lab_rooms=historical_lab_rooms,
+                slot_requirements=slot_requirements,
+                lab_room_types_by_slot=lab_room_types_by_slot,
+                historical_lab_rooms_by_slot=historical_lab_rooms_by_slot,
+                detection_semester_id=detection_semester_id,
+            )
+
+        hybrid_keys = sorted(self._cache.keys())
+
+        logger.info(f"Found {len(hybrid_keys)} hybrid disciplines")
 
         self._is_initialized = True
 
         return HybridDetectionResult(
-            detected_count=len(hybrid_codes),
-            hybrid_disciplines=hybrid_codes,
+            detected_count=len(hybrid_keys),
+            hybrid_disciplines=hybrid_keys,
             detection_semester_id=detection_semester_id,
             details=self._cache.copy(),
         )
@@ -150,58 +343,9 @@ class HybridDisciplineDetectionService:
 
         return self.alocacao_repo.get_most_recent_semester_with_allocations()
 
-    def _build_hybrid_info(
-        self, codigo_disciplina: str, semester_id: int
-    ) -> HybridDisciplineInfo:
-        """
-        Build detailed hybrid discipline info with per-day room type analysis.
-
-        Args:
-            codigo_disciplina: Discipline code
-            semester_id: Semester used for detection
-
-        Returns:
-            HybridDisciplineInfo with detailed day-by-day analysis
-        """
-        # Get per-day room type info
-        day_room_types = self.alocacao_repo.get_hybrid_discipline_day_room_types(
-            codigo_disciplina, semester_id, REGULAR_CLASSROOM_TYPE_ID
-        )
-
-        lab_days = []
-        classroom_days = []
-        lab_room_types = set()
-        historical_lab_rooms = {}
-
-        for day_id, day_info in day_room_types.items():
-            if day_info["is_lab_day"]:
-                lab_days.append(day_id)
-                historical_lab_rooms[day_id] = day_info["lab_room_ids"]
-
-                # Track all non-classroom room types used
-                for tipo_id in day_info["room_types"]:
-                    if tipo_id != REGULAR_CLASSROOM_TYPE_ID:
-                        lab_room_types.add(tipo_id)
-            else:
-                classroom_days.append(day_id)
-
-        info = HybridDisciplineInfo(
-            codigo_disciplina=codigo_disciplina,
-            lab_days=sorted(lab_days),
-            classroom_days=sorted(classroom_days),
-            lab_room_types=lab_room_types,
-            historical_lab_rooms=historical_lab_rooms,
-            detection_semester_id=semester_id,
-        )
-
-        logger.debug(
-            f"Hybrid discipline {codigo_disciplina}: "
-            f"lab_days={info.lab_days}, classroom_days={info.classroom_days}"
-        )
-
-        return info
-
-    def is_hybrid(self, codigo_disciplina: str) -> bool:
+    def is_hybrid(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> bool:
         """
         Check if a discipline code is classified as hybrid.
 
@@ -217,9 +361,13 @@ class HybridDisciplineDetectionService:
             )
             return False
 
-        return codigo_disciplina in self._cache
+        return (
+            self._resolve_cache_key(codigo_disciplina, turma_disciplina) in self._cache
+        )
 
-    def get_hybrid_info(self, codigo_disciplina: str) -> Optional[HybridDisciplineInfo]:
+    def get_hybrid_info(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> Optional[HybridDisciplineInfo]:
         """
         Get hybrid discipline info if classified as hybrid.
 
@@ -229,9 +377,51 @@ class HybridDisciplineDetectionService:
         Returns:
             HybridDisciplineInfo if hybrid, None otherwise
         """
-        return self._cache.get(codigo_disciplina)
+        return self._cache.get(
+            self._resolve_cache_key(codigo_disciplina, turma_disciplina)
+        )
 
-    def get_lab_days_for_discipline(self, codigo_disciplina: str) -> List[int]:
+    def is_hybrid_demand(self, demanda: object) -> bool:
+        return self.is_hybrid(
+            getattr(demanda, "codigo_disciplina", ""),
+            getattr(demanda, "turma_disciplina", None),
+        )
+
+    def get_hybrid_info_for_demand(
+        self, demanda: object
+    ) -> Optional[HybridDisciplineInfo]:
+        return self.get_hybrid_info(
+            getattr(demanda, "codigo_disciplina", ""),
+            getattr(demanda, "turma_disciplina", None),
+        )
+
+    def get_slot_requirement(
+        self,
+        codigo_disciplina: str,
+        turma_disciplina: Optional[str],
+        day_id: int,
+        turno: str,
+    ) -> Optional[str]:
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
+        if not info:
+            return None
+        return info.slot_requirements.get((day_id, turno))
+
+    def get_lab_room_types_for_slot(
+        self,
+        codigo_disciplina: str,
+        turma_disciplina: Optional[str],
+        day_id: int,
+        turno: str,
+    ) -> Set[int]:
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
+        if not info:
+            return set()
+        return set(info.lab_room_types_by_slot.get((day_id, turno), set()))
+
+    def get_lab_days_for_discipline(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> List[int]:
         """
         Get days that historically used labs for this discipline.
 
@@ -241,10 +431,12 @@ class HybridDisciplineDetectionService:
         Returns:
             List of day IDs (2=MON, 3=TUE, etc.) that are lab days
         """
-        info = self._cache.get(codigo_disciplina)
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
         return info.lab_days if info else []
 
-    def get_classroom_days_for_discipline(self, codigo_disciplina: str) -> List[int]:
+    def get_classroom_days_for_discipline(
+        self, codigo_disciplina: str, turma_disciplina: Optional[str] = None
+    ) -> List[int]:
         """
         Get days that historically only used classrooms for this discipline.
 
@@ -254,10 +446,15 @@ class HybridDisciplineDetectionService:
         Returns:
             List of day IDs (2=MON, 3=TUE, etc.) that are classroom-only days
         """
-        info = self._cache.get(codigo_disciplina)
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
         return info.classroom_days if info else []
 
-    def is_lab_day(self, codigo_disciplina: str, day_id: int) -> bool:
+    def is_lab_day(
+        self,
+        codigo_disciplina: str,
+        day_id: int,
+        turma_disciplina: Optional[str] = None,
+    ) -> bool:
         """
         Check if a specific day is a lab day for a discipline.
 
@@ -268,13 +465,17 @@ class HybridDisciplineDetectionService:
         Returns:
             True if this day should use a lab, False otherwise
         """
-        info = self._cache.get(codigo_disciplina)
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
         if not info:
             return False
         return day_id in info.lab_days
 
     def get_historical_lab_rooms(
-        self, codigo_disciplina: str, day_id: int
+        self,
+        codigo_disciplina: str,
+        day_id: int,
+        turma_disciplina: Optional[str] = None,
+        turno: Optional[str] = None,
     ) -> List[int]:
         """
         Get historically used lab room IDs for a discipline on a specific day.
@@ -286,9 +487,11 @@ class HybridDisciplineDetectionService:
         Returns:
             List of sala_ids that were used as labs on this day
         """
-        info = self._cache.get(codigo_disciplina)
+        info = self.get_hybrid_info(codigo_disciplina, turma_disciplina)
         if not info:
             return []
+        if turno is not None:
+            return info.historical_lab_rooms_by_slot.get((day_id, turno), [])
         return info.historical_lab_rooms.get(day_id, [])
 
     def get_all_hybrid_codes(self) -> List[str]:
@@ -317,9 +520,17 @@ class HybridDisciplineDetectionService:
             "hybrid_codes": list(self._cache.keys()),
             "details": {
                 code: {
+                    "turma_disciplina": info.turma_disciplina,
                     "lab_days": info.lab_days,
                     "classroom_days": info.classroom_days,
                     "lab_room_types": list(info.lab_room_types),
+                    "slot_requirements": {
+                        f"{day_id}_{turno}": requirement
+                        for (
+                            day_id,
+                            turno,
+                        ), requirement in info.slot_requirements.items()
+                    },
                 }
                 for code, info in self._cache.items()
             },

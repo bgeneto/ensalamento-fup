@@ -57,10 +57,17 @@ Important detail:
 
 Before a room is scored, the code filters candidates to rooms that:
 
-- are active
 - are enabled for all required atomic blocks of the demand or block-group
+- are operational for those blocks according to `SalaDisponibilidadeBloco`
 
 This filtering is done through `SalaRepository.get_available_for_allocation()` and `SalaRepository.is_room_enabled_for_blocks()`.
+
+The global room `active` flag is no longer the operational source of truth for allocation.
+
+The scorer also applies a default room-type eligibility policy before ranking:
+
+- ordinary disciplines default to regular classrooms
+- specialized rooms are excluded unless explicitly allowed by rule, preserved for continuity, or required by slot-aware hybrid history
 
 Conflict detection is separate from availability filtering:
 
@@ -180,7 +187,7 @@ This is not a count of times in previous semesters in the human sense. It is a c
 
 ### Block-group scoring
 
-The partial/split flow uses a day-specific variant:
+The partial/split flow uses a slot-specific variant:
 
 ```text
 historical_points_for_day = min(
@@ -196,7 +203,7 @@ Where the historical count is filtered by:
 - same `dia_semana_id`
 - excluding the current semester
 
-This is what allows different days of the same discipline to naturally prefer different rooms.
+This is what allows different days and shifts of the same discipline to naturally prefer different rooms.
 
 ---
 
@@ -204,10 +211,11 @@ This is what allows different days of the same discipline to naturally prefer di
 
 Hybrid behavior is explicit in the current autonomous partial pipeline and in manual block-group suggestions.
 
-A discipline is detected as hybrid when, in the most recent historical semester with allocations:
+A discipline is detected as hybrid per offering key:
 
-- it used at least 2 distinct rooms
-- and at least one of those rooms is not a regular classroom
+- `codigo_disciplina + turma_disciplina`
+- historical allocations show both classroom-family and laboratory-family usage
+- the historical record contains slot-level evidence for both families
 
 The code assumes:
 
@@ -215,8 +223,10 @@ The code assumes:
 
 For detected hybrid disciplines, block-group scoring adds `+15` when:
 
-- a non-classroom room is scored on a historical lab day
-- or a regular classroom is scored on a historical classroom-only day
+- a laboratory-family room is scored on a historical `lab` slot
+- or a regular classroom is scored on a historical `classroom` slot
+
+Those slot requirements are keyed by `(day_id, turno)`, so morning and night groups on the same weekday can behave differently.
 
 Formula used in block-group scoring:
 

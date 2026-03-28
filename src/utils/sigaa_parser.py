@@ -223,6 +223,31 @@ class SigaaScheduleParser:
 
         return day_blocks
 
+    def group_blocks_by_day_and_turno(
+        self, text: str
+    ) -> Dict[Tuple[int, str], List[str]]:
+        """Groups atomic blocks by day+turno for partial allocation.
+
+        This keeps morning/afternoon/night groups independent even when they
+        happen on the same weekday, which is required for hybrid disciplines
+        that use a classroom in one shift and a lab in another.
+        """
+        if not text or not isinstance(text, str):
+            return {}
+
+        slot_blocks: Dict[Tuple[int, str], List[str]] = {}
+        for block_code, day_id in self.split_to_atomic_tuples(text):
+            turno = block_code[0]
+            key = (day_id, turno)
+            slot_blocks.setdefault(key, [])
+            if block_code not in slot_blocks[key]:
+                slot_blocks[key].append(block_code)
+
+        for key in slot_blocks:
+            slot_blocks[key] = sorted(slot_blocks[key])
+
+        return slot_blocks
+
     def get_block_groups_with_names(self, text: str) -> List[Dict[str, Any]]:
         """
         Groups atomic blocks by day with human-readable names.
@@ -250,6 +275,30 @@ class SigaaScheduleParser:
                     "day_id": day_id,
                     "day_name": self.MAP_DAYS.get(day_id, f"DIA{day_id}"),
                     "blocks": day_blocks[day_id],
+                }
+            )
+
+        return result
+
+    def get_block_groups_with_names_and_turno(self, text: str) -> List[Dict[str, Any]]:
+        """Return block groups split by weekday and turno for UI and allocation."""
+        turno_labels = {
+            "M": "Manhã",
+            "T": "Tarde",
+            "N": "Noite",
+        }
+
+        grouped = self.group_blocks_by_day_and_turno(text)
+        result = []
+        for day_id, turno in sorted(grouped.keys()):
+            result.append(
+                {
+                    "group_id": f"{day_id}_{turno}",
+                    "day_id": day_id,
+                    "day_name": self.MAP_DAYS.get(day_id, f"DIA{day_id}"),
+                    "turno": turno,
+                    "turno_label": turno_labels.get(turno, turno),
+                    "blocks": grouped[(day_id, turno)],
                 }
             )
 

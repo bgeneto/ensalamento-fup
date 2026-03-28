@@ -388,6 +388,7 @@ def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str
     professors = str(getattr(demanda, "professores_disciplina", "")).lower()
     discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()
     discipline_code = str(getattr(demanda, "codigo_disciplina", ""))
+    turma_disciplina = getattr(demanda, "turma_disciplina", None)
 
     # Check for accessibility needs (simplified)
     if any(term in professors for term in ["baixa mobilidade", "cadeira de rodas"]):
@@ -395,7 +396,11 @@ def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str
 
     # Check for hybrid discipline detection (from historical data)
     # This is the CONFIRMED detection from Phase 0
-    is_hybrid_detected = _check_hybrid_discipline(discipline_code, semester_id)
+    is_hybrid_detected = _check_hybrid_discipline(
+        discipline_code,
+        turma_disciplina,
+        semester_id,
+    )
 
     if is_hybrid_detected:
         # Strong indication - detected from historical allocation data
@@ -415,8 +420,19 @@ def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str
     return warnings
 
 
+def _build_offering_key(
+    discipline_code: str, turma_disciplina: Optional[str] = None
+) -> str:
+    code = str(discipline_code or "").strip().upper()
+    turma = str(turma_disciplina or "").strip()
+    turma = turma.lstrip("0") or ("0" if turma else "")
+    return f"{code}::{turma}" if turma else code
+
+
 def _check_hybrid_discipline(
-    discipline_code: str, current_semester_id: Optional[int] = None
+    discipline_code: str,
+    turma_disciplina: Optional[str] = None,
+    current_semester_id: Optional[int] = None,
 ) -> bool:
     """
     Check if a discipline is detected as hybrid from historical data.
@@ -431,7 +447,7 @@ def _check_hybrid_discipline(
         True if discipline is detected as hybrid
     """
     # Check if we have cached hybrid detection in session state
-    hybrid_cache = st.session_state.setdefault("hybrid_disciplines_cache", {})
+    hybrid_cache = st.session_state.setdefault("hybrid_disciplines_cache_v2", {})
 
     if current_semester_id not in hybrid_cache:
         # Perform fresh detection
@@ -453,7 +469,10 @@ def _check_hybrid_discipline(
             # If detection fails, return empty set
             hybrid_cache[current_semester_id] = set()
 
-    return discipline_code in hybrid_cache[current_semester_id]
+    return (
+        _build_offering_key(discipline_code, turma_disciplina)
+        in hybrid_cache[current_semester_id]
+    )
 
 
 def _sort_demands_by_priority(demandas, allocation_info_map) -> List:
