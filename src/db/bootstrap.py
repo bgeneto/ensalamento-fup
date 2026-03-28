@@ -35,6 +35,7 @@ def ensure_database_ready() -> bool:
         logger.info("Ensuring database tables and SQL migrations are up to date")
         init_db()
         run_sql_migrations()
+        _initialize_scoring_configuration()
 
         os.environ[_BOOTSTRAP_FLAG] = "1"
         _BOOTSTRAP_COMPLETED = True
@@ -47,3 +48,13 @@ def _reset_database_bootstrap_state() -> None:
 
     _BOOTSTRAP_COMPLETED = False
     os.environ.pop(_BOOTSTRAP_FLAG, None)
+
+
+def _initialize_scoring_configuration() -> None:
+    """Refresh runtime scoring configuration after DB bootstrap."""
+    try:
+        from src.config.scoring_config import reload_scoring_config
+
+        reload_scoring_config()
+    except Exception:
+        logger.exception("Failed to initialize scoring configuration")

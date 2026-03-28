@@ -10,6 +10,10 @@ from src.models.academic import Professor, Semestre, Usuario
 from src.models.allocation import (
     Regra,
 )
+from src.models.app_configuration import (  # noqa: F401
+    AppConfiguration,
+    AppConfigurationHistory,
+)
 from src.models.base import Base
 from src.models.horario import DiaSemana, HorarioBloco
 from src.models.inventory import (

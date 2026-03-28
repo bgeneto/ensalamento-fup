@@ -15,7 +15,6 @@ from src.config.settings import settings
 
 # Import all models to ensure they are registered with BaseModel.registry
 # IMPORTANT: This must happen BEFORE engine creation to resolve relationships
-from src.models import academic, allocation, inventory, horario  # noqa: F401
 
 
 # Create database engine

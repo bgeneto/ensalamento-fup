@@ -1,146 +1,149 @@
 """
-Scoring Settings Tab Component
+Scoring Settings Tab Component.
 
 Allows users to configure scoring weights and rules for the allocation algorithm.
 """
 
-import streamlit as st
-import pandas as pd
+from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
+import pandas as pd
+import streamlit as st
+
+from src.config.scoring_registry import build_default_scoring_config, set_nested_value
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 
 def render_scoring_tab():
     """Render the scoring configuration tab with editable settings."""
+    from src.services.scoring_configuration_service import ScoringConfigurationService
 
     st.subheader("🎯 Configuração de Pontuação")
 
     st.info(
         """
-        ℹ️ **Ajuste os pesos de pontuação** usados pelo algoritmo de alocação.
+        ℹ️ **Ajuste os pesos e regras de pontuação** usados pelo algoritmo de alocação.
 
-        **Pesos de Pontuação:**
-        - **Capacidade Adequada**: Pontos quando a sala tem capacidade suficiente para a disciplina
-        - **Alocações Históricas**: Pontos por cada alocação anterior da disciplina na mesma sala
-        - **Lim. Máximo Histórico**: Limite máximo de pontos históricos (ex: 10 alocações × 2 pts = 20 pts → limitado a 12 pts)
-        - **Regra Obrigatória**: Pontos quando a sala atende uma regra rígida (ex: sala específica obrigatória)
-        - **Sala Preferida**: Pontos quando sala está nas preferências do professor
-        - **Característica Preferida**: Pontos quando sala tem característica preferida (ex: projetor, quadro)
+        **Como ler esta tela:**
+        - **Valor Atual**: configuração efetiva usada nas novas alocações
+        - **Valor Padrão**: default versionado no código
+        - **Origem**: mostra se o valor vem do default ou de um override salvo
+        - **Faixa**: limites válidos para o parâmetro
 
-        ⚠️ **Impacto das Mudanças:**
-        - Aumentar pontuação do **histórico** valoriza estabilidade (disciplinas ficam nas mesmas salas)
-        - Reduzir **capacidade** dá mais peso ao histórico vs. capacidade adequada
-        - Aumentar **Lim. máximo** permite que salas muito populares acumulem mais pontos históricos
-        - Aumentar **preferências** dá mais peso às escolhas dos professores
+        ⚠️ **Impacto das mudanças:**
+        - Pesos maiores priorizam mais fortemente aquele critério
+        - Penalidades maiores desestimulam fragmentação e desvios
+        - Regras booleanas alteram o comportamento global do algoritmo
 
-        As mudanças afetarão **novas alocações** executadas após salvar.
+        As mudanças afetam **novas alocações** executadas após salvar.
         """
     )
 
-    # Import current config
-    from src.config.scoring_config import SCORING_WEIGHTS
+    display_session_feedback("scoring_update")
 
-    # Create DataFrame with current values
-    scoring_data = [
-        {
-            "Parâmetro": "Capacidade Adequada",
-            "Valor Atual": SCORING_WEIGHTS.CAPACITY_ADEQUATE,
-            "Categoria": "Base",
-            "Descrição": "Pontos quando sala tem capacidade >= vagas da disciplina",
-        },
-        {
-            "Parâmetro": "Histórico por Alocação",
-            "Valor Atual": SCORING_WEIGHTS.HISTORICAL_FREQUENCY_PER_ALLOCATION,
-            "Categoria": "Histórico",
-            "Descrição": "Pontos por cada vez que a disciplina foi alocada na sala antes",
-        },
-        {
-            "Parâmetro": "Lim. Máximo Histórico",
-            "Valor Atual": SCORING_WEIGHTS.HISTORICAL_FREQUENCY_MAX_CAP,
-            "Categoria": "Histórico",
-            "Descrição": "Limite máximo de PONTOS históricos (não quantidade de alocações)",
-        },
-        {
-            "Parâmetro": "Regra Obrigatória",
-            "Valor Atual": SCORING_WEIGHTS.HARD_RULE_COMPLIANCE,
-            "Categoria": "Regras",
-            "Descrição": "Pontos por atender regra hard (ex: sala específica obrigatória)",
-        },
-        {
-            "Parâmetro": "Sala Preferida",
-            "Valor Atual": SCORING_WEIGHTS.PREFERRED_ROOM,
-            "Categoria": "Preferências",
-            "Descrição": "Pontos quando sala está nas preferências do professor",
-        },
-        {
-            "Parâmetro": "Característica Preferida",
-            "Valor Atual": SCORING_WEIGHTS.PREFERRED_CHARACTERISTIC,
-            "Categoria": "Preferências",
-            "Descrição": "Pontos quando sala tem característica preferida (ex: projetor)",
-        },
-    ]
+    service = ScoringConfigurationService()
+    base_config = service.get_effective_config_dict()
+    rows_df = pd.DataFrame(service.get_ui_rows())
+    weights_df, rules_df = _build_editor_dataframes(rows_df)
 
-    df = pd.DataFrame(scoring_data)
+    _render_summary_metrics(rows_df)
 
-    st.markdown("### 📊 Pesos de Pontuação Atuais")
-
-    # Display current configuration with editable values
-    edited_df = st.data_editor(
-        df,
+    st.markdown("### 📊 Pesos de Pontuação")
+    edited_weights_df = st.data_editor(
+        weights_df,
         width="stretch",
         hide_index=True,
-        disabled=["Parâmetro", "Categoria", "Descrição"],
+        disabled=[
+            "Chave",
+            "Valor Padrão",
+            "Categoria",
+            "Origem",
+            "Faixa",
+            "Descrição",
+            "Tipo",
+        ],
         column_config={
-            "Parâmetro": st.column_config.TextColumn(
-                "Parâmetro",
-                width="medium",
-            ),
+            "Chave": None,
+            "Tipo": None,
+            "Parâmetro": st.column_config.TextColumn("Parâmetro", width="medium"),
             "Valor Atual": st.column_config.NumberColumn(
-                "Valor",
+                "Valor Atual",
                 min_value=0,
-                max_value=50,
+                max_value=500,
                 step=1,
                 format="%d pts",
-                help="Clique duplo para editar",
+                help="Clique duplo para editar o peso efetivo.",
             ),
-            "Categoria": st.column_config.TextColumn(
-                "Categoria",
+            "Valor Padrão": st.column_config.NumberColumn(
+                "Valor Padrão",
+                format="%d pts",
+                help="Valor default definido no código.",
+            ),
+            "Categoria": st.column_config.TextColumn("Categoria", width="small"),
+            "Origem": st.column_config.TextColumn("Origem", width="small"),
+            "Faixa": st.column_config.TextColumn(
+                "Faixa",
                 width="small",
+                help="Faixa de valores válida para este parâmetro.",
             ),
-            "Descrição": st.column_config.TextColumn(
-                "Descrição",
-                width="large",
-            ),
+            "Descrição": st.column_config.TextColumn("Descrição", width="large"),
         },
-        key="scoring_editor",
+        key="scoring_weights_editor",
     )
 
-    # Detect changes
-    changes_detected = False
-    changes_summary = []
+    st.markdown("### ⚙️ Regras de Comportamento")
+    edited_rules_df = st.data_editor(
+        rules_df,
+        width="stretch",
+        hide_index=True,
+        disabled=[
+            "Chave",
+            "Valor Padrão",
+            "Categoria",
+            "Origem",
+            "Faixa",
+            "Descrição",
+            "Tipo",
+        ],
+        column_config={
+            "Chave": None,
+            "Tipo": None,
+            "Parâmetro": st.column_config.TextColumn("Parâmetro", width="medium"),
+            "Valor Atual": st.column_config.CheckboxColumn(
+                "Valor Atual",
+                help="Marque ou desmarque para ativar a regra.",
+            ),
+            "Valor Padrão": st.column_config.CheckboxColumn(
+                "Valor Padrão",
+                help="Estado default definido no código.",
+            ),
+            "Categoria": st.column_config.TextColumn("Categoria", width="small"),
+            "Origem": st.column_config.TextColumn("Origem", width="small"),
+            "Faixa": st.column_config.TextColumn("Faixa", width="small"),
+            "Descrição": st.column_config.TextColumn("Descrição", width="large"),
+        },
+        key="scoring_rules_editor",
+    )
 
-    for idx, row in edited_df.iterrows():
-        original_value = df.iloc[idx]["Valor Atual"]
-        new_value = row["Valor Atual"]
-        param_name = row["Parâmetro"]
+    change_summaries = _summarize_scoring_changes(weights_df, edited_weights_df)
+    change_summaries.extend(_summarize_scoring_changes(rules_df, edited_rules_df))
+    preview_config = _build_effective_config_from_editors(
+        base_config,
+        edited_weights_df,
+        edited_rules_df,
+    )
 
-        if new_value != original_value:
-            changes_detected = True
-            changes_summary.append(
-                f"- **{param_name}**: {original_value} → {new_value} pts"
-            )
-
-    # Show save button only if changes detected
-    if changes_detected:
-        st.warning("⚠️ **Alterações detectadas:**\n\n" + "\n".join(changes_summary))
+    if change_summaries:
+        st.warning("⚠️ **Alterações detectadas:**\n\n" + "\n".join(change_summaries))
 
         col1, col2, col3 = st.columns([1, 1, 4])
 
         with col1:
             if st.button("💾 Salvar Alterações", type="primary", width="stretch"):
                 try:
-                    # Update the scoring_config.py file with new values
-                    _save_scoring_config(edited_df)
+                    _save_scoring_config(preview_config)
 
                     set_session_feedback(
                         "scoring_update",
@@ -149,18 +152,17 @@ def render_scoring_tab():
                         ttl=10,
                     )
 
-                    # Clear any caches that might depend on scoring config
                     st.cache_data.clear()
-
                     st.rerun()
 
-                except Exception as e:
+                except Exception as exc:
                     set_session_feedback(
                         "scoring_update",
                         False,
-                        f"Erro ao salvar configurações: {str(e)}",
+                        f"Erro ao salvar configurações: {str(exc)}",
                         ttl=10,
                     )
+                    st.rerun()
 
         with col2:
             if st.button("🔄 Reverter", width="stretch"):
@@ -169,136 +171,227 @@ def render_scoring_tab():
     else:
         st.success("✅ Nenhuma alteração pendente")
 
-    # Display feedback messages
-    display_session_feedback("scoring_update")
-
-    # Show scoring impact simulation
     st.markdown("---")
     st.markdown("### 📈 Simulação de Impacto")
 
     with st.expander("🔍 Ver exemplo de pontuação com configurações atuais"):
-        _show_scoring_simulation(edited_df if changes_detected else df)
+        _show_scoring_simulation(preview_config)
 
 
-def _save_scoring_config(df: pd.DataFrame) -> None:
-    """
-    Update the scoring configuration JSON file with new values.
+def _build_editor_dataframes(
+    rows_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build separate editor dataframes for numeric weights and boolean rules."""
+    weights_df = rows_df[rows_df["Tipo"] == "int"].copy()
+    rules_df = rows_df[rows_df["Tipo"] == "bool"].copy()
 
-    Args:
-        df: DataFrame with updated scoring values
-    """
-    import json
-    from datetime import datetime
+    weights_df["Valor Atual"] = weights_df["Valor Atual"].astype(int)
+    weights_df["Valor Padrão"] = weights_df["Valor Padrão"].astype(int)
+    weights_df["Faixa"] = weights_df.apply(_format_range_label, axis=1)
+    weights_df = weights_df[
+        [
+            "Chave",
+            "Parâmetro",
+            "Valor Atual",
+            "Valor Padrão",
+            "Categoria",
+            "Origem",
+            "Faixa",
+            "Descrição",
+            "Tipo",
+        ]
+    ].reset_index(drop=True)
 
-    # Create mapping from display name to config key
-    param_mapping = {
-        "Capacidade Adequada": "CAPACITY_ADEQUATE",
-        "Histórico por Alocação": "HISTORICAL_FREQUENCY_PER_ALLOCATION",
-        "Lim. Máximo Histórico": "HISTORICAL_FREQUENCY_MAX_CAP",
-        "Regra Obrigatória": "HARD_RULE_COMPLIANCE",
-        "Sala Preferida": "PREFERRED_ROOM",
-        "Característica Preferida": "PREFERRED_CHARACTERISTIC",
-    }
+    rules_df["Valor Atual"] = rules_df["Valor Atual"].astype(bool)
+    rules_df["Valor Padrão"] = rules_df["Valor Padrão"].astype(bool)
+    rules_df["Faixa"] = "Ligado / Desligado"
+    rules_df = rules_df[
+        [
+            "Chave",
+            "Parâmetro",
+            "Valor Atual",
+            "Valor Padrão",
+            "Categoria",
+            "Origem",
+            "Faixa",
+            "Descrição",
+            "Tipo",
+        ]
+    ].reset_index(drop=True)
 
-    from src.config.scoring_config import (
-        ensure_user_scoring_config_file,
-        get_existing_scoring_config_path,
-    )
+    return weights_df, rules_df
 
-    config_path = ensure_user_scoring_config_file()
-    source_path = get_existing_scoring_config_path() or config_path
 
-    # Load current configuration
-    try:
-        with open(source_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        st.error(f"Erro ao carregar configuração atual: {e}")
-        return
+def _format_range_label(row: pd.Series) -> str:
+    """Format the allowed range label for a numeric scoring field."""
+    minimum = row.get("Mínimo")
+    maximum = row.get("Máximo")
 
-    # Update weights with new values
-    for _, row in df.iterrows():
-        param_name = row["Parâmetro"]
-        new_value = int(row["Valor Atual"])
+    if pd.notna(minimum) and pd.notna(maximum):
+        return f"{int(minimum)} - {int(maximum)}"
+    if pd.notna(minimum):
+        return f">= {int(minimum)}"
+    if pd.notna(maximum):
+        return f"<= {int(maximum)}"
+    return "Livre"
 
-        if param_name in param_mapping:
-            config_key = param_mapping[param_name]
-            config["weights"][config_key] = new_value
 
-    # Validate the new configuration
-    from src.config.scoring_config import validate_scoring_config
+def _render_summary_metrics(rows_df: pd.DataFrame) -> None:
+    """Render a compact summary of active overrides and rule/weight counts."""
+    total_params = len(rows_df)
+    override_count = int((rows_df["Origem"] == "override").sum())
+    rules_count = int((rows_df["Tipo"] == "bool").sum())
+    weights_count = int((rows_df["Tipo"] == "int").sum())
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Parâmetros", total_params)
+    col2.metric("Overrides Ativos", override_count)
+    col3.metric("Pesos", weights_count)
+    col4.metric("Regras", rules_count)
+
+
+def _summarize_scoring_changes(
+    original_df: pd.DataFrame, edited_df: pd.DataFrame
+) -> list[str]:
+    """Summarize editor changes between the original and edited scoring tables."""
+    if original_df.empty or edited_df.empty:
+        return []
+
+    original_by_key = original_df.set_index("Chave")
+    summaries: list[str] = []
+
+    for _, row in edited_df.iterrows():
+        key = row["Chave"]
+        if key not in original_by_key.index:
+            continue
+
+        original_value = original_by_key.at[key, "Valor Atual"]
+        new_value = row["Valor Atual"]
+        value_type = row["Tipo"]
+
+        if new_value == original_value:
+            continue
+
+        summaries.append(
+            f"- **{row['Parâmetro']}**: "
+            f"{_format_scoring_value(original_value, value_type)} → "
+            f"{_format_scoring_value(new_value, value_type)}"
+        )
+
+    return summaries
+
+
+def _format_scoring_value(value: Any, value_type: str) -> str:
+    """Format a scoring value for change summaries."""
+    if value_type == "bool":
+        return "Ativado" if bool(value) else "Desativado"
+    return f"{int(value)} pts"
+
+
+def _build_effective_config_from_editors(
+    base_config: dict[str, dict[str, Any]],
+    *editor_dataframes: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """Build an effective config dict from the current editor tables."""
+    config = deepcopy(base_config)
+
+    for editor_df in editor_dataframes:
+        for _, row in editor_df.iterrows():
+            if row["Tipo"] == "bool":
+                value = bool(row["Valor Atual"])
+            else:
+                value = int(row["Valor Atual"])
+
+            set_nested_value(config, row["Chave"], value)
+
+    return config
+
+
+def _save_scoring_config(config: dict[str, dict[str, Any]]) -> None:
+    """Persist the scoring configuration using the DB-backed service."""
+    from src.config.scoring_config import reload_scoring_config, validate_scoring_config
+    from src.services.scoring_configuration_service import ScoringConfigurationService
 
     if not validate_scoring_config(config):
-        st.error(
+        raise ValueError(
             "Configuração inválida detectada. Verifique os valores e tente novamente."
         )
-        return
 
-    # Update metadata
-    config["_metadata"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-
-    # Write back to file
-    try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        st.error(f"Erro ao salvar configuração: {e}")
-        return
-
-    # Reload the configuration module
-    from src.config.scoring_config import reload_scoring_config
+    ScoringConfigurationService().save_effective_config(
+        config,
+        username=st.session_state.get("username"),
+        reason="Updated via scoring configuration tab",
+        source="ui",
+    )
 
     reload_scoring_config()
 
 
-def _show_scoring_simulation(df: pd.DataFrame) -> None:
-    """
-    Show a simulation of how different scenarios would be scored.
-
-    Args:
-        df: DataFrame with scoring configuration
-    """
-    # Extract current/edited values
-    capacity_pts = int(
-        df[df["Parâmetro"] == "Capacidade Adequada"]["Valor Atual"].iloc[0]
-    )
-    history_weight = int(
-        df[df["Parâmetro"] == "Histórico por Alocação"]["Valor Atual"].iloc[0]
-    )
-    history_cap = int(
-        df[df["Parâmetro"] == "Lim. Máximo Histórico"]["Valor Atual"].iloc[0]
-    )
+def _show_scoring_simulation(config: dict[str, dict[str, Any]]) -> None:
+    """Show a simulation of how the current scoring config affects sample outcomes."""
+    weights = config.get("weights", {})
+    capacity_pts = int(weights.get("CAPACITY_ADEQUATE", 0))
+    history_weight = int(weights.get("HISTORICAL_FREQUENCY_PER_ALLOCATION", 0))
+    history_cap = int(weights.get("HISTORICAL_FREQUENCY_MAX_CAP", 0))
+    preferred_room_pts = int(weights.get("PREFERRED_ROOM", 0))
+    hard_rule_pts = int(weights.get("HARD_RULE_COMPLIANCE", 0))
 
     st.markdown(
-        "**Exemplo: Disciplina com 30 vagas competindo por sala com capacidade 36**"
+        "**Exemplo: disciplina com 30 vagas competindo por uma sala de capacidade 36**"
     )
 
     scenarios = [
-        {"Histórico": 0, "Descrição": "Sem histórico (nova disciplina)"},
-        {"Histórico": 1, "Descrição": "1 alocação anterior"},
-        {"Histórico": 2, "Descrição": "2 alocações anteriores"},
-        {"Histórico": 3, "Descrição": "3 alocações anteriores"},
-        {"Histórico": 5, "Descrição": "5 alocações anteriores"},
         {
+            "Descrição": "Sem histórico e sem preferências atendidas",
+            "Histórico": 0,
+            "Sala Preferida": False,
+            "Hard Rule": False,
+        },
+        {
+            "Descrição": "1 alocação anterior e preferência de sala atendida",
+            "Histórico": 1,
+            "Sala Preferida": True,
+            "Hard Rule": False,
+        },
+        {
+            "Descrição": "3 alocações anteriores e regra obrigatória atendida",
+            "Histórico": 3,
+            "Sala Preferida": False,
+            "Hard Rule": True,
+        },
+        {
+            "Descrição": f"10 alocações anteriores (limitadas a {history_cap} pts)",
             "Histórico": 10,
-            "Descrição": f"10 alocações (pontos históricos limitados a {history_cap} pts)",
+            "Sala Preferida": True,
+            "Hard Rule": True,
         },
     ]
 
     simulation_data = []
     for scenario in scenarios:
         hist_count = scenario["Histórico"]
-        # Calculate points: count × weight, then cap at max POINTS (not count)
-        hist_points = hist_count * history_weight
-        capped_hist_points = min(hist_points, history_cap)
-
-        total_score = capacity_pts + capped_hist_points
+        raw_hist_points = hist_count * history_weight
+        capped_hist_points = min(raw_hist_points, history_cap)
+        preferred_points = preferred_room_pts if scenario["Sala Preferida"] else 0
+        hard_points = hard_rule_pts if scenario["Hard Rule"] else 0
+        total_score = capacity_pts + capped_hist_points + preferred_points + hard_points
 
         simulation_data.append(
             {
                 "Cenário": scenario["Descrição"],
                 "Capacidade": f"{capacity_pts} pts",
-                "Histórico": f"{hist_count} × {history_weight} = {hist_points} pts{' → ' + str(capped_hist_points) + ' pts' if hist_points > history_cap else ''}",
+                "Histórico": (
+                    f"{hist_count} × {history_weight} = {raw_hist_points} pts"
+                    f"{' → ' + str(capped_hist_points) + ' pts' if raw_hist_points > history_cap else ''}"
+                ),
+                "Preferência": (
+                    f"{preferred_room_pts} pts"
+                    if scenario["Sala Preferida"]
+                    else "0 pts"
+                ),
+                "Hard Rule": (
+                    f"{hard_rule_pts} pts" if scenario["Hard Rule"] else "0 pts"
+                ),
                 "Total": f"{total_score} pts",
             }
         )
@@ -306,13 +399,17 @@ def _show_scoring_simulation(df: pd.DataFrame) -> None:
     sim_df = pd.DataFrame(simulation_data)
     st.dataframe(sim_df, width="stretch", hide_index=True)
 
-    # Show range
     min_score = capacity_pts
-    max_score = capacity_pts + (history_cap * history_weight)
+    max_score = capacity_pts + history_cap + preferred_room_pts + hard_rule_pts
 
     st.info(
-        f"📊 **Range de pontuação:** {min_score} a {max_score} pontos\n\n"
-        f"- Disciplina sem histórico: **{min_score} pts**\n"
-        f"- Disciplina com máximo histórico ({history_cap}+): **{max_score} pts**\n"
+        f"📊 **Range aproximado do exemplo:** {min_score} a {max_score} pontos\n\n"
+        f"- Base só por capacidade: **{min_score} pts**\n"
+        f"- Com histórico no teto + preferência + hard rule: **{max_score} pts**\n"
         f"- Diferença (gap): **{max_score - min_score} pts**"
     )
+
+    if config != build_default_scoring_config():
+        st.caption(
+            "A simulação acima já considera os valores editados na tela, mesmo antes de salvar."
+        )
