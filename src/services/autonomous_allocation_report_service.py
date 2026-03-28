@@ -7,10 +7,10 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
-from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     PageBreak,
@@ -20,6 +20,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
 from src.services.statistics_report_service import StatisticsReportService
 from src.utils.pdf_fonts import (
     get_default_font,
@@ -544,9 +545,7 @@ class AutonomousAllocationReportService:
         # Introduction text
         detection_semester = hybrid_summary.get("detection_semester_id", "N/A")
         intro_text = f"""
-        <b>Disciplinas híbridas</b> são aquelas que historicamente foram alocadas em 
-        <b>tipos diferentes de sala</b> em dias diferentes da semana (ex: laboratório na segunda, 
-        sala de aula na quarta). A detecção foi baseada no semestre {detection_semester}.<br/><br/>
+        A detecção foi baseada no semestre {detection_semester}.<br/><br/>
         <b>Total detectado:</b> {detected_count} disciplina(s) híbrida(s)
         """
         content.append(Paragraph(intro_text, self.styles["Normal"]))
@@ -556,23 +555,17 @@ class AutonomousAllocationReportService:
         hybrid_details = hybrid_summary.get("details", {})
 
         if hybrid_details:
-            table_data = [["CÓDIGO", "DIAS DE LAB", "DIAS DE SALA"]]
+            table_data = [["CÓDIGO", "STATUS"]]
 
-            for codigo, info in list(hybrid_details.items())[
-                :15
-            ]:  # Limit to 15 for readability
-                lab_days_str = ", ".join(info.get("lab_days_names", []))
-                classroom_days_str = ", ".join(info.get("classroom_days_names", []))
-
+            for codigo, _info in list(hybrid_details.items())[:15]:
                 table_data.append(
                     [
                         codigo,
-                        lab_days_str if lab_days_str else "—",
-                        classroom_days_str if classroom_days_str else "—",
+                        "🧪 Disciplina HÍBRIDA detectada",
                     ]
                 )
 
-            hybrid_table = Table(table_data, colWidths=[50 * mm, 50 * mm, 50 * mm])
+            hybrid_table = Table(table_data, colWidths=[55 * mm, 95 * mm])
             hybrid_table.setStyle(
                 TableStyle(
                     [
@@ -622,9 +615,9 @@ class AutonomousAllocationReportService:
         # Interpretation
         interpretation = """
         <b>💡 Como a alocação híbrida funciona:</b><br/>
-        O sistema tenta alocar cada dia da semana para o tipo de sala mais adequado 
-        conforme o padrão histórico. Por exemplo, se uma disciplina usava LAB02 às segundas 
-        e sala de aula às quartas, o sistema tentará manter esse padrão ao alocar cada dia 
+        O sistema tenta alocar cada dia da semana para o tipo de sala mais adequado
+        conforme o padrão histórico. Por exemplo, se uma disciplina usava LAB02 às segundas
+        e sala de aula às quartas, o sistema tentará manter esse padrão ao alocar cada dia
         separadamente (alocação parcial).
         """
         content.append(Paragraph(interpretation, self.styles["Normal"]))

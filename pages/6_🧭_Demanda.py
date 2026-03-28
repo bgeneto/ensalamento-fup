@@ -64,6 +64,121 @@ st.info(
 # Display any persisted feedback from prior action
 display_session_feedback("sync_semestre_result")
 display_session_feedback("sigaa_compare_result")
+display_session_feedback("semester_demand_deletion_result")
+
+
+def clear_semester_demand_deletion_request() -> None:
+    """Clear the semester demand deletion dialog state."""
+    st.session_state.pop("delete_demands_selected_semester", None)
+    st.session_state.pop("preserve_manual_demands_on_semester_delete", None)
+    st.rerun()
+
+
+@st.dialog(
+    "🗑️ Remover Demandas do Semestre",
+    width="large",
+    on_dismiss=clear_semester_demand_deletion_request,
+)
+def show_semester_demand_deletion_dialog(selected_semester_id: int):
+    """Show a modal dialog for removing semester demands."""
+    with get_db_session() as session:
+        demanda_repo = DisciplinaRepository(session)
+        allocation_repo = AlocacaoRepository(session)
+        demanda_sync_service = DemandaSyncService(session)
+
+        semester_demands = demanda_repo.get_by_semestre(selected_semester_id)
+        if not semester_demands:
+            st.info("Este semestre não possui demandas para remover.")
+            if st.button("Fechar", key="close_empty_semester_demands"):
+                clear_semester_demand_deletion_request()
+            return
+
+        manual_demands = [d for d in semester_demands if d.origem == "manual"]
+        api_demands = [d for d in semester_demands if d.origem != "manual"]
+        preserve_manual_demands = st.checkbox(
+            "Manter demandas manuais existentes",
+            value=True,
+            key="preserve_manual_demands_on_semester_delete",
+            help="Quando marcado, remove apenas demandas importadas ou sincronizadas da API.",
+        )
+        demands_to_remove = api_demands if preserve_manual_demands else semester_demands
+        blocked_demands = []
+        for demanda in demands_to_remove:
+            if allocation_repo.get_by_demanda(demanda.id):
+                turma = str(demanda.turma_disciplina or "").strip() or "única"
+                blocked_demands.append(f"{demanda.codigo_disciplina}-{turma}")
+
+        st.markdown("### ⚠️ **Confirmar Remoção de Demandas**")
+        st.markdown(f"**Semestre:** {current_semester_name}")
+        st.markdown(f"**Total de demandas no semestre:** {len(semester_demands)}")
+        st.markdown(f"**Demandas importadas/API:** {len(api_demands)}")
+        st.markdown(f"**Demandas manuais:** {len(manual_demands)}")
+        st.markdown(f"**Demandas que serão removidas:** {len(demands_to_remove)}")
+
+        if preserve_manual_demands:
+            st.info(f"{len(manual_demands)} demanda(s) manual(is) serão mantidas.")
+
+        if not demands_to_remove:
+            st.info("Não há demandas elegíveis para remoção com a configuração atual.")
+        elif blocked_demands:
+            st.error(
+                "Não é possível remover as demandas selecionadas porque existem alocações relacionadas."
+            )
+            st.markdown(
+                "Remova antes as alocações das seguintes ofertas: "
+                f"{', '.join(blocked_demands[:10])}"
+                + ("..." if len(blocked_demands) > 10 else "")
+            )
+        else:
+            st.warning(
+                "ℹ️ Esta ação removerá permanentemente as demandas selecionadas do semestre atual."
+            )
+
+        col_cancel, col_confirm = st.columns(2)
+        with col_cancel:
+            if st.button(
+                "❌ Cancelar",
+                width="stretch",
+                key="cancel_semester_demand_deletion_dialog",
+            ):
+                clear_semester_demand_deletion_request()
+
+        with col_confirm:
+            confirm_disabled = bool(blocked_demands) or not demands_to_remove
+            if st.button(
+                "✅ Confirmar Remoção das Demandas",
+                type="primary",
+                width="stretch",
+                key="confirm_semester_demand_deletion_dialog",
+                disabled=confirm_disabled,
+            ):
+                result = demanda_sync_service.delete_semester_demands(
+                    selected_semester_id,
+                    preserve_manual_demands=preserve_manual_demands,
+                )
+
+                success = result.success
+                if success:
+                    message = (
+                        "Demandas removidas com sucesso: "
+                        f"{result.deleted_demands_count} demanda(s) removida(s)."
+                    )
+                    if result.preserved_manual_demands_count > 0:
+                        message += f" {result.preserved_manual_demands_count} demanda(s) manual(is) foram mantidas."
+                else:
+                    message = (
+                        result.error_message or "Erro ao remover demandas do semestre."
+                    )
+
+                set_session_feedback(
+                    "semester_demand_deletion_result",
+                    success,
+                    message,
+                    ttl=8 if success else 10,
+                )
+                _clear_sigaa_compare_cache(selected_semester_id)
+                st.session_state.pop("delete_demands_selected_semester", None)
+                st.rerun()
 
 
 def _demanda_dtos_to_df(dtos: List) -> pd.DataFrame:
@@ -700,25 +815,44 @@ if st.session_state.sync_semestre_processing:
         # Rerun to refresh the page and show results
         st.rerun()
 
-# Sync button (disabled during processing)
-if st.button(
-    f"🔄 Sincronizar Demanda {current_semester_name}",
-    help="Importar demanda por salas do Sistema de Oferta",
-    disabled=st.session_state.sync_semestre_processing,
-):
-    # Check if selected semester is active
-    if not semestre_status_active:
-        set_session_feedback(
-            "sync_semestre_result",
-            False,
-            "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página ⚙️ Configurações.",
-            ttl=6,
-        )
+sync_col, delete_col = st.columns(2)
+
+with sync_col:
+    if st.button(
+        f"🔄 Sincronizar Demanda {current_semester_name}",
+        help="Importar demanda por salas do Sistema de Oferta",
+        disabled=st.session_state.sync_semestre_processing,
+        width="stretch",
+    ):
+        # Check if selected semester is active
+        if not semestre_status_active:
+            set_session_feedback(
+                "sync_semestre_result",
+                False,
+                "Sincronização disponível apenas para semestres ativos. Selecione um semestre ativo na página ⚙️ Configurações.",
+                ttl=6,
+            )
+            st.rerun()
+        else:
+            # Set processing state and rerun to start spinner
+            st.session_state.sync_semestre_processing = True
+            st.rerun()
+
+with delete_col:
+    if st.button(
+        f"🗑️ Remover Demanda {current_semester_name}",
+        help="Remove as demandas do semestre atual quando não houver alocações relacionadas.",
+        disabled=st.session_state.sync_semestre_processing,
+        width="stretch",
+    ):
+        st.session_state["delete_demands_selected_semester"] = selected_semester_id
         st.rerun()
-    else:
-        # Set processing state and rerun to start spinner
-        st.session_state.sync_semestre_processing = True
-        st.rerun()
+
+selected_demand_delete_semester_id = st.session_state.get(
+    "delete_demands_selected_semester"
+)
+if selected_demand_delete_semester_id is not None:
+    show_semester_demand_deletion_dialog(selected_demand_delete_semester_id)
 
 st.markdown("---")
 

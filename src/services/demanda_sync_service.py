@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from src.models.academic import Demanda
 from src.models.base import utc_now_naive
 from src.repositories.disciplina import DisciplinaRepository
-from src.schemas.academic import DemandaCreate, DemandaRead
+from src.schemas.academic import (
+    DemandaCreate,
+    DemandaRead,
+    SemesterDemandDeletionResult,
+)
 
 SNAPSHOT_FIELDS = (
     "codigo_curso",
@@ -89,6 +93,73 @@ class DemandaSyncService:
             }
         )
         return self.repo.create(DemandaCreate(**dto_data))
+
+    def delete_semester_demands(
+        self,
+        semester_id: int,
+        preserve_manual_demands: bool = False,
+    ) -> SemesterDemandDeletionResult:
+        """Delete semester demands when none of the targeted demands have allocations."""
+        query = self.session.query(Demanda).filter(Demanda.semestre_id == semester_id)
+        if preserve_manual_demands:
+            query = query.filter(Demanda.origem != "manual")
+
+        target_demands = query.order_by(
+            Demanda.codigo_disciplina,
+            Demanda.turma_disciplina,
+        ).all()
+
+        preserved_manual_demands_count = 0
+        if preserve_manual_demands:
+            preserved_manual_demands_count = (
+                self.session.query(Demanda)
+                .filter(
+                    Demanda.semestre_id == semester_id,
+                    Demanda.origem == "manual",
+                )
+                .count()
+            )
+
+        if not target_demands:
+            return SemesterDemandDeletionResult(
+                success=False,
+                semester_id=semester_id,
+                preserved_manual_demands_count=preserved_manual_demands_count,
+                error_message=("Nenhuma demanda elegível para remoção neste semestre."),
+            )
+
+        blocked_demands = []
+        for demanda in target_demands:
+            if demanda.alocacoes:
+                turma = str(demanda.turma_disciplina or "").strip() or "única"
+                blocked_demands.append(f"{demanda.codigo_disciplina}-{turma}")
+
+        if blocked_demands:
+            return SemesterDemandDeletionResult(
+                success=False,
+                semester_id=semester_id,
+                preserved_manual_demands_count=preserved_manual_demands_count,
+                blocked_demands_count=len(blocked_demands),
+                blocked_demands=blocked_demands,
+                error_message=(
+                    "Não é possível remover demandas com alocações salvas. "
+                    "Remova antes as alocações de: "
+                    f"{', '.join(blocked_demands)}"
+                ),
+            )
+
+        deleted_demands_count = len(target_demands)
+        for demanda in target_demands:
+            self.session.delete(demanda)
+
+        self.session.commit()
+
+        return SemesterDemandDeletionResult(
+            success=True,
+            semester_id=semester_id,
+            deleted_demands_count=deleted_demands_count,
+            preserved_manual_demands_count=preserved_manual_demands_count,
+        )
 
     def reconcile_imported_demanda(
         self, semestre_id: int, external_id: str, demanda_data: dict[str, Any]

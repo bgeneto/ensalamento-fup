@@ -1,5 +1,6 @@
 """Reusable component for displaying the demand queue in manual allocation."""
 
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
@@ -8,8 +9,10 @@ from src.config.database import get_db_session
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.professor import ProfessorRepository
 from src.repositories.sala import SalaRepository
+from src.services.hybrid_discipline_service import REGULAR_CLASSROOM_TYPE_ID
 from src.services.manual_allocation_service import ManualAllocationService
 from src.utils.cache_helpers import get_sigaa_parser
+from src.utils.hybrid_detection_runtime import get_hybrid_status_for_demand
 
 
 def render_demand_queue(semester_id: int, filters: Optional[Dict[str, Any]] = None):
@@ -181,6 +184,17 @@ def _get_demand_value(demanda: Any, field_name: str, default: Any = "") -> Any:
     return getattr(demanda, field_name, default)
 
 
+def _normalize_text(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    return "".join(
+        char for char in normalized if not unicodedata.combining(char)
+    ).lower()
+
+
+def _is_laboratory_type_name(tipo_sala_nome: Optional[str]) -> bool:
+    return "laboratorio" in _normalize_text(tipo_sala_nome)
+
+
 def _get_allocation_info(
     demandas, alocacao_repo: AlocacaoRepository, sala_repo: SalaRepository
 ) -> Dict[int, Dict]:
@@ -216,15 +230,47 @@ def _get_allocation_info(
         is_partially_allocated = allocated_count > 0 and pending_blocks > 0
 
         if allocations:
+            from src.models.inventory import TipoSala
+
             # Get ALL unique room IDs from allocations
             unique_room_ids = list(dict.fromkeys(a.sala_id for a in allocations))
 
             # Get room names for all unique rooms
             room_names = []
+            room_type_ids = []
             for room_id in unique_room_ids:
                 room_info = sala_repo.get_by_id(room_id)
                 room_name = room_info.nome if room_info else f"Sala {room_id}"
                 room_names.append(room_name)
+                room_type_id = (
+                    getattr(room_info, "tipo_sala_id", None) if room_info else None
+                )
+                room_type_ids.append(room_type_id)
+
+            resolved_room_type_names = []
+            for room_type_id in room_type_ids:
+                if room_type_id is None:
+                    resolved_room_type_names.append(None)
+                    continue
+                room_type_name = (
+                    sala_repo.session.query(TipoSala.nome)
+                    .filter(TipoSala.id == room_type_id)
+                    .scalar()
+                )
+                resolved_room_type_names.append(room_type_name)
+
+            has_classroom_room = any(
+                room_type_id == REGULAR_CLASSROOM_TYPE_ID
+                for room_type_id in room_type_ids
+            )
+            has_laboratory_room = any(
+                _is_laboratory_type_name(room_type_name)
+                for room_type_name in resolved_room_type_names
+            )
+            has_specialized_room = any(
+                room_type_id not in (None, REGULAR_CLASSROOM_TYPE_ID)
+                for room_type_id in room_type_ids
+            )
 
             # Join room names for display
             room_name_display = ", ".join(room_names)
@@ -237,6 +283,11 @@ def _get_allocation_info(
                 "room_name": room_name_display,
                 "room_names": room_names,
                 "is_split": is_split,
+                "room_type_ids": room_type_ids,
+                "room_type_names": resolved_room_type_names,
+                "has_classroom_room": has_classroom_room,
+                "has_laboratory_room": has_laboratory_room,
+                "has_specialized_room": has_specialized_room,
                 "allocated_blocks": allocated_count,
                 "pending_blocks": pending_blocks,
                 "total_blocks": total_blocks,
@@ -250,6 +301,11 @@ def _get_allocation_info(
                 "room_name": None,
                 "room_names": [],
                 "is_split": False,
+                "room_type_ids": [],
+                "room_type_names": [],
+                "has_classroom_room": False,
+                "has_laboratory_room": False,
+                "has_specialized_room": False,
                 "allocated_blocks": 0,
                 "pending_blocks": total_blocks,
                 "total_blocks": total_blocks,
@@ -326,7 +382,7 @@ def _render_demand_card(
 
             # Rule warnings (simplified - would need more logic in real implementation)
             # Could check for hard rules that apply to this discipline
-            rule_warnings = _check_rule_warnings(demanda, semester_id)
+            rule_warnings = _check_rule_warnings(demanda, semester_id, allocation_info)
             if rule_warnings:
                 st.warning("⚠️ " + "; ".join(rule_warnings))
 
@@ -373,7 +429,11 @@ def _render_demand_card(
     return False
 
 
-def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str]:
+def _check_rule_warnings(
+    demanda,
+    semester_id: Optional[int] = None,
+    allocation_info: Optional[Dict[str, Any]] = None,
+) -> List[str]:
     """
     Check for rule-related warnings for this demand.
 
@@ -387,24 +447,14 @@ def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str
 
     professors = str(getattr(demanda, "professores_disciplina", "")).lower()
     discipline_name = str(getattr(demanda, "nome_disciplina", "")).lower()
-    discipline_code = str(getattr(demanda, "codigo_disciplina", ""))
-    turma_disciplina = getattr(demanda, "turma_disciplina", None)
+    hybrid_status = get_hybrid_status_for_demand(demanda, semester_id)
 
     # Check for accessibility needs (simplified)
     if any(term in professors for term in ["baixa mobilidade", "cadeira de rodas"]):
         warnings.append("Professor com restrição de mobilidade")
 
-    # Check for hybrid discipline detection (from historical data)
-    # This is the CONFIRMED detection from Phase 0
-    is_hybrid_detected = _check_hybrid_discipline(
-        discipline_code,
-        turma_disciplina,
-        semester_id,
-    )
-
-    if is_hybrid_detected:
-        # Strong indication - detected from historical allocation data
-        warnings.append("🧪 Disciplina HÍBRIDA - requer laboratório em alguns dias")
+    if hybrid_status["is_hybrid"]:
+        warnings.append("🧪 Disciplina HÍBRIDA detectada")
     else:
         # Soft check for laboratory requirements (regex-based, less certain)
         if any(
@@ -418,61 +468,6 @@ def _check_rule_warnings(demanda, semester_id: Optional[int] = None) -> List[str
         warnings.append("Alta demanda - verificar capacidade da sala")
 
     return warnings
-
-
-def _build_offering_key(
-    discipline_code: str, turma_disciplina: Optional[str] = None
-) -> str:
-    code = str(discipline_code or "").strip().upper()
-    turma = str(turma_disciplina or "").strip()
-    turma = turma.lstrip("0") or ("0" if turma else "")
-    return f"{code}::{turma}" if turma else code
-
-
-def _check_hybrid_discipline(
-    discipline_code: str,
-    turma_disciplina: Optional[str] = None,
-    current_semester_id: Optional[int] = None,
-) -> bool:
-    """
-    Check if a discipline is detected as hybrid from historical data.
-
-    Uses cached detection results from the most recent autonomous allocation run,
-    or performs fresh detection if needed.
-
-    Args:
-        discipline_code: Discipline code to check
-
-    Returns:
-        True if discipline is detected as hybrid
-    """
-    # Check if we have cached hybrid detection in session state
-    hybrid_cache = st.session_state.setdefault("hybrid_disciplines_cache_v2", {})
-
-    if current_semester_id not in hybrid_cache:
-        # Perform fresh detection
-        try:
-            with get_db_session() as session:
-                from src.services.hybrid_discipline_service import (
-                    HybridDisciplineDetectionService,
-                )
-
-                hybrid_service = HybridDisciplineDetectionService(session)
-                detection_semester_id = hybrid_service.resolve_detection_semester(
-                    current_semester_id
-                )
-                result = hybrid_service.detect_hybrid_disciplines(detection_semester_id)
-
-                # Cache the results
-                hybrid_cache[current_semester_id] = set(result.hybrid_disciplines)
-        except Exception:
-            # If detection fails, return empty set
-            hybrid_cache[current_semester_id] = set()
-
-    return (
-        _build_offering_key(discipline_code, turma_disciplina)
-        in hybrid_cache[current_semester_id]
-    )
 
 
 def _sort_demands_by_priority(demandas, allocation_info_map) -> List:

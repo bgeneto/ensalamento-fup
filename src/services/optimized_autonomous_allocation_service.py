@@ -995,6 +995,7 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
                 },
                 # Hybrid discipline detection results (Phase 0)
                 "hybrid_summary": self.decision_logger.get_hybrid_summary(),
+                "hybrid_detection_runtime": self.hybrid_detection_service.get_detection_summary(),
                 "continuity_summary": {
                     "profiles_built": len(continuity_profiles),
                     "non_hybrid_candidates_for_phase_1_5": continuity_candidates,

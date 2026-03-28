@@ -109,6 +109,20 @@ class DemandaRead(DemandaBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SemesterDemandDeletionResult(BaseModel):
+    """Result of removing semester demands."""
+
+    success: bool = Field(default=False)
+    semester_id: int
+    deleted_demands_count: int = Field(default=0, ge=0)
+    preserved_manual_demands_count: int = Field(default=0, ge=0)
+    blocked_demands_count: int = Field(default=0, ge=0)
+    blocked_demands: list[str] = Field(default_factory=list)
+    error_message: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ============================================================================
 # PROFESSOR Schemas
 # ============================================================================

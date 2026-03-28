@@ -13,6 +13,7 @@ from pages.components.ui import page_footer
 from src.config.database import get_db_session
 from src.utils.cache_helpers import get_semester_options
 from src.utils.demand_filter_options import build_demand_filter_options
+from src.utils.hybrid_detection_runtime import set_hybrid_detection_runtime_cache
 from src.utils.ui_feedback import display_session_feedback
 
 
@@ -309,7 +310,7 @@ with get_db_session() as session:
     from src.repositories.disciplina import DisciplinaRepository
 
     disciplina_repo = DisciplinaRepository(session)
-    semester_demands = disciplina_repo.get_by_semestre(selected_semester)
+    semester_demands = disciplina_repo.get_visible_for_allocation(selected_semester)
     discipline_options, professor_options = build_demand_filter_options(
         semester_demands
     )
@@ -452,6 +453,12 @@ if run_autonomous_allocation:
 
                         # Log successful save
                         print(f"PDF report saved to: {pdf_path}")
+
+                    if "hybrid_detection_runtime" in result:
+                        set_hybrid_detection_runtime_cache(
+                            selected_semester,
+                            result["hybrid_detection_runtime"],
+                        )
 
                     # Full allocation results (partial mode)
                     allocations_done = result["allocations_completed"]

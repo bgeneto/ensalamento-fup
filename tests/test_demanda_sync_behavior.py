@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+from src.models.academic import Demanda
+from src.models.allocation import AlocacaoSemestral
+from src.models.inventory import Campus, Predio, Sala, TipoSala
 from src.repositories.disciplina import DisciplinaRepository
 from src.services import semester_service
+from src.services.demanda_sync_service import DemandaSyncService
 from src.utils.demanda_ui import (
     build_course_ignore_options,
     default_ignored_courses,
@@ -79,3 +83,117 @@ def test_ignore_course_options_remain_stable_and_explicit():
     assert sanitize_ignored_courses(["CND", "INEXISTENTE"], populated_db_options) == [
         "CND"
     ]
+
+
+def test_delete_semester_demands_can_preserve_manual_demands(
+    db_session,
+    sample_semestre,
+):
+    manual_demand = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP1001",
+        nome_disciplina="Demanda Manual",
+        turma_disciplina="1",
+        horario_sigaa_bruto="24M12",
+        origem="manual",
+        sync_status="manual",
+    )
+    api_demand = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP1002",
+        nome_disciplina="Demanda API",
+        turma_disciplina="1",
+        horario_sigaa_bruto="35T12",
+        origem="api",
+        sync_status="active",
+    )
+    db_session.add_all([manual_demand, api_demand])
+    db_session.commit()
+
+    service = DemandaSyncService(db_session)
+    result = service.delete_semester_demands(
+        sample_semestre.id,
+        preserve_manual_demands=True,
+    )
+
+    repo = DisciplinaRepository(db_session)
+    remaining = repo.get_by_semestre(sample_semestre.id)
+
+    assert result.success is True
+    assert result.deleted_demands_count == 1
+    assert result.preserved_manual_demands_count == 1
+    assert [(d.codigo_disciplina, d.origem) for d in remaining] == [
+        ("FUP1001", "manual")
+    ]
+
+
+def test_delete_semester_demands_blocks_when_any_target_demand_has_allocations(
+    db_session,
+    sample_semestre,
+    sample_dia_semana,
+    sample_horario_bloco,
+):
+    campus = Campus(nome="Campus Delete", descricao="Campus de teste")
+    predio = Predio(nome="Predio Delete", descricao="Predio de teste", campus=campus)
+    tipo_sala = TipoSala(nome="Sala Delete")
+    sala = Sala(
+        nome="D404",
+        descricao="Sala de teste",
+        predio=predio,
+        tipo_sala=tipo_sala,
+        capacidade=40,
+        andar=4,
+    )
+    blocked_demand = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP2001",
+        nome_disciplina="Demanda Bloqueada",
+        turma_disciplina="1",
+        horario_sigaa_bruto="24M12",
+        origem="api",
+        sync_status="active",
+    )
+    removable_demand = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP2002",
+        nome_disciplina="Demanda Sem Alocacao",
+        turma_disciplina="1",
+        horario_sigaa_bruto="35T12",
+        origem="api",
+        sync_status="active",
+    )
+    db_session.add_all(
+        [campus, predio, tipo_sala, sala, blocked_demand, removable_demand]
+    )
+    db_session.commit()
+    db_session.refresh(sala)
+    db_session.refresh(blocked_demand)
+
+    db_session.add(
+        AlocacaoSemestral(
+            semestre_id=sample_semestre.id,
+            demanda_id=blocked_demand.id,
+            sala_id=sala.id,
+            dia_semana_id=sample_dia_semana.id_sigaa,
+            codigo_bloco=sample_horario_bloco.codigo_bloco,
+            origem_alocacao="manual",
+        )
+    )
+    db_session.commit()
+
+    service = DemandaSyncService(db_session)
+    result = service.delete_semester_demands(sample_semestre.id)
+
+    repo = DisciplinaRepository(db_session)
+    remaining_codes = [
+        d.codigo_disciplina for d in repo.get_by_semestre(sample_semestre.id)
+    ]
+
+    assert result.success is False
+    assert result.deleted_demands_count == 0
+    assert result.blocked_demands_count == 1
+    assert result.blocked_demands == ["FUP2001-1"]
+    assert "Não é possível remover demandas com alocações salvas" in (
+        result.error_message or ""
+    )
+    assert remaining_codes == ["FUP2001", "FUP2002"]

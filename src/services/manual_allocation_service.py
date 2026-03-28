@@ -753,9 +753,8 @@ class ManualAllocationService:
         return [d for d in demandas if completion_map[d.id]["is_fully_allocated"]]
 
     def get_all_demands(self, semester_id: int) -> List[dict]:
-        """Get all demands in a semester regardless of allocation status."""
-        demandas = self.demanda_repo.get_by_semestre(semester_id)
-        return [self.demanda_repo.orm_to_dto(d) for d in demandas]
+        """Get all demands visible to allocation workflows in a semester."""
+        return self.demanda_repo.get_visible_for_allocation(semester_id)
 
     def deallocate_demand(self, demanda_id: int) -> AllocationResult:
         """

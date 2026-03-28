@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pages.components.alloc_queue import _apply_filters
+from pages.components.alloc_queue import _apply_filters, _check_rule_warnings
 from src.schemas.academic import DemandaRead
 from src.utils.demand_filter_options import build_demand_filter_options
 
@@ -132,3 +132,53 @@ def test_build_demand_filter_options_keeps_professors_from_duplicate_disciplines
         "Carlos Lima": "Carlos Lima",
         "Maria Clara": "Maria Clara",
     }
+
+
+def test_check_rule_warnings_prefers_actual_mixed_hybrid_allocation(monkeypatch):
+    demanda = _make_demanda("FUP0363", "Eletromagnetismo em Ciencias", "1")
+
+    monkeypatch.setattr(
+        "pages.components.alloc_queue.get_hybrid_status_for_demand",
+        lambda demanda, semester_id: {
+            "is_hybrid": True,
+            "current_slot_requirements": {"4_T": "classroom"},
+            "all_slot_requirements": {
+                "4_N": "lab",
+                "4_T": "classroom",
+                "2_N": "lab",
+            },
+        },
+    )
+
+    warnings = _check_rule_warnings(
+        demanda,
+        semester_id=5,
+        allocation_info={
+            "has_classroom_room": True,
+            "has_laboratory_room": True,
+            "has_specialized_room": True,
+        },
+    )
+
+    assert warnings == ["🧪 Disciplina HÍBRIDA detectada"]
+
+
+def test_check_rule_warnings_marks_partial_hybrid_history_coverage(monkeypatch):
+    demanda = _make_demanda("FUP0363", "Eletromagnetismo em Ciencias", "1")
+
+    monkeypatch.setattr(
+        "pages.components.alloc_queue.get_hybrid_status_for_demand",
+        lambda demanda, semester_id: {
+            "is_hybrid": True,
+            "current_slot_requirements": {"4_T": "classroom"},
+            "all_slot_requirements": {
+                "4_N": "lab",
+                "4_T": "classroom",
+                "2_N": "lab",
+            },
+        },
+    )
+
+    warnings = _check_rule_warnings(demanda, semester_id=5)
+
+    assert warnings == ["🧪 Disciplina HÍBRIDA detectada"]
