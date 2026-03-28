@@ -25,10 +25,7 @@ from src.schemas.inventory import (
     SalaUpdate,
     TipoSalaCreate,
 )
-from src.utils.cache_helpers import (
-    get_predio_options,
-    get_tipo_sala_options,
-)
+from src.utils.cache_helpers import get_predio_options, get_tipo_sala_options
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -43,7 +40,8 @@ def render_rooms_tab():
         - Para **adicionar**, clique em ✚ no canto superior direito da tabela.
         - Para **remover**, selecione a linha correspondente clicando na primeira coluna e, em seguida, exclua a linha clicando no ícone 🗑️ no canto superior direito da tabela.
         - Para **alterar** um dado, dê um clique duplo na célula da tabela. As edições serão salvas automaticamente.
-        - Use **Ativa** para habilitar/desabilitar a sala **globalmente** e os campos **M/T/N** para limitar por turno.
+        - Use os campos **Manhã/Tarde/Noite** para controlar a disponibilidade de cada sala por turno.
+        - Se nenhum turno estiver marcado, a sala ficará indisponível para novas alocações e reservas.
         """
     )
 
@@ -60,14 +58,18 @@ def render_rooms_tab():
             tipo_sala_options = get_tipo_sala_options()
 
             if salas:
-                # Display summary
-                st.markdown(f"**Total de salas encontradas: {len(salas)}**")
-                total_active = sum(1 for sala in salas if sala.active)
-                st.caption(
-                    f"Ativas: {total_active} | Inativas: {len(salas) - total_active}"
-                )
                 turnos_map = sala_repo.get_allowed_turnos_map(
                     [sala.id for sala in salas]
+                )
+                operational_count = sum(
+                    1 for sala in salas if turnos_map.get(sala.id, {"M", "T", "N"})
+                )
+
+                # Display summary
+                st.markdown(f"**Total de salas encontradas: {len(salas)}**")
+                st.caption(
+                    "Com algum turno disponível: "
+                    f"{operational_count} | Sem turnos disponíveis: {len(salas) - operational_count}"
                 )
 
                 # Create DataFrame with editable columns
@@ -82,7 +84,6 @@ def render_rooms_tab():
                             "Prédio": sala.predio_id,
                             "Capacidade": sala.capacidade,
                             "Andar": sala.andar,  # Integer field
-                            "Ativa": bool(sala.active),
                             "Manhã (M)": "M"
                             in turnos_map.get(sala.id, {"M", "T", "N"}),
                             "Tarde (T)": "T"
@@ -136,11 +137,6 @@ def render_rooms_tab():
                         "Andar": st.column_config.NumberColumn(
                             "Andar",
                             help="Andar onde a sala está localizada (opcional)",
-                        ),
-                        "Ativa": st.column_config.CheckboxColumn(
-                            "Ativa",
-                            default=True,
-                            help="Desabilite para remover a sala de alocações e reservas novas",
                         ),
                         "Manhã (M)": st.column_config.CheckboxColumn(
                             "Manhã (M)",
@@ -214,11 +210,6 @@ def render_rooms_tab():
                                     tipo_sala_id = row["Tipo Sala"]
                                     capacidade = row["Capacidade"]
                                     andar = row["Andar"]
-                                    active = (
-                                        bool(row["Ativa"])
-                                        if "Ativa" in row and not pd.isna(row["Ativa"])
-                                        else True
-                                    )
                                     allowed_turnos = {
                                         turno
                                         for turno, col in {
@@ -286,7 +277,6 @@ def render_rooms_tab():
                                         capacidade=int(capacidade),
                                         andar=andar,
                                         descricao=descricao,
-                                        active=active,
                                     )
                                     created_sala = sala_repo_create.create(sala_dto)
                                     sala_repo_create.set_room_allowed_turnos(
@@ -335,7 +325,6 @@ def render_rooms_tab():
                             descricao_changed = (
                                 row["Descrição"] != original_row["Descrição"]
                             )
-                            active_changed = row["Ativa"] != original_row["Ativa"]
                             turno_m_changed = (
                                 row["Manhã (M)"] != original_row["Manhã (M)"]
                             )
@@ -354,7 +343,6 @@ def render_rooms_tab():
                                     capacidade_changed,
                                     andar_changed,
                                     descricao_changed,
-                                    active_changed,
                                     turno_m_changed,
                                     turno_t_changed,
                                     turno_n_changed,
@@ -366,11 +354,6 @@ def render_rooms_tab():
                                 capacidade = row["Capacidade"]
                                 andar = row["Andar"]
                                 descricao = str(row["Descrição"]).strip()
-                                active = (
-                                    bool(row["Ativa"])
-                                    if "Ativa" in row and not pd.isna(row["Ativa"])
-                                    else True
-                                )
                                 allowed_turnos = {
                                     turno
                                     for turno, col in {
@@ -467,7 +450,6 @@ def render_rooms_tab():
                                                 capacidade=int(capacidade),
                                                 andar=andar,
                                                 descricao=descricao,
-                                                active=active,
                                             )
                                             sala_repo_update.update(
                                                 sala_id, sala_update_dto

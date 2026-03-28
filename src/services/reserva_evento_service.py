@@ -6,23 +6,23 @@ room reservations using the Parent/Instance design pattern.
 """
 
 import logging
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 from sqlalchemy.orm import Session
 
-from src.repositories.reserva_evento import ReservaEventoRepository
-from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.reserva import ReservaRepository
+from src.repositories.reserva_evento import ReservaEventoRepository
+from src.repositories.reserva_ocorrencia import ReservaOcorrenciaRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.allocation import (
+    RegraUnica,
     ReservaEventoCreate,
     ReservaEventoRead,
     ReservaOcorrenciaCreate,
     ReservaOcorrenciaRead,
-    RegraUnica,
 )
 from src.utils.recurrence_calculator import RecurrenceCalculator
 
@@ -85,9 +85,6 @@ class ReservaEventoService:
             room = self.sala_repo.get_by_id(evento_dto.sala_id)
             if not room:
                 errors.append("Sala não encontrada")
-                return None, errors
-            if not room.active:
-                errors.append("Sala inativa/desabilitada para reserva")
                 return None, errors
 
             if not RecurrenceCalculator.validate_recurrence_rule(rule_dict):
@@ -182,9 +179,9 @@ class ReservaEventoService:
         # Import here to avoid circular imports
         from src.schemas.allocation import (
             RegraDiaria,
-            RegraSemanal,
             RegraMensalDia,
             RegraMensalPosicao,
+            RegraSemanal,
         )
 
         # Create appropriate rule object based on type

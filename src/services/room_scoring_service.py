@@ -27,6 +27,7 @@ from src.repositories.professor import ProfessorRepository
 from src.repositories.regra import RegraRepository
 from src.repositories.sala import SalaRepository
 from src.schemas.manual_allocation import CompatibilityScore
+from src.services.hybrid_discipline_service import REGULAR_CLASSROOM_TYPE_ID
 from src.utils.sigaa_parser import SigaaScheduleParser
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,77 @@ class RoomScoringService:
             )
             self._available_rooms_cache[cache_key] = cached
         return cached
+
+    def _get_demanda_codigo_disciplina(self, demanda: Any) -> Optional[str]:
+        """Extract discipline code from DTOs or dict-shaped demand objects."""
+        if demanda is None:
+            return None
+        if hasattr(demanda, "codigo_disciplina"):
+            return getattr(demanda, "codigo_disciplina")
+        if isinstance(demanda, dict):
+            return demanda.get("codigo_disciplina")
+        return None
+
+    def _has_explicit_non_classroom_override(
+        self,
+        room: Sala,
+        demanda: Any,
+        rules: List[Any],
+    ) -> bool:
+        """Return whether explicit room/type rules intentionally allow this room."""
+        explicit_rules = [
+            rule
+            for rule in rules
+            if rule.tipo_regra in {"DISCIPLINA_TIPO_SALA", "DISCIPLINA_SALA"}
+        ]
+        return any(
+            self._check_rule_compliance(room, demanda, rule) for rule in explicit_rules
+        )
+
+    def is_room_type_eligible_for_demand(
+        self,
+        room: Sala,
+        demanda: Any,
+        rules: Optional[List[Any]] = None,
+        continuity_context: Optional[ContinuityScoringContext] = None,
+    ) -> bool:
+        """Apply the default room-type policy before scoring.
+
+        Policy:
+        - Regular classrooms are always eligible.
+        - Specialized rooms are eligible only when explicitly allowed by room/type
+          rules, when the discipline is hybrid, or when the demand is already in
+          progress in that room and continuity must be preserved.
+        """
+        if room.tipo_sala_id == REGULAR_CLASSROOM_TYPE_ID:
+            return True
+
+        if (
+            continuity_context is not None
+            and room.id in continuity_context.discipline_existing_room_ids
+        ):
+            return True
+
+        if rules is None:
+            codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
+            rules = (
+                self._get_rules_for_disciplina(codigo_disciplina)
+                if codigo_disciplina
+                else []
+            )
+
+        if self._has_explicit_non_classroom_override(room, demanda, rules):
+            return True
+
+        codigo_disciplina = self._get_demanda_codigo_disciplina(demanda)
+        if (
+            codigo_disciplina
+            and self._hybrid_detection_service is not None
+            and self._hybrid_detection_service.is_hybrid(codigo_disciplina)
+        ):
+            return True
+
+        return False
 
     def _build_room_occupancy_lookup(
         self, room_ids: List[int], semester_id: int
@@ -453,7 +525,16 @@ class RoomScoringService:
         required_blocks = [block_code for block_code, _ in atomic_blocks]
 
         # Get only rooms enabled for the required blocks
-        all_rooms = self._get_available_rooms(required_blocks)
+        all_rooms = [
+            room
+            for room in self._get_available_rooms(required_blocks)
+            if self.is_room_type_eligible_for_demand(
+                room,
+                demanda,
+                all_rules,
+                continuity_context,
+            )
+        ]
         conflict_map = self._build_conflict_lookup(
             [room.id for room in all_rooms],
             atomic_blocks,
@@ -551,7 +632,16 @@ class RoomScoringService:
         hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         required_blocks = sorted({block_code for block_code, _ in pending_blocks})
-        all_rooms = self._get_available_rooms(required_blocks)
+        all_rooms = [
+            room
+            for room in self._get_available_rooms(required_blocks)
+            if self.is_room_type_eligible_for_demand(
+                room,
+                demanda,
+                all_rules,
+                continuity_context,
+            )
+        ]
         conflict_map = self._build_conflict_lookup(
             [room.id for room in all_rooms],
             pending_blocks,
@@ -686,7 +776,16 @@ class RoomScoringService:
         hard_rules, _soft_rules = self._split_rules_by_priority(all_rules)
 
         # Get only rooms enabled for this day's required blocks
-        all_rooms = self._get_available_rooms(block_group.blocks)
+        all_rooms = [
+            room
+            for room in self._get_available_rooms(block_group.blocks)
+            if self.is_room_type_eligible_for_demand(
+                room,
+                demanda,
+                all_rules,
+                continuity_context,
+            )
+        ]
         conflict_map = self._build_conflict_lookup(
             [room.id for room in all_rooms],
             block_group.get_atomic_tuples(),

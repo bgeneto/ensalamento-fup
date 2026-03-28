@@ -7,13 +7,13 @@ and availability checks.
 
 from typing import Dict, List, Optional, Set
 
+from sqlalchemy import and_, case, distinct, func, or_
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, distinct, func
 
 from src.models.horario import HorarioBloco
 from src.models.inventory import Sala, SalaDisponibilidadeBloco
-from src.schemas.inventory import SalaRead, SalaCreate
 from src.repositories.base import BaseRepository
+from src.schemas.inventory import SalaCreate, SalaRead
 
 
 class SalaRepository(BaseRepository[Sala, SalaRead]):
@@ -110,6 +110,25 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
                     enabled=True,
                 )
             )
+
+    def _apply_operational_room_filter(self, query, *group_by_columns):
+        """Keep only rooms with at least one enabled block, preserving legacy rows-less rooms."""
+        enabled_count = func.sum(
+            case((SalaDisponibilidadeBloco.enabled.is_(True), 1), else_=0)
+        )
+        return (
+            query.outerjoin(
+                SalaDisponibilidadeBloco,
+                SalaDisponibilidadeBloco.sala_id == Sala.id,
+            )
+            .group_by(*group_by_columns)
+            .having(
+                or_(
+                    func.count(SalaDisponibilidadeBloco.id) == 0,
+                    enabled_count > 0,
+                )
+            )
+        )
 
     def get_allowed_turnos(self, sala_id: int) -> Set[str]:
         """Get allowed shifts (M/T/N) for a room."""
@@ -247,6 +266,11 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
                     {"enabled": turno in allowed_turnos},
                     synchronize_session=False,
                 )
+
+            self.session.query(Sala).filter(Sala.id == sala_id).update(
+                {"active": bool(allowed_turnos)},
+                synchronize_session=False,
+            )
 
             self.session.commit()
             return True
@@ -493,8 +517,8 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
     def get_available_for_allocation(
         self, required_blocks: Optional[List[str]] = None
     ) -> List[SalaRead]:
-        """Get active rooms available for allocation, optionally filtered by blocks."""
-        query = self.session.query(Sala).filter(Sala.active.is_(True))
+        """Get operational rooms available for allocation, optionally filtered by blocks."""
+        query = self.session.query(Sala)
 
         block_codes = sorted({code for code in (required_blocks or []) if code})
         if block_codes:
@@ -513,6 +537,8 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
                     == len(block_codes)
                 )
             )
+        else:
+            query = self._apply_operational_room_filter(query, Sala.id)
 
         orm_objs = query.order_by(Sala.nome).all()
         return [self.orm_to_dto(obj) for obj in orm_objs]
@@ -525,7 +551,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         """Get all rooms with their building information included.
 
         Args:
-            active_only: If True, return only active rooms.
+            active_only: If True, return only rooms with at least one enabled turno.
             required_blocks: Optional list of required atomic blocks.
 
         Returns:
@@ -537,7 +563,7 @@ class SalaRepository(BaseRepository[Sala, SalaRead]):
         # Query rooms with eager loading of predio
         query = self.session.query(Sala).join(Predio)
         if active_only:
-            query = query.filter(Sala.active.is_(True))
+            query = self._apply_operational_room_filter(query, Sala.id, Predio.id)
 
         block_codes = sorted({code for code in (required_blocks or []) if code})
         if block_codes:

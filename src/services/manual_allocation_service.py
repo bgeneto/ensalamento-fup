@@ -145,13 +145,6 @@ class ManualAllocationService:
                 sala_id=sala_id,
                 error_message="Sala não encontrada",
             )
-        if not room.active:
-            return AllocationResult(
-                success=False,
-                demanda_id=demanda_id,
-                sala_id=sala_id,
-                error_message="Sala inativa/desabilitada para alocação",
-            )
 
         # Parse schedule into atomic blocks
         atomic_blocks = self.parser.split_to_atomic_tuples(demanda.horario_sigaa_bruto)
@@ -282,13 +275,6 @@ class ManualAllocationService:
             return PartialAllocationResult(
                 success=False,
                 message="Sala não encontrada",
-                allocated_blocks=[],
-                remaining_blocks=[],
-            )
-        if not room.active:
-            return PartialAllocationResult(
-                success=False,
-                message="Sala inativa/desabilitada para alocação",
                 allocated_blocks=[],
                 remaining_blocks=[],
             )

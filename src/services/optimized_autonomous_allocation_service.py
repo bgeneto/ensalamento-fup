@@ -1465,6 +1465,12 @@ class OptimizedAutonomousAllocationService(AutonomousAllocationService):
             # Find rooms that satisfy hard rules
             suitable_rooms = []
             for room in all_rooms:
+                if not self.scoring_service.is_room_type_eligible_for_demand(
+                    room,
+                    demanda,
+                    hard_rules,
+                ):
+                    continue
                 if not self.sala_repo.is_room_enabled_for_blocks(
                     room.id, required_blocks
                 ):

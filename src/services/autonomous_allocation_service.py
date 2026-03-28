@@ -15,30 +15,30 @@ Implements RF-006 requirements:
 - RF-006.7: Atomic block allocation to database
 """
 
-from typing import List, Dict, Tuple, Optional, NamedTuple, Any
-from dataclasses import dataclass
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 import logging
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from src.repositories.alocacao import AlocacaoRepository
-from src.repositories.disciplina import DisciplinaRepository
-from src.repositories.regra import RegraRepository
-from src.repositories.professor import ProfessorRepository
-from src.repositories.sala import SalaRepository
-from src.repositories.semestre import SemestreRepository
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from src.config.scoring_config import SCORING_WEIGHTS
-from src.utils.sigaa_parser import SigaaScheduleParser
-from src.utils.room_utils import get_room_occupancy
-from src.services.manual_allocation_service import ManualAllocationService
-from src.services.room_scoring_service import RoomScoringService
-from src.schemas.allocation import AlocacaoSemestralCreate
-from src.models.inventory import Sala
+from src.config.settings import settings
 from src.models.academic import Professor
 from src.models.allocation import Regra
-from src.config.settings import settings
-
+from src.models.inventory import Sala
+from src.repositories.alocacao import AlocacaoRepository
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.professor import ProfessorRepository
+from src.repositories.regra import RegraRepository
+from src.repositories.sala import SalaRepository
+from src.repositories.semestre import SemestreRepository
+from src.schemas.allocation import AlocacaoSemestralCreate
+from src.services.manual_allocation_service import ManualAllocationService
+from src.services.room_scoring_service import RoomScoringService
+from src.utils.room_utils import get_room_occupancy
+from src.utils.sigaa_parser import SigaaScheduleParser
 
 logger = logging.getLogger(__name__)
 
@@ -676,6 +676,12 @@ class AutonomousAllocationService:
         compatible_rooms = []
 
         for room in all_rooms:
+            if not self.scoring_service.is_room_type_eligible_for_demand(
+                room,
+                demanda,
+                hard_rules,
+            ):
+                continue
             # Check if room satisfies ALL hard rules
             all_satisfied = True
             for rule in hard_rules:
