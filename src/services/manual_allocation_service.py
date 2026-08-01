@@ -506,6 +506,7 @@ class ManualAllocationService:
         day_id: int,
         semester_id: int,
         turno: Optional[str] = None,
+        selected_block_codes: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
         Get room suggestions for a specific block group (day) of a demand.
@@ -517,6 +518,10 @@ class ManualAllocationService:
             demanda_id: Demand ID
             day_id: Day ID (2=MON, 3=TUE, etc.)
             semester_id: Semester to check conflicts within
+            turno: Optional turno filter ('M', 'T', 'N')
+            selected_block_codes: Optional subset of block codes to score (e.g. ['N1', 'N2']).
+                If provided, suggestions are scoped to those specific blocks instead of all
+                pending blocks for the day+turno. Must be a subset of the pending blocks.
 
         Returns:
             List of room suggestions with per-day scoring, sorted by score descending.
@@ -551,11 +556,21 @@ class ManualAllocationService:
                 if not pending_blocks:
                     return []
 
+                # If specific blocks are requested, restrict to those that are pending
+                if selected_block_codes is not None:
+                    blocks_to_score = sorted(
+                        set(b for b in selected_block_codes if b in set(pending_blocks))
+                    )
+                    if not blocks_to_score:
+                        return []
+                else:
+                    blocks_to_score = pending_blocks
+
                 target_group = BlockGroup(
                     day_id=group["day_id"],
                     day_name=group["day_name"],
                     turno=group.get("turno", ""),
-                    blocks=pending_blocks,
+                    blocks=blocks_to_score,
                 )
                 break
 
