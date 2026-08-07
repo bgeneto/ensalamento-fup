@@ -1,8 +1,108 @@
+from pages.components import allocation_assistant
 from src.models.academic import Demanda, Semestre
 from src.models.allocation import AlocacaoSemestral
-from src.models.horario import HorarioBloco
+from src.models.horario import DiaSemana, HorarioBloco
 from src.models.inventory import Campus, Predio, Sala, TipoSala
 from src.services.manual_allocation_service import ManualAllocationService
+
+
+def test_allocate_demand_partial_preserves_explicit_day_block_pairs(
+    db_session,
+    sample_semestre,
+    sample_sala,
+):
+    db_session.add_all(
+        [
+            DiaSemana(id_sigaa=2, nome="SEG"),
+            DiaSemana(id_sigaa=4, nome="QUA"),
+            HorarioBloco(
+                codigo_bloco="N1",
+                turno="N",
+                horario_inicio="19:00",
+                horario_fim="19:50",
+            ),
+            HorarioBloco(
+                codigo_bloco="N2",
+                turno="N",
+                horario_inicio="19:50",
+                horario_fim="20:40",
+            ),
+        ]
+    )
+    demanda = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="COMP099",
+        nome_disciplina="Seleção Atômica",
+        professores_disciplina="Prof. Teste",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="24N12",
+    )
+    db_session.add(demanda)
+    db_session.commit()
+    db_session.refresh(demanda)
+
+    service = ManualAllocationService(db_session)
+    result = service.allocate_demand_partial(
+        demanda.id,
+        sample_sala.id,
+        selected_atomic_blocks=[("N1", 2), ("N2", 4)],
+    )
+
+    allocations = (
+        db_session.query(AlocacaoSemestral)
+        .filter_by(demanda_id=demanda.id)
+        .order_by(
+            AlocacaoSemestral.dia_semana_id,
+            AlocacaoSemestral.codigo_bloco,
+        )
+        .all()
+    )
+
+    assert result.success is True
+    assert result.allocated_blocks == ["2N1", "4N2"]
+    assert result.remaining_blocks == ["2N2", "4N1"]
+    assert [
+        (allocation.codigo_bloco, allocation.dia_semana_id)
+        for allocation in allocations
+    ] == [("N1", 2), ("N2", 4)]
+
+
+def test_selected_atomic_block_pairs_preserve_day_relationship():
+    selected_groups = [
+        {"day_id": 2, "blocks": ["N1"]},
+        {"day_id": 4, "blocks": ["N2"]},
+    ]
+
+    assert allocation_assistant._selected_atomic_block_pairs(selected_groups) == [
+        ("N1", 2),
+        ("N2", 4),
+    ]
+
+
+def test_clear_allocation_selection_state_removes_widget_and_legacy_keys(
+    monkeypatch,
+):
+    session_state = {
+        "selected_atomic_blocks_17": {"2_N1": True},
+        "selected_block_groups_17": {"2_N": True},
+        "atom_17_2_N1": True,
+        "atom_17_4_N2": False,
+        "toggle_group_17_2_N": True,
+        "block_group_17_2_N": True,
+        "manual_room_select_partial_17": 3,
+        "atom_18_2_N1": True,
+        "unrelated": "keep",
+    }
+    monkeypatch.setattr(allocation_assistant.st, "session_state", session_state)
+
+    allocation_assistant._clear_allocation_selection_state(17)
+
+    assert session_state == {
+        "manual_room_select_partial_17": 3,
+        "atom_18_2_N1": True,
+        "unrelated": "keep",
+    }
 
 
 def test_deallocate_semester_removes_only_current_semester_allocations(

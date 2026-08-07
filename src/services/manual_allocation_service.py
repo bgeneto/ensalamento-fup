@@ -232,6 +232,7 @@ class ManualAllocationService:
         sala_id: int,
         day_ids: Optional[List[int]] = None,
         block_codes: Optional[List[str]] = None,
+        selected_atomic_blocks: Optional[List[Tuple[str, int]]] = None,
     ) -> PartialAllocationResult:
         """
         Allocate specific blocks/days of a demand to a room.
@@ -246,6 +247,10 @@ class ManualAllocationService:
                      If None, all days are considered.
             block_codes: Optional list of specific block codes to allocate (M1, M2, T1, etc.)
                          If None, all blocks for the specified days are allocated.
+            selected_atomic_blocks: Optional exact ``(block_code, day_id)`` pairs to
+                                    allocate. When provided, this takes precedence over
+                                    ``day_ids`` and ``block_codes`` so the day/block
+                                    relationship is preserved.
 
         Returns:
             PartialAllocationResult with details of what was allocated and what remains.
@@ -298,20 +303,28 @@ class ManualAllocationService:
         for alloc in existing_allocations:
             already_allocated.add((alloc.codigo_bloco, alloc.dia_semana_id))
 
-        # Filter blocks to allocate based on day_ids and block_codes
+        # Filter blocks to allocate by exact pairs when provided. The legacy
+        # independent filters remain supported for existing callers.
+        selected_atomic_block_set = (
+            set(selected_atomic_blocks) if selected_atomic_blocks is not None else None
+        )
         blocks_to_allocate = []
         for block_code, day_id in all_atomic_blocks:
             # Skip if already allocated
             if (block_code, day_id) in already_allocated:
                 continue
 
-            # Filter by day_ids if specified
-            if day_ids is not None and day_id not in day_ids:
-                continue
+            if selected_atomic_block_set is not None:
+                if (block_code, day_id) not in selected_atomic_block_set:
+                    continue
+            else:
+                # Filter by day_ids if specified
+                if day_ids is not None and day_id not in day_ids:
+                    continue
 
-            # Filter by block_codes if specified
-            if block_codes is not None and block_code not in block_codes:
-                continue
+                # Filter by block_codes if specified
+                if block_codes is not None and block_code not in block_codes:
+                    continue
 
             blocks_to_allocate.append((block_code, day_id))
 

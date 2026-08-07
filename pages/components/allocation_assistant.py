@@ -1,6 +1,6 @@
 """Allocation assistant component for manual room selection and allocation."""
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import streamlit as st
 
@@ -27,6 +27,39 @@ def _get_tipo_sala_name_from_id(tipo_sala_id: int, session) -> str:
     stmt = text("SELECT nome FROM tipos_sala WHERE id = :tid")
     row = session.execute(stmt, {"tid": tipo_sala_id}).fetchone()
     return row[0] if row else "N/A"
+
+
+def _clear_allocation_selection_state(demanda_id: int) -> None:
+    """Clear current and legacy selection state for one demand."""
+    aggregate_keys = {
+        f"selected_atomic_blocks_{demanda_id}",
+        f"selected_block_groups_{demanda_id}",
+    }
+    widget_prefixes = (
+        f"atom_{demanda_id}_",
+        f"toggle_group_{demanda_id}_",
+        f"block_group_{demanda_id}_",
+    )
+
+    keys_to_clear = [
+        key
+        for key in list(st.session_state.keys())
+        if key in aggregate_keys
+        or (isinstance(key, str) and key.startswith(widget_prefixes))
+    ]
+    for key in keys_to_clear:
+        del st.session_state[key]
+
+
+def _selected_atomic_block_pairs(
+    selected_groups: List[Dict],
+) -> List[Tuple[str, int]]:
+    """Preserve the selected block/day relationship for service calls."""
+    return [
+        (block, group["day_id"])
+        for group in selected_groups
+        for block in group.get("blocks", [])
+    ]
 
 
 def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[dict]:
@@ -114,6 +147,7 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[d
                 type="secondary",
                 help="Voltar para fila",
             ):
+                _clear_allocation_selection_state(demanda_id)
                 if "allocation_selected_demand" in st.session_state:
                     del st.session_state.allocation_selected_demand
                 return {"action_taken": True}
@@ -135,6 +169,7 @@ def render_allocation_assistant(demanda_id: int, semester_id: int) -> Optional[d
             type="secondary",
             help="Limpar seleção e voltar para fila",
         ):
+            _clear_allocation_selection_state(demanda_id)
             if "allocation_selected_demand" in st.session_state:
                 del st.session_state.allocation_selected_demand
             return {"action_taken": True}  # Trigger refresh
@@ -186,83 +221,37 @@ def _render_block_group_selection(
     # Individual atomic block checkboxes
     st.markdown("**Selecione os blocos a alocar:**")
 
-    # Session state key for individual atomic block selection:
-    # maps "{day_id}_{block_code}" -> bool
-    atomic_key = f"selected_atomic_blocks_{demanda_id}"
-    expected_atom_keys = {
-        f"{group['day_id']}_{block}"
-        for group in unallocated_groups
-        for block in group.get("blocks", [])
-    }
-    current_selection = st.session_state.get(atomic_key)
-    if (
-        not isinstance(current_selection, dict)
-        or set(current_selection.keys()) != expected_atom_keys
-    ):
-        # Default: select all unallocated atomic blocks
-        st.session_state[atomic_key] = {key: True for key in expected_atom_keys}
-
     # Render checkboxes grouped by day+turno
+    selected_virtual_groups = []
     for group in unallocated_groups:
         day_id = group.get("day_id")
         day_name = group.get("day_name", "N/A")
-        group_id = group.get("group_id", f"{day_id}_{group.get('turno', '')}")
         turno_label = group.get("turno_label", "")
         blocks = group.get("blocks", [])
         time_range = group.get("time_range", "")
 
-        # Group header with toggle button (select-all / deselect-all)
-        col_header, col_toggle = st.columns([4, 1])
-        with col_header:
-            st.markdown(
-                f"**{day_name} {turno_label}** ({len(blocks)} blocos) — 🕐 {time_range}"
-            )
-        with col_toggle:
-            all_in_group = all(
-                st.session_state[atomic_key].get(f"{day_id}_{b}", True)
-                for b in blocks
-            )
-            toggle_label = "✗ Desmarcar" if all_in_group else "✓ Todos"
-            if st.button(
-                toggle_label,
-                key=f"toggle_group_{demanda_id}_{group_id}",
-                use_container_width=True,
-            ):
-                new_val = not all_in_group
-                for b in blocks:
-                    st.session_state[atomic_key][f"{day_id}_{b}"] = new_val
-                st.rerun()
+        st.markdown(
+            f"**{day_name} {turno_label}** ({len(blocks)} blocos) — 🕐 {time_range}"
+        )
 
         # Individual checkboxes for each atomic block in the group
         block_cols = st.columns(min(len(blocks), 6))
+        selected_in_group = []
         for bidx, block in enumerate(blocks):
             atom_key = f"{day_id}_{block}"
             with block_cols[bidx % len(block_cols)]:
                 is_checked = st.checkbox(
                     block,
-                    value=st.session_state[atomic_key].get(atom_key, True),
+                    value=True,
                     key=f"atom_{demanda_id}_{atom_key}",
                 )
-                st.session_state[atomic_key][atom_key] = is_checked
+                if is_checked:
+                    selected_in_group.append(block)
+
+        if selected_in_group:
+            selected_virtual_groups.append({**group, "blocks": selected_in_group})
 
         st.markdown("")  # Visual spacing between groups
-
-    # Build "virtual groups" containing only the user-selected blocks per day+turno
-    selected_virtual_groups = []
-    for group in unallocated_groups:
-        day_id = group.get("day_id")
-        selected_in_group = [
-            b
-            for b in group.get("blocks", [])
-            if st.session_state[atomic_key].get(f"{day_id}_{b}", False)
-        ]
-        if selected_in_group:
-            selected_virtual_groups.append(
-                {
-                    **group,
-                    "blocks": selected_in_group,  # override with only selected blocks
-                }
-            )
 
     if not selected_virtual_groups:
         st.warning("⚠️ Selecione pelo menos um bloco atômico para ver as sugestões.")
@@ -437,30 +426,19 @@ def _render_block_group_room_card(
                 type="primary",
                 help="Alocar blocos selecionados nesta sala",
             ):
-                selected_day_ids = sorted({g.get("day_id") for g in selected_groups})
-                selected_block_codes = sorted(
-                    {block for g in selected_groups for block in g.get("blocks", [])}
-                )
-
                 # Execute partial allocation
                 result = alloc_service.allocate_demand_partial(
                     demanda_id,
                     room_id,
-                    day_ids=selected_day_ids,
-                    block_codes=selected_block_codes,
+                    selected_atomic_blocks=_selected_atomic_block_pairs(
+                        selected_groups
+                    ),
                 )
-
-                # Clear selection state (both old and new session state keys)
-                for sel_key in [
-                    f"selected_atomic_blocks_{demanda_id}",
-                    f"selected_block_groups_{demanda_id}",
-                ]:
-                    if sel_key in st.session_state:
-                        del st.session_state[sel_key]
 
                 room_display = f"{suggestion.get('building_name', '')}: {suggestion.get('room_name', '')}"
 
                 if result.success:
+                    _clear_allocation_selection_state(demanda_id)
                     feedback_message = f"✅ Alocação parcial realizada! {len(result.allocated_blocks)} blocos alocados em '{room_display}'"
                     if result.remaining_blocks:
                         feedback_message += (
@@ -502,7 +480,6 @@ def _render_manual_selection_partial(
             "⚠️ **Atenção:** Esta seleção manual não verifica as regras de alocação automaticamente."
         )
 
-        selected_day_ids = sorted({g.get("day_id") for g in selected_groups})
         required_blocks = sorted(
             {block for g in selected_groups for block in g.get("blocks", [])}
         )
@@ -549,23 +526,17 @@ def _render_manual_selection_partial(
                     result = alloc_service.allocate_demand_partial(
                         demanda_id,
                         selected_room_id,
-                        day_ids=selected_day_ids,
-                        block_codes=required_blocks,
+                        selected_atomic_blocks=_selected_atomic_block_pairs(
+                            selected_groups
+                        ),
                     )
-
-                    # Clear selection state (both old and new session state keys)
-                    for sel_key in [
-                        f"selected_atomic_blocks_{demanda_id}",
-                        f"selected_block_groups_{demanda_id}",
-                    ]:
-                        if sel_key in st.session_state:
-                            del st.session_state[sel_key]
 
                     predio_name = _get_predio_name_from_id(
                         selected_room.predio_id, session
                     )
 
                     if result.success:
+                        _clear_allocation_selection_state(demanda_id)
                         feedback_message = f"✅ Alocação manual realizada! {len(result.allocated_blocks)} blocos em '{predio_name}: {selected_room.nome}'"
                         if result.remaining_blocks:
                             feedback_message += f". Restam {len(result.remaining_blocks)} blocos pendentes."
