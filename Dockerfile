@@ -33,6 +33,14 @@ RUN --mount=type=cache,id=ensalamento-pip-production,target=/root/.cache/pip,sha
         --only-binary=:all: \
         --requirement requirements.txt
 
+# Cloudflare Rocket Loader rewrites module script tags and can break Streamlit's
+# lazy ES-module imports. The documented data-cfasync opt-out must appear before
+# src, so mark both Streamlit bootstrap scripts before copying the venv.
+RUN sed -i \
+        -e 's|<script>|<script data-cfasync="false">|' \
+        -e 's|<script type="module"|<script data-cfasync="false" type="module"|' \
+        "${VIRTUAL_ENV}/lib/python3.13/site-packages/streamlit/static/index.html"
+
 
 # Documentation has its own dependency set and native build libraries. Neither
 # is copied into the application image.
