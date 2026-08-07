@@ -368,11 +368,11 @@ with get_db_session() as session:
 
     if removed_count:
         st.warning(
-            f"⚠️ {removed_count} demanda(s) foram removidas na API e seguem preservadas localmente."
+            f"⚠️ {removed_count} demanda(s) foram removidas no OfertaFUP e seguem preservadas localmente."
         )
     if revalidation_count:
         st.error(
-            f"❗ {revalidation_count} demanda(s) exigem revalidação por mudança crítica na API ou remoção com alocação existente."
+            f"❗ {revalidation_count} demanda(s) exigem revalidação por mudança crítica no OfertaFUP ou remoção com alocação existente."
         )
 
     # --- Avisos Acionáveis: Professores não cadastrados ---
@@ -385,8 +385,8 @@ with get_db_session() as session:
         st.warning("⚠️ Professores Não Cadastrados Encontrados!")
         st.markdown(
             """
-            Os seguintes professores foram importados da API, mas **não existem** na
-            base de dados de Professores do sistema.
+            Os seguintes professores foram importados do OfertaFUP, mas **não existem** na
+            base de dados de Professores do sistema de Ensalamento.
 
             **Isso é crítico:** As restrições (ex: baixa mobilidade) e preferências
             **NÃO** serão aplicadas para eles.
@@ -775,7 +775,7 @@ if "sync_semestre_processing" not in st.session_state:
 # Show spinner if processing is active from a previous rerun
 if st.session_state.sync_semestre_processing:
     with st.spinner(
-        "🔄 Sincronizando dados da API... Isso pode levar alguns segundos."
+        "🔄 Sincronizando dados do OfertaFUP... Isso pode levar alguns segundos."
     ):
         # Complete the sync operation
         try:
