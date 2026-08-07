@@ -1,6 +1,6 @@
 # Direct production dependencies.
 # Regenerate the lock with the command recorded at the top of requirements.txt.
-streamlit[pdf]==1.50.0
+streamlit[pdf]==1.57.0
 streamlit-aggrid==1.1.9
 streamlit-authenticator==0.4.2
 pandas==2.3.3
