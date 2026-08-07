@@ -9,8 +9,8 @@ services:
     hostname: ensalamento
     restart: unless-stopped
     init: true
-    ports:
-      - "8504:8501"
+    #ports:
+    #  - "8504:8501"
     env_file:
       - .env
     environment:
@@ -73,8 +73,8 @@ services:
     container_name: ensalamento-docs
     restart: unless-stopped
     init: true
-    ports:
-      - "8000:80"
+    #ports:
+    #  - "8000:80"
     networks:
       - proxy
 
