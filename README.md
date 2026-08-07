@@ -76,6 +76,17 @@ periodicamente em uma mudança revisada, junto com o digest das imagens e a data
 do snapshot Debian, para incorporar correções de segurança sem perder
 reprodutibilidade.
 
+### Cloudflare e módulos JavaScript
+
+O frontend do Streamlit usa módulos ES carregados dinamicamente. O Rocket Loader
+do Cloudflare pode reescrever esses scripts e causar erros `Failed to fetch
+dynamically imported module`. O `Dockerfile` adiciona o opt-out documentado
+`data-cfasync="false"` aos scripts de inicialização como proteção, mas a
+configuração recomendada é uma Configuration Rule no Cloudflare para o hostname
+`ensalamento.sistema.pro.br` com **Rocket Loader = Off**. Após alterar essa
+configuração ou publicar uma nova imagem, limpe o cache HTML do hostname e faça
+uma recarga completa no navegador.
+
 ## Banco de Dados (SQLite)
 
 Este projeto usa SQLite, configurado por `DATABASE_URL` no `.env`.
