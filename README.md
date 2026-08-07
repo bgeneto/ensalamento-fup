@@ -33,11 +33,48 @@ cp .streamlit/secrets.example.yaml .streamlit/secrets.yaml
 ## Subir com Docker
 
 ```bash
-docker compose up -d --build
+docker compose build
+docker compose up -d
 ```
 
 - App: `http://localhost:8504`
 - Docs: `http://localhost:8000`
+
+Também é possível usar `docker compose up -d --build`. Em rebuilds normais, o
+BuildKit reutiliza as camadas de dependências e os caches de download. Evite
+`--no-cache` e `--pull` no uso cotidiano; essas opções existem justamente para
+forçar downloads e reconstrução completa.
+
+## Builds reproduzíveis e cache
+
+- As imagens Python e Nginx estão fixadas por versão e digest no `Dockerfile`.
+- O índice dos pacotes nativos usados para gerar o PDF está fixado por data em
+  um snapshot imutável do Debian.
+- Dependências diretas ficam em `requirements.in`, `requirements-docs.in` e
+  `requirements-dev.in`.
+- Os arquivos `.txt` correspondentes fixam também todas as dependências
+  transitivas e seus hashes.
+- Dependências da aplicação e da documentação estão em estágios separados.
+  Alterar código Python ou Markdown não reinstala pacotes.
+- Downloads de `pip` e `apt` usam cache mounts do BuildKit, sem aumentar a
+  imagem final.
+- Ferramentas de teste, formatação e documentação não são instaladas na imagem
+  da aplicação.
+
+Para atualizar locks intencionalmente, use `uv 0.9.3`, altere as versões diretas
+nos arquivos `.in` e regenere os arquivos `.txt`:
+
+```bash
+uv pip compile requirements.in --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --generate-hashes --output-file requirements.txt
+uv pip compile requirements-docs.in --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --generate-hashes --output-file requirements-docs.txt
+uv pip compile requirements-dev.in --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --generate-hashes --output-file requirements-dev.txt
+```
+
+O build instala os locks com `--require-hashes`, portanto falha se uma versão ou
+artefato não corresponder ao arquivo revisado. Pins devem ser atualizados
+periodicamente em uma mudança revisada, junto com o digest das imagens e a data
+do snapshot Debian, para incorporar correções de segurança sem perder
+reprodutibilidade.
 
 ## Banco de Dados (SQLite)
 
@@ -49,7 +86,26 @@ Exemplo atual recomendado:
 DATABASE_URL=sqlite:///./data/ensalamento.db
 ```
 
-Com isso, no container o arquivo fica em `/app/data/ensalamento.db`, persistido no host em `./data/ensalamento.db` (por causa do volume `./data:/app/data`).
+Com isso, no container o arquivo fica em `/app/data/ensalamento.db`, persistido
+no host em `./data/ensalamento.db`. Esse também é o caminho padrão seguro quando
+`DATABASE_URL` não é informado.
+
+O diretório `./data` inteiro é montado em `/app/data`. Assim, também persistem:
+
+- configurações da aplicação armazenadas no SQLite, incluindo campos JSON;
+- arquivos auxiliares em `data/runtime`, inclusive configurações JSON legadas;
+- relatórios gerados em `data/reports`;
+- logs em `data/logs`.
+
+Rebuilds e substituições do container não apagam esses arquivos. A configuração
+e as credenciais Streamlit ficam no diretório host `./.streamlit`, montado como
+somente leitura em `/app/.streamlit`; elas também não entram na imagem Docker.
+O `.env` permanece no host e seus valores são injetados pelo Compose.
+
+Antes de uma manutenção importante, pare o app e faça backup de `./data`, do
+`.env` e de `.streamlit/secrets.yaml`. Não apague `./data` nem mude
+`DATABASE_URL` para um caminho fora de `/app/data` se quiser manter a
+persistência.
 
 ## Inicialização do Banco (Tabelas/Migrations/Seed)
 
@@ -104,16 +160,17 @@ credentials:
       password: admin123
 ```
 
-Se alterar credenciais localmente e estiver usando Docker, faça rebuild/restart para garantir que o container use a versão atual:
+Como `.streamlit` é um bind mount, alterações de credenciais não exigem rebuild.
+Reinicie apenas a aplicação:
 
 ```bash
-docker compose up -d --build
+docker compose restart ensalamento
 ```
 
-Para conferir o arquivo efetivo dentro do container:
+Para verificar sem imprimir credenciais se o arquivo está montado e legível:
 
 ```bash
-docker compose exec ensalamento sh -lc 'sed -n "1,120p" /app/.streamlit/secrets.yaml'
+docker compose exec ensalamento test -r /app/.streamlit/secrets.yaml
 ```
 
 ## Manual Online (botão "Manual Online")
@@ -130,8 +187,8 @@ Se estiver apontando para `localhost`, ajuste `DOCS_URL` ou `BASE_URL` no `.env`
 ### 1) `Usuário ou senha inválidos`
 
 - Verifique `.streamlit/secrets.yaml` (usuário/senha).
-- Confirme que o container está com esse arquivo atualizado (`docker compose up -d --build`).
-- Confira conteúdo real no container com o comando `sed` acima.
+- Reinicie a aplicação após alterar o arquivo (`docker compose restart ensalamento`).
+- Confirme que o arquivo está legível no container com o comando `test` acima.
 
 ### 2) `sqlalchemy.exc.OperationalError: no such table`
 
@@ -150,7 +207,8 @@ docker compose exec ensalamento python init_db.py --seed
 ### 3) Banco não persistindo
 
 - Garanta `DATABASE_URL=sqlite:///./data/ensalamento.db`
-- Garanta volume `./data:/app/data`
+- Garanta o bind mount `./data` em `/app/data` definido em `compose.yaml`.
+- Confirme que o usuário configurado por `HOST_UID` pode escrever em `./data`.
 
 ## Estrutura Útil
 

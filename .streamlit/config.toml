@@ -111,5 +111,3 @@ backgroundColor = "#f0f0ec"
 secondaryBackgroundColor = "#ecebe3"
 headingFontSizes = ["1.6rem", "1.4rem", "1.2rem"]
 dataframeHeaderBackgroundColor = "#e4e4e0"
-widgetBackgroundColor = "#ecebe3"
-widgetBorderColor = "#d3d2ca"

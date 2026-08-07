@@ -1,0 +1,9 @@
+# Development and test environment: production dependencies plus tooling.
+-r requirements.in
+
+pytest==8.4.2
+pytest-asyncio==0.26.0
+pytest-cov==7.0.0
+black==25.9.0
+isort==7.0.0
+flake8==7.3.0

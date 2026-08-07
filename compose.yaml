@@ -8,21 +8,39 @@ services:
     container_name: ensalamento
     hostname: ensalamento
     restart: unless-stopped
+    init: true
     ports:
       - "8504:8501"
     env_file:
       - .env
+    environment:
+      # Keep all default runtime writes below the persistent /app/data mount.
+      DATABASE_URL: "${DATABASE_URL:-sqlite:///./data/ensalamento.db}"
+      LOGS_DIR: /app/data/logs
     networks:
       - proxy
 
     volumes:
-      # Database persistence
-      - ./data:/app/data
-      # Static files (logo, etc.)
-      - ./static:/app/static
+      # SQLite, reports, logs, and file-backed runtime settings survive image
+      # rebuilds and container replacement because the host owns this tree.
+      - type: bind
+        source: ./data
+        target: /app/data
+      # Streamlit configuration and authentication settings also stay on the
+      # host. Read-only prevents the container from changing credentials.
+      - type: bind
+        source: ./.streamlit
+        target: /app/.streamlit
+        read_only: true
 
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8501/_stcore/health" ]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -54,6 +72,7 @@ services:
       target: docs
     container_name: ensalamento-docs
     restart: unless-stopped
+    init: true
     ports:
       - "8000:80"
     networks:

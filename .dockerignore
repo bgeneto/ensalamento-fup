@@ -28,7 +28,7 @@ share/python-wheels/
 MANIFEST
 
 # Virtual environments
-.env
+.env*
 .venv
 env/
 venv/
@@ -57,9 +57,24 @@ Dockerfile*
 docker-compose*.yml
 .dockerignore
 
+# Secrets are mounted at runtime. Only the non-secret Streamlit defaults are
+# allowed into the build context.
+.streamlit/*
+!.streamlit/config.toml
+
+# Runtime state belongs to host bind mounts, never to an image layer.
+data/
+logs/
+docs-site/
+
+# Only seed CSV files from the engineering documentation tree are needed by
+# the runtime image.
+docs/**
+!docs/*.csv
 
 
 # Test files
+tests/
 .coverage
 .pytest_cache/
 htmlcov/
@@ -96,5 +111,4 @@ yarn-error.log*
 .env.local
 .env.development
 .env.test
-
 

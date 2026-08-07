@@ -1,0 +1,17 @@
+# Direct production dependencies.
+# Regenerate the lock with the command recorded at the top of requirements.txt.
+streamlit[pdf]==1.50.0
+streamlit-aggrid==1.1.9
+streamlit-authenticator==0.4.2
+pandas==2.3.3
+SQLAlchemy==2.0.44
+pydantic[email]==2.12.3
+cryptography==46.0.3
+python-dotenv==1.1.1
+aiosqlite==0.21.0
+bcrypt==5.0.0
+requests==2.32.5
+beautifulsoup4==4.14.2
+lxml==6.0.2
+PyYAML==6.0.3
+reportlab==4.4.4

@@ -28,7 +28,9 @@ class Settings:
         self.BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8501")
 
         # Database Configuration
-        self.DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ensalamento.db")
+        self.DATABASE_URL: str = os.getenv(
+            "DATABASE_URL", "sqlite:///./data/ensalamento.db"
+        )
 
         # Ensure data directory exists
         db_path = self.DATABASE_URL.replace("sqlite:///", "")
