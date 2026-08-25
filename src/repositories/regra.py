@@ -4,11 +4,12 @@ Repository for Regra operations.
 Provides data access methods for allocation rules (hard and soft constraints for disciplines).
 """
 
-from typing import List
+import json
+from typing import List, Set
 
 from sqlalchemy.orm import Session
 
-from src.models.allocation import Regra
+from src.models.allocation import TIPO_REGRA_DISCIPLINA_SEM_SALA, Regra
 from src.schemas.allocation import RegraRead, RegraCreate
 from src.repositories.base import BaseRepository
 
@@ -79,6 +80,23 @@ class RegraRepository(BaseRepository[Regra, RegraRead]):
             .all()
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
+
+    def get_codigos_sem_sala(self) -> Set[str]:
+        """Return discipline codes excluded from room allocation.
+
+        Parses DISCIPLINA_SEM_SALA rule configs as JSON instead of using
+        the substring LIKE lookup in find_rules_by_disciplina.
+        """
+        codes: Set[str] = set()
+        for regra in self.get_by_tipo(TIPO_REGRA_DISCIPLINA_SEM_SALA):
+            try:
+                config = json.loads(regra.config_json) if regra.config_json else {}
+            except (json.JSONDecodeError, TypeError):
+                continue
+            codigo = str(config.get("codigo_disciplina") or "").strip()
+            if codigo:
+                codes.add(codigo)
+        return codes
 
     def get_hard_rules(self) -> List[RegraRead]:
         """Get all hard rules (prioridade = 0).

@@ -31,7 +31,11 @@ Define requisitos técnicos das matérias.
         *   `DISCIPLINA_TIPO_SALA` (Rígida): Ex: Física 1 exige Tipo "Sala de Aula".
         *   `DISCIPLINA_SALA` (Rígida): Ex: A disciplina "Operação de Microscópio" só pode acontecer na "Sala 305".
         *   `DISCIPLINA_CARACTERISTICA` (Suave): Ex: "Seminários" prefere sala com "Palco".
+        *   `DISCIPLINA_SEM_SALA` (Rígida): Ex: "Estágio Supervisionado" **não requer sala** e é excluída da alocação autônoma e do assistente. Vale para todas as turmas e semestres daquele código. Alocações já existentes **não** são removidas automaticamente.
     *   **Prioridade:** Para regras suaves, defina de 1 a 10. Quanto maior, mais o algoritmo se esforçará para atender.
+
+> [!NOTE]
+> Use **Não requer sala** para disciplinas importadas da demanda que não ocupam espaço físico (estágio, TCC, atividades de campo, etc.). Elas deixam de aparecer como pendentes no ensalamento.
 
 > [!IMPORTANT]
 > Cuidado com o excesso de **Regras Rígidas**. Se você criar regras impossíveis (ex: Sala A apenas para Disc X, e Sala A apenas para Disc Y no mesmo horário), o sistema não conseguirá alocar. Use regras suaves sempre que possível.

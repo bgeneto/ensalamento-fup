@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from src.models.allocation import TIPO_REGRA_DISCIPLINA_SEM_SALA
 from src.repositories.alocacao import AlocacaoRepository
 from src.repositories.disciplina import DisciplinaRepository
 from src.repositories.regra import RegraRepository
@@ -41,6 +42,7 @@ class ManualAllocationService:
         self.hybrid_detection_service = HybridDisciplineDetectionService(session)
         self.scoring_service = RoomScoringService(session)
         self._hybrid_detection_semester_id: Optional[int] = None
+        self._codigos_sem_sala_cache: Optional[set] = None
 
     def _ensure_hybrid_detection_initialized(self, current_semester_id: int) -> None:
         """Initialize hybrid detection so manual day suggestions match autonomous flow."""
@@ -59,6 +61,45 @@ class ManualAllocationService:
             self._hybrid_detection_semester_id = detection_semester_id
 
         self.scoring_service.set_hybrid_detection_service(self.hybrid_detection_service)
+
+    def _get_codigos_sem_sala(self) -> set:
+        """Cached discipline codes excluded from allocation by DISCIPLINA_SEM_SALA."""
+        if self._codigos_sem_sala_cache is None:
+            self._codigos_sem_sala_cache = self.regra_repo.get_codigos_sem_sala()
+        return self._codigos_sem_sala_cache
+
+    def _is_demanda_sem_sala(self, demanda) -> bool:
+        """Return whether a demand's discipline is excluded from room allocation."""
+        codigo = getattr(demanda, "codigo_disciplina", None)
+        return bool(codigo) and codigo in self._get_codigos_sem_sala()
+
+    def _sem_sala_allocation_error(self, codigo_disciplina: str) -> str:
+        return (
+            f"Disciplina {codigo_disciplina} não requer sala "
+            f"(regra {TIPO_REGRA_DISCIPLINA_SEM_SALA}) e está excluída da alocação"
+        )
+
+    def _exclude_sem_sala(self, demandas: List) -> List:
+        """Drop demands whose discipline does not require a room."""
+        codes = self._get_codigos_sem_sala()
+        if not codes:
+            return list(demandas)
+        return [d for d in demandas if d.codigo_disciplina not in codes]
+
+    def _include_leftover_sem_sala(
+        self, demandas: List, completion_map: Dict[int, Dict]
+    ) -> List:
+        """Keep SEM_SALA demands only when they already have allocations."""
+        codes = self._get_codigos_sem_sala()
+        if not codes:
+            return list(demandas)
+        visible = []
+        for demanda in demandas:
+            if demanda.codigo_disciplina not in codes:
+                visible.append(demanda)
+            elif completion_map.get(demanda.id, {}).get("allocated_blocks", 0) > 0:
+                visible.append(demanda)
+        return visible
 
     def _get_pending_atomic_blocks_for_demand(
         self, demanda_id: int, horario_sigaa: str
@@ -126,6 +167,15 @@ class ManualAllocationService:
                 success=False,
                 demanda_id=demanda_id,
                 error_message="Demanda não encontrada",
+            )
+
+        if self._is_demanda_sem_sala(demanda):
+            return AllocationResult(
+                success=False,
+                demanda_id=demanda_id,
+                error_message=self._sem_sala_allocation_error(
+                    demanda.codigo_disciplina
+                ),
             )
 
         # Get semester (used for foreign key)
@@ -261,6 +311,14 @@ class ManualAllocationService:
             return PartialAllocationResult(
                 success=False,
                 message="Demanda não encontrada",
+                allocated_blocks=[],
+                remaining_blocks=[],
+            )
+
+        if self._is_demanda_sem_sala(demanda):
+            return PartialAllocationResult(
+                success=False,
+                message=self._sem_sala_allocation_error(demanda.codigo_disciplina),
                 allocated_blocks=[],
                 remaining_blocks=[],
             )
@@ -740,15 +798,21 @@ class ManualAllocationService:
 
     def get_allocation_progress(self, semester_id: int) -> dict:
         """Get allocation progress summary for a semester."""
-        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
-        total_demands = len(demandas)
         completion_map = self._get_semester_demand_completion_map(semester_id)
+        demandas = self._exclude_sem_sala(
+            self.demanda_repo.get_visible_for_allocation(semester_id)
+        )
+        total_demands = len(demandas)
 
         allocated_demands = sum(
-            1 for status in completion_map.values() if status["is_fully_allocated"]
+            1
+            for demanda in demandas
+            if completion_map.get(demanda.id, {}).get("is_fully_allocated")
         )
         partially_allocated_demands = sum(
-            1 for status in completion_map.values() if status["is_partially_allocated"]
+            1
+            for demanda in demandas
+            if completion_map.get(demanda.id, {}).get("is_partially_allocated")
         )
         pending_demands = total_demands - allocated_demands
 
@@ -768,21 +832,30 @@ class ManualAllocationService:
 
     def get_unallocated_demands(self, semester_id: int) -> List[dict]:
         """Get all demands in a semester that still have pending blocks."""
-        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         completion_map = self._get_semester_demand_completion_map(semester_id)
+        demandas = self._exclude_sem_sala(
+            self.demanda_repo.get_visible_for_allocation(semester_id)
+        )
 
         return [d for d in demandas if completion_map[d.id]["pending_blocks"] > 0]
 
     def get_allocated_demands(self, semester_id: int) -> List[dict]:
         """Get all demands in a semester that are fully allocated."""
-        demandas = self.demanda_repo.get_visible_for_allocation(semester_id)
         completion_map = self._get_semester_demand_completion_map(semester_id)
+        demandas = self._include_leftover_sem_sala(
+            self.demanda_repo.get_visible_for_allocation(semester_id),
+            completion_map,
+        )
 
         return [d for d in demandas if completion_map[d.id]["is_fully_allocated"]]
 
     def get_all_demands(self, semester_id: int) -> List[dict]:
         """Get all demands visible to allocation workflows in a semester."""
-        return self.demanda_repo.get_visible_for_allocation(semester_id)
+        completion_map = self._get_semester_demand_completion_map(semester_id)
+        return self._include_leftover_sem_sala(
+            self.demanda_repo.get_visible_for_allocation(semester_id),
+            completion_map,
+        )
 
     def deallocate_demand(self, demanda_id: int) -> AllocationResult:
         """

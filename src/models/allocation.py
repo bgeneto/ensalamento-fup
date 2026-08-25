@@ -15,6 +15,8 @@ import json
 
 from src.models.base import BaseModel
 
+TIPO_REGRA_DISCIPLINA_SEM_SALA = "DISCIPLINA_SEM_SALA"
+
 
 class Regra(BaseModel):
     """Allocation rule entity - hard and soft rules for allocation."""
@@ -24,7 +26,7 @@ class Regra(BaseModel):
     descricao = Column(String(255), nullable=False)
     tipo_regra = Column(
         String(100), nullable=False
-    )  # Rule type (e.g., "DISCIPLINA_TIPO_SALA", "DISCIPLINA_SALA", "DISCIPLINA_CARACTERISTICA")
+    )  # Rule type (e.g., "DISCIPLINA_TIPO_SALA", "DISCIPLINA_SALA", "DISCIPLINA_CARACTERISTICA", "DISCIPLINA_SEM_SALA")
     config_json = Column(Text, nullable=False)  # JSON configuration for rule parameters
     prioridade = Column(
         Integer, default=1

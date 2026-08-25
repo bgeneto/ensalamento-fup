@@ -1,6 +1,6 @@
 """Repository for Demanda (Course Demand) operations."""
 
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -297,8 +297,16 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         )
         return [self.orm_to_dto(obj) for obj in orm_objs]
 
+    def _get_codigos_sem_sala(self) -> Set[str]:
+        """Discipline codes excluded from allocation via DISCIPLINA_SEM_SALA rules."""
+        from src.repositories.regra import RegraRepository
+
+        return RegraRepository(self.session).get_codigos_sem_sala()
+
     def get_allocatable(self, semestre_id: int) -> List[DemandaRead]:
-        """Get courses that should be allocated (nao_alocar=False).
+        """Get courses that should be allocated.
+
+        Excludes disciplines with a DISCIPLINA_SEM_SALA rule.
 
         Args:
             semestre_id: Semester ID
@@ -306,21 +314,11 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         Returns:
             List of allocatable course demands
         """
-        orm_objs = (
-            self.session.query(Demanda)
-            .outerjoin(AlocacaoSemestral, AlocacaoSemestral.demanda_id == Demanda.id)
-            .filter((Demanda.semestre_id == semestre_id) & (~Demanda.nao_alocar))
-            .filter(
-                or_(
-                    Demanda.sync_status != "removed_in_api",
-                    AlocacaoSemestral.id.isnot(None),
-                )
-            )
-            .distinct()
-            .order_by(Demanda.codigo_disciplina)
-            .all()
-        )
-        return [self.orm_to_dto(obj) for obj in orm_objs]
+        visible = self.get_visible_for_allocation(semestre_id)
+        excluded = self._get_codigos_sem_sala()
+        if not excluded:
+            return visible
+        return [d for d in visible if d.codigo_disciplina not in excluded]
 
     def get_by_semestre_and_external_id(
         self, semestre_id: int, id_externo: str
@@ -339,21 +337,22 @@ class DisciplinaRepository(BaseRepository[Demanda, DemandaRead]):
         return None
 
     def get_skip_allocation(self, semestre_id: int) -> List[DemandaRead]:
-        """Get courses marked to skip allocation.
+        """Get courses excluded from allocation by DISCIPLINA_SEM_SALA rules.
 
         Args:
             semestre_id: Semester ID
 
         Returns:
-            List of DemandaRead DTOs marked with nao_alocar=True
+            List of DemandaRead DTOs whose discipline code does not require a room
         """
-        orm_objs = (
-            self.session.query(Demanda)
-            .filter((Demanda.semestre_id == semestre_id) & Demanda.nao_alocar)
-            .order_by(Demanda.codigo_disciplina)
-            .all()
-        )
-        return [self.orm_to_dto(obj) for obj in orm_objs]
+        excluded = self._get_codigos_sem_sala()
+        if not excluded:
+            return []
+        return [
+            d
+            for d in self.get_by_semestre(semestre_id)
+            if d.codigo_disciplina in excluded
+        ]
 
     def get_statistics_for_semester(self, semestre_id: int) -> dict:
         """Get course demand statistics for a semester.

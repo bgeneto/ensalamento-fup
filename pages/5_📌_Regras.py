@@ -28,6 +28,7 @@ if not initialize_page(
 import json
 
 from src.config.database import get_db_session
+from src.models.allocation import TIPO_REGRA_DISCIPLINA_SEM_SALA
 from src.models.inventory import Caracteristica, Sala
 from src.repositories.caracteristica import CaracteristicaRepository
 from src.repositories.disciplina import DisciplinaRepository
@@ -37,6 +38,28 @@ from src.repositories.sala import SalaRepository
 from src.repositories.tipo_sala import TipoSalaRepository
 from src.schemas.allocation import RegraCreate, RegraRead
 from src.utils.ui_feedback import display_session_feedback, set_session_feedback
+
+DISCIPLINE_RULE_TYPES = [
+    "DISCIPLINA_TIPO_SALA",
+    "DISCIPLINA_SALA",
+    "DISCIPLINA_CARACTERISTICA",
+    TIPO_REGRA_DISCIPLINA_SEM_SALA,
+]
+DISCIPLINE_RULE_TYPE_LABELS = {
+    "DISCIPLINA_TIPO_SALA": "🔒 Obrigatória: Tipo de Sala",
+    "DISCIPLINA_SALA": "🔒 Obrigatória: Sala Específica",
+    "DISCIPLINA_CARACTERISTICA": "⭐ Preferência: Característica",
+    TIPO_REGRA_DISCIPLINA_SEM_SALA: "🚫 Obrigatória: Não requer sala",
+}
+ROOM_CONSTRAINT_RULE_TYPES = {
+    "DISCIPLINA_SALA",
+    "DISCIPLINA_TIPO_SALA",
+    "DISCIPLINA_CARACTERISTICA",
+}
+
+
+def _format_discipline_rule_type(rule_type: str) -> str:
+    return DISCIPLINE_RULE_TYPE_LABELS.get(rule_type, rule_type)
 
 
 def _generate_rule_description(
@@ -64,6 +87,9 @@ def _generate_rule_description(
         # Soft rule: discipline prefers room with characteristic
         prioridade_text = f"(Prioridade {prioridade})" if prioridade > 0 else ""
         return f"⭐ Prefere: Disciplina {disc_code} prefere salas com {caracteristica} {prioridade_text}"
+
+    elif rule_type == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+        return f"🚫 Obrigatório: Disciplina {disc_code} não requer sala"
 
     else:
         # Fallback
@@ -158,6 +184,10 @@ def format_rule_display(
         caract_nome = config.get("caracteristica_nome", "N/A")
         prioridade = f"(Prioridade {regra.prioridade})" if regra.prioridade > 0 else ""
         return f"⭐ Prefere: Disciplina {disc_code} prefere salas com {caract_nome} {prioridade}"
+
+    elif regra.tipo_regra == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+        disc_code = config.get("codigo_disciplina", "N/A")
+        return f"🚫 Obrigatório: Disciplina {disc_code} não requer sala"
 
     else:
         # Unknown rule type - fallback to generic
@@ -477,12 +507,10 @@ with tab2:
             with col1:
                 rule_type_filter = st.selectbox(
                     "Filtrar por tipo:",
-                    options=["Todos"]
-                    + [
-                        "DISCIPLINA_TIPO_SALA",
-                        "DISCIPLINA_SALA",
-                        "DISCIPLINA_CARACTERISTICA",
-                    ],
+                    options=["Todos"] + DISCIPLINE_RULE_TYPES,
+                    format_func=lambda x: (
+                        "Todos" if x == "Todos" else _format_discipline_rule_type(x)
+                    ),
                 )
             with col2:
                 rule_priority_filter = st.selectbox(
@@ -597,9 +625,10 @@ with tab2:
                 """
                 ℹ️ Para adicionar regras a uma disciplina:
                 - As regras podem ser rígidas (obrigatórias) ou suaves (preferências).
-                - Selecione primeiro o tipo de regra: **Sala Específica** (rígida), **Tipo de Sala** (rígida) ou **Característica da Sala** (suave).
+                - Selecione primeiro o tipo de regra: **Sala Específica** (rígida), **Tipo de Sala** (rígida), **Característica da Sala** (suave) ou **Não requer sala** (rígida).
                 - Selecione a disciplina por código ou nome da disciplina.
-                - Selecione a sala, tipo de sala ou característica conforme o tipo de regra escolhido.
+                - Selecione a sala, tipo de sala ou característica conforme o tipo de regra escolhido. Para **Não requer sala**, apenas a disciplina é necessária.
+                - Disciplinas com a regra **Não requer sala** são excluídas da alocação autônoma e do assistente (todas as turmas e semestres).
                 - Para regras suaves, você pode definir uma prioridade (número maior = prioridade mais alta).
                 - Clique em **💾 Criar Regra** para salvar a nova regra.
                 - A descrição da regra será gerada automaticamente com base nas suas seleções.
@@ -613,25 +642,20 @@ with tab2:
             if "rule_type_form" not in st.session_state:
                 st.session_state.rule_type_form = st.session_state.rule_type_reactive
 
+            if st.session_state.rule_type_reactive not in DISCIPLINE_RULE_TYPES:
+                st.session_state.rule_type_reactive = DISCIPLINE_RULE_TYPES[0]
+            if st.session_state.rule_type_form not in DISCIPLINE_RULE_TYPES:
+                st.session_state.rule_type_form = st.session_state.rule_type_reactive
+
             # Reactive rule type selection (outside form for immediate reactivity)
             rule_type_reactive = st.selectbox(
                 "Selecionar tipo de regra:",
-                options=[
-                    "DISCIPLINA_TIPO_SALA",  # Hard: discipline must use room type
-                    "DISCIPLINA_SALA",  # Hard: discipline must use specific room
-                    "DISCIPLINA_CARACTERISTICA",  # Soft: discipline prefers room with characteristic
-                ],
-                format_func=lambda x: {
-                    "DISCIPLINA_TIPO_SALA": "🔒 Obrigatória: Tipo de Sala",
-                    "DISCIPLINA_SALA": "🔒 Obrigatória: Sala Específica",
-                    "DISCIPLINA_CARACTERISTICA": "⭐ Preferência: Característica",
-                }.get(x, x),
+                options=DISCIPLINE_RULE_TYPES,
+                format_func=_format_discipline_rule_type,
                 key="rule_type_reactive_selectbox",
-                index=[
-                    "DISCIPLINA_TIPO_SALA",
-                    "DISCIPLINA_SALA",
-                    "DISCIPLINA_CARACTERISTICA",
-                ].index(st.session_state.rule_type_reactive),
+                index=DISCIPLINE_RULE_TYPES.index(
+                    st.session_state.rule_type_reactive
+                ),
             )
 
             # Update session state when reactive selectbox changes
@@ -647,22 +671,12 @@ with tab2:
                     # Rule type selection (inside form, synced with reactive selectbox)
                     rule_type = st.selectbox(
                         "Tipo de Regra:",
-                        options=[
-                            "DISCIPLINA_TIPO_SALA",  # Hard: discipline must use room type
-                            "DISCIPLINA_SALA",  # Hard: discipline must use specific room
-                            "DISCIPLINA_CARACTERISTICA",  # Soft: discipline prefers room with characteristic
-                        ],
-                        format_func=lambda x: {
-                            "DISCIPLINA_TIPO_SALA": "🔒 Obrigatória: Tipo de Sala",
-                            "DISCIPLINA_SALA": "🔒 Obrigatória: Sala Específica",
-                            "DISCIPLINA_CARACTERISTICA": "⭐ Preferência: Característica",
-                        }.get(x, x),
+                        options=DISCIPLINE_RULE_TYPES,
+                        format_func=_format_discipline_rule_type,
                         key="rule_type_form",
-                        index=[
-                            "DISCIPLINA_TIPO_SALA",
-                            "DISCIPLINA_SALA",
-                            "DISCIPLINA_CARACTERISTICA",
-                        ].index(st.session_state.rule_type_form),
+                        index=DISCIPLINE_RULE_TYPES.index(
+                            st.session_state.rule_type_form
+                        ),
                         disabled=True,  # Prevent users from modifying this - use external selectbox
                         help="Use o seletor acima para escolher o tipo de regra",
                     )
@@ -680,9 +694,15 @@ with tab2:
                     else:
                         # Hard rules are always priority 0
                         prioridade = 0
-                        st.info(
-                            "🔒 Regras de sala específica ou tipo têm prioridade 0 (obrigatórias)"
-                        )
+                        if rule_type == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+                            st.info(
+                                "🚫 Disciplinas que não requerem sala têm prioridade 0 "
+                                "e são excluídas do ensalamento"
+                            )
+                        else:
+                            st.info(
+                                "🔒 Regras de sala específica ou tipo têm prioridade 0 (obrigatórias)"
+                            )
 
                 # Dynamic fields based on rule type
                 st.markdown("#### 🔧 Configuração Específica")
@@ -748,6 +768,21 @@ with tab2:
                             help="Característica que a disciplina prefere ter na sala",
                         )
 
+                elif rule_type == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+                    selected_cod_disciplina = st.selectbox(
+                        "Código da Disciplina:",
+                        options=list(disc_options.keys()) if disc_options else [],
+                        format_func=lambda x: (
+                            disc_options.get(x, x) if disc_options else x
+                        ),
+                        help="Todas as turmas desta disciplina serão excluídas da alocação de salas",
+                    )
+                    st.caption(
+                        "Esta disciplina será excluída da alocação autônoma e do assistente. "
+                        "A regra vale para todas as turmas e semestres. "
+                        "Alocações já existentes não são removidas automaticamente."
+                    )
+
                 # Auto-generate description (last field in form)
                 generated_description = _generate_rule_description(
                     rule_type,
@@ -808,6 +843,10 @@ with tab2:
                             "codigo_disciplina": selected_cod_disciplina,
                             "caracteristica_nome": selected_caracteristica,
                         }
+                    elif rule_type == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+                        config = {
+                            "codigo_disciplina": selected_cod_disciplina,
+                        }
                     else:
                         st.error(f"❌ Tipo de regra desconhecido: {rule_type}")
                         st.stop()
@@ -822,10 +861,25 @@ with tab2:
                         )
                         regra_repo.create(regra_dto)
 
+                        success_message = f"Regra '{descricao}' criada com sucesso"
+                        if rule_type == TIPO_REGRA_DISCIPLINA_SEM_SALA:
+                            existing_rules = regra_repo.find_rules_by_disciplina(
+                                selected_cod_disciplina
+                            )
+                            has_room_rules = any(
+                                r.tipo_regra in ROOM_CONSTRAINT_RULE_TYPES
+                                for r in existing_rules
+                            )
+                            if has_room_rules:
+                                success_message += (
+                                    ". Atenção: já existem outras regras de sala/tipo "
+                                    "para esta disciplina; a exclusão prevalece."
+                                )
+
                         set_session_feedback(
                             "rule_management",
                             True,
-                            f"Regra '{descricao}' criada com sucesso",
+                            success_message,
                         )
                         st.rerun()
 

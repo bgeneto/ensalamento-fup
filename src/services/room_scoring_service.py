@@ -1506,6 +1506,13 @@ class RoomScoringService:
                 )
                 return result
 
+            elif rule.tipo_regra == "DISCIPLINA_SEM_SALA":
+                logger.debug(
+                    f"Rule check DISCIPLINA_SEM_SALA: {rule.descricao} | "
+                    f"Discipline does not require a room"
+                )
+                return False
+
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(
                 f"Rule compliance check failed for {rule.descricao}: {e} | "
@@ -1734,6 +1741,9 @@ class RoomScoringService:
             elif rule.tipo_regra == "DISCIPLINA_CARACTERISTICA":
                 char_name = config.get("caracteristica_nome")
                 return f"Característica: {char_name}"
+
+            elif rule.tipo_regra == "DISCIPLINA_SEM_SALA":
+                return "Disciplina não requer sala"
 
             else:
                 return f"Regra: {rule.descricao}"

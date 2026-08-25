@@ -1,8 +1,14 @@
 from pages.components import allocation_assistant
 from src.models.academic import Demanda, Semestre
-from src.models.allocation import AlocacaoSemestral
+from src.models.allocation import (
+    AlocacaoSemestral,
+    Regra,
+    TIPO_REGRA_DISCIPLINA_SEM_SALA,
+)
 from src.models.horario import DiaSemana, HorarioBloco
 from src.models.inventory import Campus, Predio, Sala, TipoSala
+from src.repositories.disciplina import DisciplinaRepository
+from src.repositories.regra import RegraRepository
 from src.services.manual_allocation_service import ManualAllocationService
 
 
@@ -407,3 +413,240 @@ def test_get_all_demands_uses_visible_allocation_scope(
     assert visible_ids == {active_demand.id, removed_allocated_demand.id}
     assert removed_hidden_demand.id not in visible_ids
     assert progress["total_demands"] == len(all_visible_demands)
+
+
+def _add_sem_sala_rule(db_session, codigo_disciplina: str) -> Regra:
+    regra = Regra(
+        descricao=f"Disciplina {codigo_disciplina} não requer sala",
+        tipo_regra=TIPO_REGRA_DISCIPLINA_SEM_SALA,
+        config_json=f'{{"codigo_disciplina": "{codigo_disciplina}"}}',
+        prioridade=0,
+    )
+    db_session.add(regra)
+    db_session.commit()
+    db_session.refresh(regra)
+    return regra
+
+
+def test_get_codigos_sem_sala_parses_json_and_ignores_invalid_config(db_session):
+    db_session.add_all(
+        [
+            Regra(
+                descricao="Estágio sem sala",
+                tipo_regra=TIPO_REGRA_DISCIPLINA_SEM_SALA,
+                config_json='{"codigo_disciplina": "FUP0999"}',
+                prioridade=0,
+            ),
+            Regra(
+                descricao="JSON inválido",
+                tipo_regra=TIPO_REGRA_DISCIPLINA_SEM_SALA,
+                config_json="{not-json",
+                prioridade=0,
+            ),
+            Regra(
+                descricao="Sala específica",
+                tipo_regra="DISCIPLINA_SALA",
+                config_json='{"codigo_disciplina": "FUP0001", "sala_id": 1}',
+                prioridade=0,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    codes = RegraRepository(db_session).get_codigos_sem_sala()
+
+    assert codes == {"FUP0999"}
+
+
+def test_sem_sala_demands_are_excluded_from_unallocated_and_progress(
+    db_session,
+    sample_semestre,
+):
+    regular = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="COMP100",
+        nome_disciplina="Demanda Regular",
+        professores_disciplina="Prof. A",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="24M12",
+        sync_status="active",
+        origem="api",
+    )
+    sem_sala = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP0999",
+        nome_disciplina="Estágio Supervisionado",
+        professores_disciplina="Prof. B",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="24M12",
+        sync_status="active",
+        origem="api",
+    )
+    db_session.add_all([regular, sem_sala])
+    db_session.commit()
+    db_session.refresh(regular)
+    db_session.refresh(sem_sala)
+    _add_sem_sala_rule(db_session, "FUP0999")
+
+    service = ManualAllocationService(db_session)
+    disc_repo = DisciplinaRepository(db_session)
+
+    unallocated_ids = {
+        demanda.id for demanda in service.get_unallocated_demands(sample_semestre.id)
+    }
+    all_ids = {demanda.id for demanda in service.get_all_demands(sample_semestre.id)}
+    progress = service.get_allocation_progress(sample_semestre.id)
+
+    assert unallocated_ids == {regular.id}
+    assert all_ids == {regular.id}
+    assert sem_sala.id not in unallocated_ids
+    assert progress["total_demands"] == 1
+    assert progress["unallocated_demands"] == 1
+    assert {d.id for d in disc_repo.get_allocatable(sample_semestre.id)} == {regular.id}
+    assert {d.id for d in disc_repo.get_skip_allocation(sample_semestre.id)} == {
+        sem_sala.id
+    }
+
+
+def test_allocate_demand_rejects_sem_sala_discipline(
+    db_session,
+    sample_semestre,
+    sample_sala,
+):
+    demanda = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP0888",
+        nome_disciplina="TCC",
+        professores_disciplina="Prof. C",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="2M1",
+        sync_status="active",
+        origem="api",
+    )
+    db_session.add(demanda)
+    db_session.commit()
+    db_session.refresh(demanda)
+    _add_sem_sala_rule(db_session, "FUP0888")
+
+    service = ManualAllocationService(db_session)
+    result = service.allocate_demand(demanda.id, sample_sala.id)
+    partial = service.allocate_demand_partial(
+        demanda.id,
+        sample_sala.id,
+        selected_atomic_blocks=[("M1", 2)],
+    )
+
+    assert result.success is False
+    assert "não requer sala" in (result.error_message or "")
+    assert partial.success is False
+    assert "não requer sala" in partial.message
+    assert (
+        db_session.query(AlocacaoSemestral)
+        .filter_by(demanda_id=demanda.id)
+        .count()
+        == 0
+    )
+
+
+def test_sem_sala_leftover_allocation_stays_visible_for_deallocation(
+    db_session,
+    sample_semestre,
+    sample_sala,
+    sample_dia_semana,
+    sample_horario_bloco,
+):
+    extra_sala = Sala(
+        nome="A102",
+        predio_id=sample_sala.predio_id,
+        tipo_sala_id=sample_sala.tipo_sala_id,
+        capacidade=30,
+        andar=1,
+    )
+    db_session.add(extra_sala)
+    db_session.commit()
+    db_session.refresh(extra_sala)
+    leftover = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP0777",
+        nome_disciplina="Estágio com alocação residual",
+        professores_disciplina="Prof. D",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="2M1",
+        sync_status="active",
+        origem="api",
+    )
+    partial_leftover = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="FUP0777",
+        nome_disciplina="Estágio parcial residual",
+        professores_disciplina="Prof. D",
+        turma_disciplina="B",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="24M12",
+        sync_status="active",
+        origem="api",
+    )
+    pending_regular = Demanda(
+        semestre_id=sample_semestre.id,
+        codigo_disciplina="COMP100",
+        nome_disciplina="Demanda Regular",
+        professores_disciplina="Prof. A",
+        turma_disciplina="A",
+        codigo_curso="COMP",
+        horario_sigaa_bruto="2M1",
+        sync_status="active",
+        origem="api",
+    )
+    db_session.add_all([leftover, partial_leftover, pending_regular])
+    db_session.commit()
+    db_session.refresh(leftover)
+    db_session.refresh(partial_leftover)
+    db_session.refresh(pending_regular)
+
+    db_session.add_all(
+        [
+            AlocacaoSemestral(
+                semestre_id=sample_semestre.id,
+                demanda_id=leftover.id,
+                sala_id=sample_sala.id,
+                dia_semana_id=sample_dia_semana.id_sigaa,
+                codigo_bloco=sample_horario_bloco.codigo_bloco,
+                origem_alocacao="autonoma",
+            ),
+            AlocacaoSemestral(
+                semestre_id=sample_semestre.id,
+                demanda_id=partial_leftover.id,
+                sala_id=extra_sala.id,
+                dia_semana_id=sample_dia_semana.id_sigaa,
+                codigo_bloco=sample_horario_bloco.codigo_bloco,
+                origem_alocacao="autonoma",
+            ),
+        ]
+    )
+    db_session.commit()
+    _add_sem_sala_rule(db_session, "FUP0777")
+
+    service = ManualAllocationService(db_session)
+    unallocated_ids = {
+        demanda.id for demanda in service.get_unallocated_demands(sample_semestre.id)
+    }
+    allocated_ids = {
+        demanda.id for demanda in service.get_allocated_demands(sample_semestre.id)
+    }
+    all_ids = {demanda.id for demanda in service.get_all_demands(sample_semestre.id)}
+    progress = service.get_allocation_progress(sample_semestre.id)
+
+    assert leftover.id not in unallocated_ids
+    assert leftover.id in allocated_ids
+    assert leftover.id in all_ids
+    assert partial_leftover.id not in unallocated_ids
+    assert partial_leftover.id not in allocated_ids
+    assert partial_leftover.id in all_ids
+    assert pending_regular.id in unallocated_ids
+    assert progress["total_demands"] == 1
+    assert progress["unallocated_demands"] == 1
+    assert progress["allocated_demands"] == 0
